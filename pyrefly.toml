@@ -1,0 +1,13 @@
+# Pyrefly Type Checker Configuration
+# https://pyrefly.org/en/docs/configuration/
+
+# Tell Pyrefly to search for imports from the project root (not src/)
+# This allows "from src.core.config import settings" to work correctly
+search-path = ["."]
+
+# Disable the automatic heuristic that sets src/ as the import root
+disable-search-path-heuristics = true
+
+[errors]
+# Suppress missing module source errors for third-party libs without stubs
+missing-import = true
