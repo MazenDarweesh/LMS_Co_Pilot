@@ -1,13 +1,57 @@
 import structlog
+from typing import Any
+from groq import AsyncGroq
+import aiofiles  # type: ignore
 from src.models.schemas import AudioTranscriptionResponse
+from src.core.config import settings
+from src.core.prompts import WHISPER_ERP_DOMAIN_PROMPT
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from groq import RateLimitError
 
-logger= structlog.get_logger()
+logger = structlog.get_logger()
+
+# تهيئة عميل Groq غير المتزامن باستخدام مفتاح الـ API
+groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 class AudioService:
-    async def transcribe_audio(self,file_path:str) -> AudioTranscriptionResponse:
-        logger.info("Starting audio transcription",file_path=file_path)
-        # هنا سيتم لاحقاً دمج مكتبة تفريغ الصوت (مثل OpenAI Whisper)
-        mocked_text="هذا نص تجريبي تم تفريغه من الملف الصوتي الافتراضي."
-        return AudioTranscriptionResponse(text=mocked_text,duration=12.5)
+    def __init__(self):
+        # استدعاء الـ Prompt من ملف الـ Prompts المخصص
+        self.domain_prompt = WHISPER_ERP_DOMAIN_PROMPT
 
-audio_service= AudioService()
+    # استخدام Tenacity لإعادة المحاولة عند مواجهة Rate Limit (429) مع انتظار تصاعدي (Exponential Backoff)
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(RateLimitError),
+        reraise=True
+    )
+    async def transcribe_audio(self, file_path: str) -> AudioTranscriptionResponse:
+        logger.info("Starting Groq Whisper transcription", file_path=file_path)
+
+        try:
+            # قراءة الملف بشكل غير متزامن لتفادي تجميد السيرفر (Async I/O)
+            async with aiofiles.open(file_path, "rb") as audio_file:
+                file_content = await audio_file.read()
+
+            # إرسال الملف إلى Groq Whisper-large-v3
+            transcription: Any = await groq_client.audio.transcriptions.create(
+                file=(file_path, file_content),
+                model="whisper-large-v3",
+                prompt=self.domain_prompt,
+                response_format="verbose_json", # صيغة verbose ترجع تفاصيل دقيقة مثل مدة المقطع
+                language="ar" # إجبار النموذج على أن اللغة الأصلية هي العربية
+            )
+
+            logger.info("Groq transcription completed successfully", duration=transcription.duration)
+
+            # إرجاع الاستجابة النهائية
+            return AudioTranscriptionResponse(
+                text=transcription.text,
+                duration=transcription.duration
+            )
+
+        except Exception as e:
+            logger.error("Error during Groq transcription", error=str(e), file_path=file_path)
+            raise e
+
+audio_service = AudioService()

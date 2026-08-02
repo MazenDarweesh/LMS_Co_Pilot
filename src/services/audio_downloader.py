@@ -1,7 +1,7 @@
 import os
 import asyncio
 import structlog
-from typing import List
+from typing import List, Any
 import yt_dlp
 from pydub import AudioSegment
 
@@ -37,7 +37,7 @@ class AudioDownloaderService:
 
     def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 15 * 60 * 1000) -> List[str]:
         """يقوم بتقطيع ملف الصوت الكبير إلى أجزاء (افتراضياً كل 15 دقيقة) لتجنب قيود حجم ملفات الـ API."""
-        audio = AudioSegment.from_file(file_path)
+        audio: Any = AudioSegment.from_file(file_path)
         chunks = []
         base_name = os.path.splitext(os.path.basename(file_path))[0]
 

@@ -10,4 +10,4 @@ disable-search-path-heuristics = true
 
 [errors]
 # Suppress missing module source errors for third-party libs without stubs
-missing-import = true
+missing-import = false
