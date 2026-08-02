@@ -17,3 +17,7 @@ __pycache__/
 # IDE Settings
 .vscode/
 .idea/
+
+
+# Run Commands
+RunCommands.txt

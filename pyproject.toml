@@ -1,0 +1,26 @@
+[project]
+name = "lms-co-pilot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "mazen darweesh", email = "mazentharwatfathy@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "aiofiles>=25.1.0",
+    "google-genai>=2.16.0",
+    "groq>=1.6.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.14.2",
+    "pydub>=0.25.1",
+    "yt-dlp>=2026.7.4",
+]
+
+[project.scripts]
+lms-co-pilot = "lms_co_pilot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
