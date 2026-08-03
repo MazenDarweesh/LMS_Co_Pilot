@@ -17,6 +17,11 @@ class RAGQueryResponse(BaseModel):
     answer: str = Field(..., description="الإجابة المعززة بالـ AI")
     sources: list[str] = Field(..., description="المصادر المستخدمة")
 
+# Schema مخصص فقط لرد الذكاء الاصطناعي (أسرع وأوفر للـ Tokens)
+class LLMNormalizationResponse(BaseModel):
+    normalized_text: str = Field(..., description="النص بعد التنقيح والتحويل للفصحى")
+
+
 class NormalizedTranscriptionSegment(BaseModel):
     lesson_id: str = Field(..., min_length=1, description="معرف الدرس/المحاضرة الفريد")
     start_time: int = Field(..., ge=0, description="وقت بدء المقطع بالثواني")
