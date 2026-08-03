@@ -1,8 +1,6 @@
 # src/core/prompts.py
 # ملف لتجميع وإدارة جميع الـ Prompts الخاصة بالذكاء الاصطناعي لفصلها عن الكود البرمجي (Clean Architecture)
 
-WHISPER_ERP_DOMAIN_PROMPT = """
-هذا شرح تعليمي وتقني لنظام إدارة موارد المؤسسات (ERP System) الخاص بنا.
-الدرس موجه للعملاء والمستخدمين باللهجة المصرية، ويحتوي على مصطلحات تقنية وإدارية باللغة الإنجليزية مثل:
-ERP, System, HR, Payroll, Dashboard, Frontend, Backend, Database, Modules, API, DynamicProLearn.
-"""
+# The prompt for Whisper should NOT contain instructions.
+# It should contain a sample of the expected text or a list of jargon (Max 224 tokens).
+WHISPER_ERP_DOMAIN_PROMPT = "DynamicProLearn, ERP System, HR, Payroll, Dashboard, Frontend, Backend, Database, Modules, API, منصة دايناميك برو ليرن، نظام إتش آر، داتا بيز، سيستم."

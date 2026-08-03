@@ -26,32 +26,29 @@ class AudioService:
         reraise=True
     )
     async def transcribe_audio(self, file_path: str) -> AudioTranscriptionResponse:
-        logger.info("Starting Groq Whisper transcription", file_path=file_path)
+        # ربط مسار الملف بالـ Logger لكي يظهر تلقائياً في حالة حدوث أي خطأ في الـ Middleware
+        log = logger.bind(file_path=file_path)
+        log.info("Starting Groq Whisper transcription")
 
-        try:
-            # قراءة الملف بشكل غير متزامن لتفادي تجميد السيرفر (Async I/O)
-            async with aiofiles.open(file_path, "rb") as audio_file:
-                file_content = await audio_file.read()
+        # قراءة الملف بشكل غير متزامن لتفادي تجميد السيرفر (Async I/O)
+        async with aiofiles.open(file_path, "rb") as audio_file:
+            file_content = await audio_file.read()
 
-            # إرسال الملف إلى Groq Whisper-large-v3
-            transcription: Any = await groq_client.audio.transcriptions.create(
-                file=(file_path, file_content),
-                model="whisper-large-v3",
-                prompt=self.domain_prompt,
-                response_format="verbose_json", # صيغة verbose ترجع تفاصيل دقيقة مثل مدة المقطع
-                language="ar" # إجبار النموذج على أن اللغة الأصلية هي العربية
-            )
+        # إرسال الملف إلى Groq Whisper-large-v3
+        transcription: Any = await groq_client.audio.transcriptions.create(
+            file=(file_path, file_content),
+            model="whisper-large-v3",
+            prompt=self.domain_prompt,
+            response_format="verbose_json", # صيغة verbose ترجع تفاصيل دقيقة مثل مدة المقطع
+            language="ar" # إجبار النموذج على أن اللغة الأصلية هي العربية
+        )
 
-            logger.info("Groq transcription completed successfully", duration=transcription.duration)
+        log.info("Groq transcription completed successfully", duration=transcription.duration)
 
-            # إرجاع الاستجابة النهائية
-            return AudioTranscriptionResponse(
-                text=transcription.text,
-                duration=transcription.duration
-            )
-
-        except Exception as e:
-            logger.error("Error during Groq transcription", error=str(e), file_path=file_path)
-            raise e
+        # إرجاع الاستجابة النهائية
+        return AudioTranscriptionResponse(
+            text=transcription.text,
+            duration=transcription.duration
+        )
 
 audio_service = AudioService()
