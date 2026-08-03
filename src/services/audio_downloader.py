@@ -23,10 +23,17 @@ class AudioDownloaderService:
             'outtmpl': outtmpl,
             'quiet': True,
             'no_warnings': True,
+            'noplaylist': True, # منع تحميل قائمة التشغيل بالكامل إذا كان الرابط جزءاً من قائمة تشغيل
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=True)
+            
+            # إذا كان الرابط يحتوي على معلومات قائمة تشغيل، فإن yt-dlp قد يعيد هيكل قائمة تحتوي على entries
+            if info and 'entries' in info:
+                # نأخذ بيانات الفيديو الأول الفعلي الذي تم تحميله
+                info = info['entries'][0]
+
             # استرجاع المسار النهائي للملف المحمل بالامتداد الأصلي (m4a أو webm)
             file_path = ydl.prepare_filename(info)
             return file_path

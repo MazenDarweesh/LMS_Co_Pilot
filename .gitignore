@@ -21,3 +21,9 @@ __pycache__/
 
 # Run Commands
 RunCommands.txt
+
+# Local Downloads & Media Chunks
+downloads/
+
+# Test Outputs
+pipeline_test_output.json
