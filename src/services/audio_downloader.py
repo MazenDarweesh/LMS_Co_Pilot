@@ -3,6 +3,7 @@ import asyncio
 import structlog
 from typing import List, Any
 import yt_dlp
+import glob
 from pydub import AudioSegment
 
 logger = structlog.get_logger()
@@ -38,8 +39,15 @@ class AudioDownloaderService:
             file_path = ydl.prepare_filename(info)
             return file_path
 
-    def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 15 * 60 * 1000) -> List[str]:
+    def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 120 * 1000) -> List[str]:
         """يقوم بتقطيع ملف الصوت الكبير إلى أجزاء لتجنب قيود حجم ملفات الـ API (25MB)."""
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # Fast-Path Caching: تخطي التقطيع إذا كانت المقاطع موجودة مسبقاً
+        existing_chunks = sorted(glob.glob(os.path.join(self.output_dir, f"{base_name}_chunk_*.mp3")))
+        if existing_chunks:
+            return existing_chunks
+
         audio: Any = AudioSegment.from_file(file_path)
         
         # 1. Best Practice: تحويل الصوت إلى Mono (قناة واحدة) لتقليل حجم الملف للنصف لأن Whisper لا يحتاج للـ Stereo
