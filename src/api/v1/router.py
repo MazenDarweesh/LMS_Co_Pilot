@@ -7,56 +7,20 @@ from src.models.schemas import (
     AudioTranscriptionRequest, AudioTranscriptionResponse,
     RAGQueryRequest, RAGQueryResponse, AudioIngestRequest
 )
-from src.services.audio_service import audio_service
 from src.services.rag_service import rag_service
 
 from src.core.middleware import limiter
 from src.api.dependencies import get_event_store
 from src.db.event_store import EventStoreRepository
+from src.services.pipeline_orchestrator import pipeline_orchestrator
 
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
-# ==============================================================================
-# Legacy Endpoints (For Testing/Isolated services)
-# ==============================================================================
 
-@router.post("/transcribe", response_model=AudioTranscriptionResponse)
-async def transcribe(request: AudioTranscriptionRequest):
-    return await audio_service.transcribe_audio(request.file_path)
 
 @router.post("/query-rag", response_model=RAGQueryResponse)
 async def query_rag(request: RAGQueryRequest):
     return await rag_service.query_rag(request.query, request.limit)
-
-# ==============================================================================
-# 2026 Production Architecture: Background Ingestion & SSE Streaming
-# ==============================================================================
-
-async def run_pipeline_task_dummy(youtube_url: str, lesson_id: str, db_pool):
-    """
-    محاكاة (Mock) لعملية تحميل وتقطيع الفيديو وتفريغه.
-    """
-    session_id = f"sess_{lesson_id}"
-    
-    # 🚨 Best Practice: BackgroundTasks يجب أن تفتح اتصالها الخاص بقاعدة البيانات
-    # لأن اتصال الـ Depends يتم إغلاقه بمجرد انتهاء الـ HTTP Request.
-    async with db_pool.acquire() as db:
-        event_store = EventStoreRepository(db)
-        
-        # 1. Start
-        await event_store.insert_event(session_id, "System", "PIPELINE_STARTED", {"url": youtube_url})
-        await asyncio.sleep(1) # تم تقليل الوقت لتسريع الاختبارات
-        
-        # 2. Download
-        await event_store.insert_event(session_id, "Downloader", "DOWNLOAD_COMPLETE", {"duration_seconds": 150})
-        await asyncio.sleep(1)
-        
-        # 3. Transcribe
-        await event_store.insert_event(session_id, "Whisper", "CHUNK_TRANSCRIBED", {"chunk": 1, "text": "Hello AI World!"})
-        await asyncio.sleep(1)
-        
-        # 4. Finish
-        await event_store.insert_event(session_id, "System", "PIPELINE_COMPLETE", {"status": "success"})
 
 
 @router.post("/ingest/audio")
@@ -75,7 +39,7 @@ async def start_audio_ingestion(
     
     # تمرير الـ Pool للمهمة الطويلة لتفتح اتصالها الخاص
     background_tasks.add_task(
-        run_pipeline_task_dummy, 
+        pipeline_orchestrator.run_audio_pipeline, 
         payload.youtube_url, 
         payload.lesson_id, 
         request.app.state.db_pool
