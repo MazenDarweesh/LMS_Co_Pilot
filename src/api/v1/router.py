@@ -91,3 +91,44 @@ async def stream_ingestion_events(
             await asyncio.sleep(1)
 
     return EventSourceResponse(event_generator())
+
+import os
+import json
+import glob
+from pathlib import Path
+from fastapi import HTTPException
+
+CHECKPOINT_DIR = Path("downloads/checkpoints")
+
+@router.get("/lessons/{lesson_id}")
+async def get_lesson_result(lesson_id: str):
+    """
+    يقوم بجمع كل المقاطع (Chunks) الخاصة بدرس معين من نقاط الحفظ (Checkpoints)
+    ويدمجها بالترتيب ليعرض النتيجة النهائية للدرس كاملاً.
+    """
+    # البحث عن كل ملفات الـ JSON الخاصة بهذا الدرس
+    pattern = os.path.join(CHECKPOINT_DIR, f"{lesson_id}_chunk_*.json")
+    chunk_files = glob.glob(pattern)
+    
+    if not chunk_files:
+        raise HTTPException(status_code=404, detail=f"No processed data found for lesson: {lesson_id}. It might be still processing or failed.")
+        
+    merged_segments = []
+    
+    for file_path in chunk_files:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                merged_segments.append(data)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading checkpoint {file_path}: {str(e)}")
+            
+    # ترتيب المقاطع بناءً على وقت البداية لضمان تسلسل الدرس بشكل صحيح
+    merged_segments.sort(key=lambda x: x.get("start_time", 0))
+    
+    return {
+        "lesson_id": lesson_id,
+        "total_chunks": len(merged_segments),
+        "total_duration_seconds": sum(seg.get("end_time", 0) - seg.get("start_time", 0) for seg in merged_segments),
+        "segments": merged_segments
+    }

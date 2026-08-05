@@ -41,6 +41,8 @@ class AudioDownloaderService:
 
     def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 120 * 1000) -> List[str]:
         """يقوم بتقطيع ملف الصوت الكبير إلى أجزاء لتجنب قيود حجم ملفات الـ API (25MB)."""
+        import subprocess
+        
         base_name = os.path.splitext(os.path.basename(file_path))[0]
         
         # Fast-Path Caching: تخطي التقطيع إذا كانت المقاطع موجودة مسبقاً
@@ -48,29 +50,29 @@ class AudioDownloaderService:
         if existing_chunks:
             return existing_chunks
 
-        audio: Any = AudioSegment.from_file(file_path)
+        chunk_pattern = os.path.join(self.output_dir, f"{base_name}_chunk_%03d.mp3")
         
-        # 1. Best Practice: تحويل الصوت إلى Mono (قناة واحدة) لتقليل حجم الملف للنصف لأن Whisper لا يحتاج للـ Stereo
-        audio = audio.set_channels(1)
-
-        chunks = []
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        # 🚀 2026 Best Practice: استخدام FFmpeg مباشرة لتقطيع الملف بدون استهلاك الرامات (عملية شبه لحظية)
+        # -ac 1: تحويل الصوت إلى Mono لتقليل الحجم
+        # -b:a 64k: معدل نقل منخفض مخصص للكلام البشري
+        # -f segment -segment_time 120: تقطيع كل 120 ثانية
+        cmd = [
+            "ffmpeg", "-y", "-i", file_path,
+            "-f", "segment", "-segment_time", str(chunk_duration_ms // 1000),
+            "-c:a", "libmp3lame", "-b:a", "64k", "-ac", "1",
+            chunk_pattern
+        ]
         
-        # 2. Best Practice: إضافة تداخل (Overlap) بمقدار ثانيتين لمنع قطع الكلمات في المنتصف بين المقاطع
-        overlap_ms = 2000 
-
-        for i, start_ms in enumerate(range(0, len(audio), chunk_duration_ms)):
-            # تمديد نهاية المقطع لتشمل التداخل (إلا إذا تجاوز طول الملف الأصلي)
-            end_ms = min(start_ms + chunk_duration_ms + overlap_ms, len(audio))
-            chunk = audio[start_ms:end_ms]
-
-            chunk_path = os.path.join(self.output_dir, f"{base_name}_chunk_{i}.mp3")
+        try:
+            # تشغيل الأمر وانتظار انتهائه
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            logger.error("FFmpeg chunking failed", error=str(e))
+            raise RuntimeError(f"FFmpeg chunking failed: {e}")
             
-            # 3. Best Practice: تصدير الصوت بمعدل نقل بيانات منخفض (64k) مخصص للكلام البشري لتصغير حجم الملف للربع
-            chunk.export(chunk_path, format="mp3", parameters=["-b:a", "64k"])
-            chunks.append(chunk_path)
-
-        return chunks
+        # بعد الانتهاء، نجلب جميع المقاطع التي تم توليدها
+        generated_chunks = sorted(glob.glob(os.path.join(self.output_dir, f"{base_name}_chunk_*.mp3")))
+        return generated_chunks
 
     # ---------------------------------------------------------
     # 2. الدوال غير المتزامنة (Async Wrappers)
