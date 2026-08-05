@@ -2,6 +2,10 @@ import re
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Self
 
+class AudioIngestRequest(BaseModel):
+    youtube_url: str = Field(..., description="رابط يوتيوب الخاص بالمحاضرة")
+    lesson_id: str = Field(..., description="المعرف الفريد للدرس (سيعمل كـ session_id للمتابعة)")
+
 class AudioTranscriptionRequest(BaseModel):
     file_path: str = Field(..., description="المسار المحلي لملف الصوت")
 

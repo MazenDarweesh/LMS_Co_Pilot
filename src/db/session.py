@@ -1,0 +1,66 @@
+# src/db/session.py
+from src.core.config import settings
+import json
+import asyncpg
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+import structlog
+
+logger = structlog.get_logger()
+
+async def init_connection(conn: asyncpg.Connection):
+    """
+    تسجيل Type Codec تلقائي لـ JSONB على مستوى الاتصال:
+    يسمح بإدخال Python dict مباشرة دون json.dumps
+    ويقوم باسترجاع حقول الـ JSONB كـ dict تلقائياً دون json.loads
+    """
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog'
+    )
+
+# الـ SQL الذي ينشئ جدول سجل الأحداث إذا لم يكن موجوداً
+# IF NOT EXISTS: يضمن أننا لن نحصل على خطأ إذا شغّلنا التطبيق مرتين
+CREATE_EVENTS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS agent_event_log (
+    event_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id VARCHAR(100) NOT NULL,
+    agent_name VARCHAR(50) NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_event_log_session_id 
+    ON agent_event_log(session_id, timestamp DESC);
+"""
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    استخدام Lifespan Context Manager بدلاً من @app.on_event القديم.
+    يضمن تهيئة الـ Pool مرة واحدة وإغلاقه بأمان حتى لو حدث Crash.
+    """
+    logger.info("Database pool initializing...")
+    
+    app.state.db_pool = await asyncpg.create_pool(
+        dsn=settings.DATABASE_URL,
+        min_size=5,   # اتصالات جاهزة دائماً في وقت الهدوء
+        max_size=20,  # الحد الأقصى عند الضغط العالي
+        timeout=30.0, # إذا لم يُعطَ اتصال في 30 ثانية، يرفع خطأ
+        init=init_connection
+    )
+    
+    # إنشاء الجدول تلقائياً عند تشغيل التطبيق للمرة الأولى
+    async with app.state.db_pool.acquire() as conn:
+        await conn.execute(CREATE_EVENTS_TABLE_SQL)
+    
+    logger.info("Database pool ready ✅")
+    
+    yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
+    
+    # الكود هنا يُنفَّذ تلقائياً عند إغلاق السيرفر
+    await app.state.db_pool.close()
+    logger.info("Database pool closed gracefully 🛑")

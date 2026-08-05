@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     GEMINI_API_KEY: str
 
+    # قاعدة البيانات PostgreSQL
+    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/lms_co_pilot"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
