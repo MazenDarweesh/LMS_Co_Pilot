@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     # قاعدة البيانات PostgreSQL
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/lms_co_pilot"
 
+    # Qdrant Vector Database
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: str = ""
+    QDRANT_COLLECTION: str = "lms_lessons"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

@@ -18,6 +18,7 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.14.2",
     "pydub>=0.25.1",
+    "qdrant-client[fastembed]>=1.13",
     "slowapi>=0.1.10",
     "sse-starlette>=3.4.6",
     "structlog>=26.1.0",

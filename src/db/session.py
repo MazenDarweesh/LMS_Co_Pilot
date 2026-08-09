@@ -43,24 +43,35 @@ async def lifespan(app: FastAPI):
     استخدام Lifespan Context Manager بدلاً من @app.on_event القديم.
     يضمن تهيئة الـ Pool مرة واحدة وإغلاقه بأمان حتى لو حدث Crash.
     """
+    # ① تهيئة قاعدة البيانات
     logger.info("Database pool initializing...")
-    
     app.state.db_pool = await asyncpg.create_pool(
         dsn=settings.DATABASE_URL,
-        min_size=5,   # اتصالات جاهزة دائماً في وقت الهدوء
-        max_size=20,  # الحد الأقصى عند الضغط العالي
-        timeout=30.0, # إذا لم يُعطَ اتصال في 30 ثانية، يرفع خطأ
+        min_size=5,
+        max_size=20,
+        timeout=30.0,
         init=init_connection
     )
-    
-    # إنشاء الجدول تلقائياً عند تشغيل التطبيق للمرة الأولى
     async with app.state.db_pool.acquire() as conn:
         await conn.execute(CREATE_EVENTS_TABLE_SQL)
-    
     logger.info("Database pool ready ✅")
-    
+
+    # ② تحميل نماذج الـ Embedding مرة واحدة عند بدء التشغيل
+    # (Best Practice 2026: initialize inside lifespan → stored in app.state)
+    from src.services.embedding_service import embedding_service
+    await embedding_service.initialize()
+    app.state.embedding_service = embedding_service
+    logger.info("Embedding service ready ✅")
+
+    # ③ تحميل نموذج الـ Reranker مرة واحدة عند بدء التشغيل
+    from src.services.reranker_service import reranker_service
+    await reranker_service.initialize()
+    app.state.reranker_service = reranker_service
+    logger.info("Reranker service ready ✅")
+
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
-    
-    # الكود هنا يُنفَّذ تلقائياً عند إغلاق السيرفر
+
+    # ③ إغلاق الموارد عند إيقاف السيرفر
     await app.state.db_pool.close()
     logger.info("Database pool closed gracefully 🛑")
+
