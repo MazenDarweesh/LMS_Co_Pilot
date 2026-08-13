@@ -69,9 +69,18 @@ async def lifespan(app: FastAPI):
     app.state.reranker_service = reranker_service
     logger.info("Reranker service ready ✅")
 
+    # ④ تهيئة Qdrant Service
+    from src.services.qdrant_service import qdrant_service
+    await qdrant_service.initialize()
+    app.state.qdrant_service = qdrant_service
+    logger.info("Qdrant service ready ✅")
+
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
     # ③ إغلاق الموارد عند إيقاف السيرفر
     await app.state.db_pool.close()
     logger.info("Database pool closed gracefully 🛑")
+    
+    await qdrant_service.close()
+    logger.info("Qdrant connection closed 🛑")
 

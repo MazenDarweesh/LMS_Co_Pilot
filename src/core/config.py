@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     # Qdrant Vector Database
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""
-    QDRANT_COLLECTION: str = "lms_lessons"
+    QDRANT_COLLECTION: str = "learning_content"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

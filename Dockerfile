@@ -40,6 +40,12 @@ COPY --from=builder --chown=appuser:appuser /app/pyproject.toml /app/
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app
 
+# UTF-8 Encoding Setup (Crucial for Arabic support in Windows/Docker)
+ENV PYTHONUTF8=1
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV PYTHONIOENCODING=utf-8
+
 EXPOSE 8000
 
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

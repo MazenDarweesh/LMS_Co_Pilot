@@ -53,3 +53,56 @@ class NormalizedTranscriptionSegment(BaseModel):
         self.youtube_url = f"https://youtu.be/{video_id}?t={self.start_time}s"
 
         return self
+
+from src.models.entities import ContentType, SourceType
+
+# -------------------------------------------------------------------
+# نموذج البيانات الوصفية للدرس — يُمرَّر للـ Pipeline عند الاستيعاب
+# -------------------------------------------------------------------
+class LessonMetadata(BaseModel):
+    """بيانات السياق الكاملة للدرس — تُستخدم لبناء allowed_entities في Qdrant."""
+    lesson_id:   str
+    tenant_id:   str
+    module_id:   str | None = None
+    unit_id:     str | None = None
+    target_roles: list[str] = Field(default=["Admin", "Student"])
+    # سيتم بناؤها تلقائياً من الحقول أعلاه
+    allowed_entities: list[str] = Field(default_factory=list)
+
+    def build_allowed_entities(self) -> "LessonMetadata":
+        """يبني قائمة الكيانات المسموحة من حقول الـ metadata."""
+        entities: list[str] = [f"tenant:{self.tenant_id}"]
+        if self.module_id:
+            entities.append(f"module:{self.module_id}")
+        if self.unit_id:
+            entities.append(f"unit:{self.unit_id}")
+        entities.append(f"lesson:{self.lesson_id}")
+        for role in self.target_roles:
+            entities.append(f"role:{role}")
+        self.allowed_entities = entities
+        return self
+
+
+# -------------------------------------------------------------------
+# نموذج النقطة الكاملة التي تُرسل إلى Qdrant
+# -------------------------------------------------------------------
+class QdrantChunkPayload(BaseModel):
+    """الـ Payload الكامل لكل نقطة (chunk) في Qdrant collection."""
+    chunk_id:        str
+    lesson_id:       str | None
+    content_type:    ContentType
+    source_type:     SourceType
+    source_url:      str                  # رابط يوتيوب مع timestamp
+    start_time:      int | None = None    # بالثواني
+    end_time:        int | None = None
+    page_number:     int | None = None    # للـ PDF
+    section_title:   str | None = None    # للـ PDF
+    text_msa:        str                  # النص المنقح (للـ Embedding والعرض)
+    text_original:   str                  # النص الخام (للتدقيق)
+    tenant_id:       str
+    module_id:       str | None = None
+    unit_id:         str | None = None
+    video_id:        str | None = None
+    playlist_id:     str | None = None
+    target_roles:    list[str]
+    allowed_entities: list[str]

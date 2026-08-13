@@ -5,8 +5,13 @@ from pydantic import BaseModel
 
 from src.models.schemas import (
     AudioTranscriptionRequest, AudioTranscriptionResponse,
-    RAGQueryRequest, RAGQueryResponse, AudioIngestRequest
+    RAGQueryRequest, RAGQueryResponse, AudioIngestRequest, LessonMetadata
 )
+
+class AudioIngestRequestV2(BaseModel):
+    youtube_url:     str
+    lesson_id:       str
+    lesson_metadata: LessonMetadata | None = None
 from src.services.rag_service import rag_service
 
 from src.core.middleware import limiter
@@ -27,7 +32,7 @@ async def query_rag(request: RAGQueryRequest):
 @limiter.limit("5/minute")
 async def start_audio_ingestion(
     request: Request,
-    payload: AudioIngestRequest,
+    payload: AudioIngestRequestV2,
     background_tasks: BackgroundTasks,
     # يمكننا استدعاء event_store للاستخدام اللحظي هنا، لكن لا نمرره للمهمة الخلفية
     event_store: EventStoreRepository = Depends(get_event_store)
@@ -42,13 +47,14 @@ async def start_audio_ingestion(
         pipeline_orchestrator.run_audio_pipeline, 
         payload.youtube_url, 
         payload.lesson_id, 
-        request.app.state.db_pool
+        request.app.state.db_pool,
+        payload.lesson_metadata
     )
     
     return {
         "status": "processing_started",
         "session_id": session_id,
-        "message": "Subscribe to /ingest/events/{session_id} to track live progress."
+        "message": f"Track via /v1/ingest/events/{session_id}"
     }
 
 

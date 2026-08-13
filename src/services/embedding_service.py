@@ -4,20 +4,20 @@ Embedding Service — BGE-M3 (Dense) + BM25 (Sparse)
 Best Practices Applied (2026):
 - Models are NOT loaded at import time. They are initialized lazily via initialize().
 - The lifespan in session.py will call initialize() once at startup.
-- parallel=0 → FastEmbed auto-detects CPU cores for ONNX parallelism.
 - asyncio.to_thread → keeps the FastAPI event loop non-blocking.
 """
 
 import asyncio
 import structlog
-from fastembed import TextEmbedding, SparseTextEmbedding
+from fastembed import SparseTextEmbedding
+from sentence_transformers import SentenceTransformer
 
 logger = structlog.get_logger()
 
 
 class EmbeddingService:
     """
-    Manages BGE-M3 (Dense) and BM25 (Sparse) embedding models.
+    Manages BGE-M3 (Dense via sentence-transformers) and BM25 (Sparse via fastembed) embedding models.
 
     Lifecycle:
         - Call await embedding_service.initialize() once inside the FastAPI lifespan.
@@ -25,22 +25,20 @@ class EmbeddingService:
     """
 
     def __init__(self):
-        self._dense_model: TextEmbedding | None = None
+        self._dense_model: SentenceTransformer | None = None
         self._sparse_model: SparseTextEmbedding | None = None
 
     async def initialize(self) -> None:
         """
         Load both models into memory once at startup.
         Runs in a thread to avoid blocking the event loop during the heavy
-        ONNX model download / initialization.
+        model download / initialization.
         """
 
         def _load_models():
-            dense = TextEmbedding(
-                model_name="BAAI/bge-m3",
-                cache_dir="./.model_cache",
-                # parallel=0 → auto-detect CPU cores, maximizes ONNX throughput
-                # during bulk indexing without manual tuning
+            dense = SentenceTransformer(
+                "BAAI/bge-m3",
+                device="cpu"
             )
             sparse = SparseTextEmbedding(
                 model_name="Qdrant/bm25",
@@ -51,7 +49,7 @@ class EmbeddingService:
         self._dense_model, self._sparse_model = await asyncio.to_thread(_load_models)
         logger.info(
             "Embedding models loaded ✅",
-            dense="BAAI/bge-m3",
+            dense="BAAI/bge-m3 (via sentence-transformers)",
             sparse="Qdrant/bm25",
         )
 
@@ -67,7 +65,12 @@ class EmbeddingService:
         assert self._dense_model is not None, "EmbeddingService not initialized"
 
         def _embed() -> list[float]:
-            return list(self._dense_model.embed([text]))[0].tolist()  # type: ignore[union-attr]
+            embeddings = self._dense_model.encode(
+                [text],
+                normalize_embeddings=True,
+                show_progress_bar=False
+            )
+            return embeddings[0].tolist()
 
         return await asyncio.to_thread(_embed)
 

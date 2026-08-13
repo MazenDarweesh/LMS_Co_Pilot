@@ -5,7 +5,7 @@ import aiofiles
 import structlog
 from pathlib import Path
 from typing import List
-from src.models.schemas import NormalizedTranscriptionSegment
+from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata
 from src.services.audio_downloader import audio_downloader
 from src.services.transcription_service import TranscriptionService
 from src.services.transcript_normalizer import transcript_normalizer
@@ -77,7 +77,13 @@ class PipelineOrchestrator:
             log.info("Processing chunk finished and checkpoint saved")
             return normalized_segment
 
-    async def run_audio_pipeline(self, youtube_url: str, lesson_id: str, db_pool) -> List[NormalizedTranscriptionSegment]:
+    async def run_audio_pipeline(
+        self,
+        youtube_url: str,
+        lesson_id: str,
+        db_pool,
+        lesson_metadata: "LessonMetadata | None" = None,
+    ) -> List[NormalizedTranscriptionSegment]:
         """المنسق الرئيسي (Orchestrator) الذي يدير العملية من الألف للياء."""
         log = logger.bind(lesson_id=lesson_id, youtube_url=youtube_url)
         log.info("Pipeline started")
@@ -121,6 +127,55 @@ class PipelineOrchestrator:
 
                     # ترتيب النتائج بناءً على وقت البداية لضمان تسلسل الدرس
                     results.sort(key=lambda x: x.start_time)
+
+                    # ④ التخزين في Qdrant (Embedding + Upsert) بشكل متزامن
+                    if results:
+                        from src.services.qdrant_service import qdrant_service
+                        from src.services.embedding_service import embedding_service
+                        from src.models.schemas import QdrantChunkPayload, LessonMetadata
+                        from src.models.entities import ContentType, SourceType
+                        import uuid
+
+                        meta = lesson_metadata or LessonMetadata(
+                            lesson_id=lesson_id,
+                            tenant_id="default",
+                        )
+                        meta.build_allowed_entities()
+
+                        # دالة مساعدة لتجهيز نقطة واحدة (Embedding + Payload)
+                        async def prepare_point(seg):
+                            dense, sparse = await embedding_service.get_both_embeddings(seg.normalized_text)
+                            payload = QdrantChunkPayload(
+                                chunk_id=str(uuid.uuid4()),
+                                lesson_id=lesson_id,
+                                content_type=ContentType.VIDEO_CHUNK,
+                                source_type=SourceType.YOUTUBE,
+                                source_url=seg.youtube_url,
+                                start_time=seg.start_time,
+                                end_time=seg.end_time,
+                                text_msa=seg.normalized_text,
+                                text_original=seg.normalized_text,
+                                tenant_id=meta.tenant_id,
+                                module_id=meta.module_id,
+                                unit_id=meta.unit_id,
+                                target_roles=meta.target_roles,
+                                allowed_entities=meta.allowed_entities,
+                            )
+                            return payload, dense, sparse
+
+                        # تنفيذ التضمين لكل المقاطع بالتوازي باستخدام asyncio.gather
+                        # هذا سيجعل معالجة الفيديوهات الطويلة (> 1 ساعة) أسرع بكثير!
+                        prepared_points = await asyncio.gather(*(prepare_point(seg) for seg in results))
+                        
+                        payloads = [p[0] for p in prepared_points]
+                        dense_vecs = [p[1] for p in prepared_points]
+                        sparse_vecs = [p[2] for p in prepared_points]
+
+                        await qdrant_service.upsert_chunks(payloads, dense_vecs, sparse_vecs)
+                        await event_store.insert_event(
+                            session_id, "QdrantService", "QDRANT_UPSERT_COMPLETE",
+                            {"chunks_count": len(payloads)}
+                        )
 
                     await event_store.insert_event(session_id, "System", "PIPELINE_COMPLETE", {"status": "success", "total_chunks": len(results)})
                     log.info("Pipeline completed successfully", total_chunks=len(results))
