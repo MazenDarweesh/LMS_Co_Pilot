@@ -1,0 +1,11 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+.git/
+.model_cache/
+downloads/
+.pytest_cache/
+node_modules/
+dist/
+build/

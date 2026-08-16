@@ -2,7 +2,7 @@
 # ==========================================
 # 1. Builder Stage
 # ==========================================
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm AS builder
 
 # Install uv from the official image
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -25,7 +25,7 @@ RUN uv sync --frozen --no-dev
 # ==========================================
 # 2. Runtime Stage
 # ==========================================
-FROM python:3.12-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm AS runtime
 
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 USER appuser
