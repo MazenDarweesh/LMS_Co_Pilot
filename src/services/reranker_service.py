@@ -89,7 +89,11 @@ class RerankerService:
                 reverse=True,
             )
 
-            return [payload for _, payload in scored_pairs[:top_n]]
+            results = []
+            for score, payload in scored_pairs[:top_n]:
+                payload["_reranker_score"] = float(score)
+                results.append(payload)
+            return results
 
         return await asyncio.to_thread(_rerank)
 

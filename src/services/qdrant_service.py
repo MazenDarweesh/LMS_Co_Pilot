@@ -207,7 +207,12 @@ class QdrantService:
             with_payload=True,
         )
 
-        return [point.payload for point in results.points if point.payload is not None]
+        payloads = []
+        for point in results.points:
+            if point.payload is not None:
+                point.payload["_qdrant_point_id"] = str(point.id)
+                payloads.append(point.payload)
+        return payloads
 
 
 # Singleton — initialize() يُستدعى من lifespan

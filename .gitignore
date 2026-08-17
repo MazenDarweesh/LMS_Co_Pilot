@@ -30,3 +30,5 @@ pipeline_test_output.json
 
 # Model Cache (Local Embeddings/Rerankers)
 .model_cache/
+
+docs/

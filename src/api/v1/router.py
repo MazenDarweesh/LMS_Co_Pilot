@@ -7,12 +7,14 @@ from src.models.schemas import (
     AudioTranscriptionRequest, AudioTranscriptionResponse,
     RAGQueryRequest, RAGQueryResponse, AudioIngestRequest, LessonMetadata
 )
+from src.models.search_models import SearchRequest, SearchResponse
 
 class AudioIngestRequestV2(BaseModel):
     youtube_url:     str
     lesson_id:       str
     lesson_metadata: LessonMetadata | None = None
 from src.services.rag_service import rag_service
+from src.services.search_service import search_service
 
 from src.core.middleware import limiter
 from src.api.dependencies import get_event_store
@@ -22,10 +24,26 @@ from src.services.pipeline_orchestrator import pipeline_orchestrator
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
 
-
 @router.post("/query-rag", response_model=RAGQueryResponse)
 async def query_rag(request: RAGQueryRequest):
+    """Legacy endpoint — delegates to the real SearchService now."""
     return await rag_service.query_rag(request.query, request.limit)
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search(req: SearchRequest):
+    """
+    🔍 Hybrid RAG Search — Week 8.
+    Temporarily uses test entities (no auth) for development.
+    Will require JWT (Authorization: Bearer <token>) after Week 7.
+    """
+    # TODO (Week 7): Replace with real user_entities from get_current_user dependency
+    test_entities = [
+        "tenant:default_company",
+        "role:Admin",
+        "role:Student",
+    ]
+    return await search_service.search(req, user_entities=test_entities)
 
 
 @router.post("/ingest/audio")
