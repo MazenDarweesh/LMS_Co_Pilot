@@ -9,6 +9,7 @@ from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata
 from src.services.audio_downloader import audio_downloader
 from src.services.transcription_service import TranscriptionService
 from src.services.transcript_normalizer import transcript_normalizer
+from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.db.event_store import EventStoreRepository
 
 logger = structlog.get_logger()
@@ -144,7 +145,12 @@ class PipelineOrchestrator:
 
                         # دالة مساعدة لتجهيز نقطة واحدة (Embedding + Payload)
                         async def prepare_point(seg):
-                            dense, sparse = await embedding_service.get_both_embeddings(seg.normalized_text)
+                            # 2026 Best Practice (Arabic Speech AI Research §13.6 & §2):
+                            # Apply Leaderboard normalization BEFORE embedding to ensure
+                            # the indexed embedding space is consistent with query normalization.
+                            # This eliminates hamza/alif/ya variance in the vector space.
+                            text_to_embed = normalize_arabic_text_leaderboard(seg.normalized_text)
+                            dense, sparse = await embedding_service.get_both_embeddings(text_to_embed)
                             payload = QdrantChunkPayload(
                                 chunk_id=str(uuid.uuid4()),
                                 lesson_id=lesson_id,

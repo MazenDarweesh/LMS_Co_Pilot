@@ -17,7 +17,7 @@ def _wait_from_retry_after(retry_state: RetryCallState) -> float:
     المصدر: https://ai.google.dev/gemini-api/docs/rate-limits
     بدلاً من الخمن بوقت الانتظار، نسمع للـ Server الذي يخبرنا بالضبط كم ننتظر.
     """
-    exc = retry_state.outcome.exception()
+    exc = retry_state.outcome.exception() if retry_state.outcome else None
     if exc:
         # محاولة استخراج قيمة retryDelay من نص رسالة الخطأ (مثال: "Please retry in 37.5s.")
         match = re.search(r"retry in (\d+\.?\d*)\s*s", str(exc), re.IGNORECASE)

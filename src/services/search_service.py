@@ -11,6 +11,7 @@ from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
+from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
 
 logger = structlog.get_logger()
@@ -129,7 +130,17 @@ class SearchService:
         metrics = {}
         
         t0 = time.time()
-        dense_vec, sparse_vec = await embedding_service.get_both_embeddings(req.query)
+        # ──────────────────────────────────────────────
+        # 1. Normalize query → Embed → Dense + Sparse
+        # ──────────────────────────────────────────────
+        # 2026 Best Practice (Arabic Speech AI Research §13.6 & §17):
+        # Apply Leaderboard-standard normalization to the query BEFORE embedding.
+        # This closes the semantic gap between colloquial student queries
+        # (e.g. "إزاي أعمل الـ Database؟") and MSA-normalized indexed text,
+        # which directly improves Cosine Similarity accuracy in Qdrant.
+        normalized_query = normalize_arabic_text_leaderboard(req.query)
+        logger.debug("Query normalized for embedding", original=req.query, normalized=normalized_query)
+        dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
         metrics["embedding_latency_ms"] = round((time.time() - t0) * 1000, 2)
 
         scope_filter = _build_scope_filter(req)
@@ -172,6 +183,11 @@ class SearchService:
         metrics["reranker_latency_ms"] = round((time.time() - t2) * 1000, 2)
         logger.info("Reranked results", top_n=len(top_chunks), ms=metrics["reranker_latency_ms"])
 
+        # ──────────────────────────────────────────────
+        # 5. Build prompt with tagged sources
+        # ──────────────────────────────────────────────
+        # Note: we pass the ORIGINAL query to the LLM prompt (not the normalized one)
+        # so Gemini can understand the student's intent in their own words.
         prompt = _build_rag_prompt(req.query, top_chunks)
 
         assert self._gemini_client is not None

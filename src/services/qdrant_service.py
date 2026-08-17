@@ -48,7 +48,7 @@ class QdrantService:
         self._client = AsyncQdrantClient(
             url=settings.QDRANT_URL,
             api_key=settings.QDRANT_API_KEY or None,
-            timeout=60.0,
+            timeout=60,
         )
         await self._ensure_collection()
         await self._ensure_payload_indexes()

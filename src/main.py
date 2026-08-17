@@ -62,6 +62,9 @@ app.add_middleware(
 # 5. تسجيل مسارات الـ API
 app.include_router(api_router)
 
+from src.api.v1.speech import router as speech_router
+app.include_router(speech_router)
+
 @app.get("/health", tags=["System"])
 async def health_check():
     return {"status": "ok", "environment": settings.ENVIRONMENT}

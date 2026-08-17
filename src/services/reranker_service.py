@@ -76,11 +76,11 @@ class RerankerService:
 
         # استخراج النصوص من الـ payloads لإرسالها للـ Reranker
         texts = [p.get(text_field, "") for p in passages]
-        pairs = [[query, text] for text in texts]
+        pairs = [(query, str(text)) for text in texts]
 
         def _rerank() -> list[dict]:
             # predict returns float scores (higher = more relevant)
-            scores = self._model.predict(pairs, show_progress_bar=False).tolist()
+            scores = self._model.predict(pairs, show_progress_bar=False).tolist()  # type: ignore
 
             # دمج كل score مع الـ payload الأصلي ثم الترتيب من الأعلى للأدنى
             scored_pairs = sorted(
