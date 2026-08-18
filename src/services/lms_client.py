@@ -39,4 +39,14 @@ class LMSClient:
         # Relying on Pydantic to do the alias mapping (camelCase to snake_case)
         return UserPermissions.model_validate(resp.json())
 
+    async def get_lesson_full_context(self, lesson_id: str) -> dict:
+        """
+        Fetches the full metadata (url, module, level, etc.) for a lesson
+        triggered by a webhook update.
+        """
+        assert self._client is not None, "LMSClient is not initialized"
+        resp = await self._client.get(f"/api/internal/lessons/{lesson_id}/full-context")
+        resp.raise_for_status()
+        return resp.json()
+
 lms_client = LMSClient()

@@ -1,8 +1,9 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Dict, Any
 
 from src.utils.arabic_speech_utils import calculate_wer_cer, tafqit_arabic
+from src.services.auth_service import require_role, UserContext
 
 router = APIRouter(prefix="/v1/speech", tags=["Speech AI Utilities"])
 
@@ -12,7 +13,10 @@ class EvaluationRequest(BaseModel):
     apply_normalization: bool = True
 
 @router.post("/evaluate-quality", response_model=Dict[str, Any])
-async def evaluate_transcription_quality(request: EvaluationRequest):
+async def evaluate_transcription_quality(
+    request: EvaluationRequest,
+    admin_ctx: UserContext = Depends(require_role("Admin"))
+):
     """
     يقوم بحساب معدلات الخطأ (WER/CER) بين النص الأصلي المرجعي (Reference)
     والنص الذي ولّده الذكاء الاصطناعي (Hypothesis).

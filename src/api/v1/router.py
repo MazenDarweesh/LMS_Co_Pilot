@@ -1,5 +1,5 @@
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Request, Depends
+from fastapi import APIRouter, BackgroundTasks, Request, Depends, Header, HTTPException, status
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 
@@ -20,6 +20,10 @@ from src.core.middleware import limiter
 from src.api.dependencies import get_event_store
 from src.db.event_store import EventStoreRepository
 from src.services.pipeline_orchestrator import pipeline_orchestrator
+from src.services.auth_service import get_current_user, require_role, UserContext
+from src.core.config import settings
+from src.services.qdrant_service import qdrant_service
+from src.services.lms_client import lms_client
 
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
@@ -31,19 +35,13 @@ async def query_rag(request: RAGQueryRequest):
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search(req: SearchRequest):
+async def search(req: SearchRequest, user_ctx: UserContext = Depends(get_current_user)):
     """
-    🔍 Hybrid RAG Search — Week 8.
-    Temporarily uses test entities (no auth) for development.
-    Will require JWT (Authorization: Bearer <token>) after Week 7.
+    🔍 Hybrid RAG Search
+    Fully protected by JWT & precise Role/Level filtering.
     """
-    # TODO (Week 7): Replace with real user_entities from get_current_user dependency
-    test_entities = [
-        "tenant:default_company",
-        "role:Admin",
-        "role:Student",
-    ]
-    return await search_service.search(req, user_entities=test_entities)
+    # We pass the real user_entities derived strictly from the JWT and LMS Permissions
+    return await search_service.search(req, user_entities=user_ctx.user_entities)
 
 
 @router.post("/ingest/audio")
@@ -53,7 +51,8 @@ async def start_audio_ingestion(
     payload: AudioIngestRequestV2,
     background_tasks: BackgroundTasks,
     # يمكننا استدعاء event_store للاستخدام اللحظي هنا، لكن لا نمرره للمهمة الخلفية
-    event_store: EventStoreRepository = Depends(get_event_store)
+    event_store: EventStoreRepository = Depends(get_event_store),
+    admin_ctx: UserContext = Depends(require_role("Admin", "Instructor"))
 ):
     """
     يبدأ عملية معالجة فيديو يوتيوب في الخلفية.
@@ -74,6 +73,56 @@ async def start_audio_ingestion(
         "session_id": session_id,
         "message": f"Track via /v1/ingest/events/{session_id}"
     }
+
+class WebhookPayload(BaseModel):
+    lessonId: str
+    action: str  # "Updated" or "Deleted"
+
+@router.post("/webhooks/lesson-updated", status_code=status.HTTP_202_ACCEPTED)
+async def unified_lesson_webhook(
+    request: Request,
+    payload: WebhookPayload,
+    background_tasks: BackgroundTasks,
+    x_service_token: str = Header(..., alias="X-Service-Token")
+):
+    """
+    مسار Webhook موحد يستقبل إشعارات التحديث أو الحذف من سيرفر الـ .NET.
+    محمي بـ Service Token لمنع الهجمات الخارجية.
+    """
+    if x_service_token != settings.SERVICE_TOKEN:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
+
+    if payload.action == "Deleted":
+        # 🗑️ مسح المتجهات من قاعدة البيانات فوراً
+        background_tasks.add_task(qdrant_service.delete_by_lesson_id, payload.lessonId)
+        return {"status": "accepted", "message": "Deletion triggered"}
+        
+    elif payload.action == "Updated":
+        # 🔄 سحب تفاصيل الفيديو من LMS (Full Context) وبدء دورة Ingestion جديدة
+        async def fetch_and_ingest():
+            try:
+                context = await lms_client.get_lesson_full_context(payload.lessonId)
+                
+                url = context.get("videoUrl")
+                # Parse LMS metadata into our LessonMetadata format
+                meta = LessonMetadata(
+                    tenant_id=context.get("tenantId", "default"),
+                    module_id=context.get("moduleId", ""),
+                    unit_id=context.get("unitId", ""),
+                    lesson_id=payload.lessonId,
+                    target_roles=context.get("targetRoles", [])
+                )
+                # Run the ingestion pipeline securely in the background
+                await pipeline_orchestrator.run_audio_pipeline(
+                    url, payload.lessonId, request.app.state.db_pool, meta
+                )
+            except Exception as e:
+                print(f"❌ Webhook Ingestion Failed for {payload.lessonId}: {e}")
+                
+        background_tasks.add_task(fetch_and_ingest)
+        return {"status": "accepted", "message": "Update and Ingestion triggered"}
+
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid action")
 
 
 @router.get("/ingest/events/{session_id}")
