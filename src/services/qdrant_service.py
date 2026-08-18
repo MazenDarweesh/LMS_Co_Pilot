@@ -17,7 +17,7 @@ from qdrant_client.models import (
     VectorParams, Distance,
     SparseVectorParams, SparseIndexParams,
     PointStruct, SparseVector,
-    Filter, FieldCondition, MatchAny,
+    Filter, FieldCondition, MatchAny, MatchValue,
     PayloadSchemaType,
     Prefetch, FusionQuery, Fusion,
 )
@@ -87,7 +87,7 @@ class QdrantService:
         """ينشئ indexes على الحقول المستخدمة في الفلترة."""
         keyword_fields = [
             "allowed_entities", "target_roles", "content_type",
-            "tenant_id", "lesson_id", "module_id", "unit_id",
+            "tenant_ids", "lesson_id", "module_id", "unit_id",
             "video_id", "playlist_id", "level_id", "type_id"
         ]
         for field in keyword_fields:
@@ -171,7 +171,6 @@ class QdrantService:
         assert self._client is not None
 
         # Build module level and type conditions
-        from qdrant_client.models import MatchValue
         module_conditions = []
         for module in user_ctx.permissions.accessible_modules:
             must_inner = [FieldCondition(key="module_id", match=MatchValue(value=module.module_id))]
