@@ -62,20 +62,28 @@ from src.models.entities import ContentType, SourceType
 class LessonMetadata(BaseModel):
     """بيانات السياق الكاملة للدرس — تُستخدم لبناء allowed_entities في Qdrant."""
     lesson_id:   str
-    tenant_id:   str
+    tenant_ids:  list[str] = Field(default=["default"])
     module_id:   str | None = None
     unit_id:     str | None = None
+    level_id:    str | None = None
+    type_id:     str | None = None
     target_roles: list[str] = Field(default=["Admin", "Student"])
     # سيتم بناؤها تلقائياً من الحقول أعلاه
     allowed_entities: list[str] = Field(default_factory=list)
 
     def build_allowed_entities(self) -> "LessonMetadata":
         """يبني قائمة الكيانات المسموحة من حقول الـ metadata."""
-        entities: list[str] = [f"tenant:{self.tenant_id}"]
+        entities: list[str] = []
+        for t in self.tenant_ids:
+            entities.append(f"tenant:{t}")
         if self.module_id:
             entities.append(f"module:{self.module_id}")
         if self.unit_id:
             entities.append(f"unit:{self.unit_id}")
+        if self.level_id:
+            entities.append(f"level:{self.level_id}")
+        if self.type_id:
+            entities.append(f"type:{self.type_id}")
         entities.append(f"lesson:{self.lesson_id}")
         for role in self.target_roles:
             entities.append(f"role:{role}")
@@ -99,9 +107,11 @@ class QdrantChunkPayload(BaseModel):
     section_title:   str | None = None    # للـ PDF
     text_msa:        str                  # النص المنقح (للـ Embedding والعرض)
     text_original:   str                  # النص الخام (للتدقيق)
-    tenant_id:       str
+    tenant_ids:      list[str]
     module_id:       str | None = None
     unit_id:         str | None = None
+    level_id:        str | None = None
+    type_id:         str | None = None
     video_id:        str | None = None
     playlist_id:     str | None = None
     target_roles:    list[str]

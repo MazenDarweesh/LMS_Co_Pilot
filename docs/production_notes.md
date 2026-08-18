@@ -23,6 +23,29 @@
 **المطلوب مستقبلاً إذا أردنا إتاحته للطلاب:**
 يجب تعديل `auth_service.py` ليقوم بالاستعلام من قاعدة بيانات محلية (PostgreSQL) لمعرفة الفيديوهات المخصصة لدور الطالب (`target_roles`) وشركته (`tenant_id`)، ثم إضافة `video:vid_guid` لقائمة الـ Entities الخاصة به بدلاً من منحه وسم الـ Content المفتوح.
 
-## 4. تحسينات الـ Audio Pipeline
-* **FastConformer:** الانتقال لنماذج مستضافة ذاتياً (Self-hosted) إذا زادت التكلفة السحابية.
-* **Audio Gates:** تطبيق فلاتر جودة (SNR/RMS) قبل إرسال المقطع للنموذج لمنع التفريغ العشوائي للأصوات الرديئة.
+## 4. استراتيجية الذكاء الاصطناعي الصوتي (Speech AI Strategy)
+المشروع حالياً يستخدم `Whisper-large-v3` عبر API (مثل Groq). هذا الخيار ممتاز وسريع ومجاني للبداية. ولكن مع زيادة الضغط (Traffic)، يجب اتباع خريطة الطريق التالية:
+
+**أ. الترتيب الاستراتيجي للانتقال (ASR Alternatives):**
+1. **Hamsa API:** الانتقال الأول والأسهل. منصة عربية تتعرف على اللهجات تلقائياً (Dialect Detection) وممتازة في الـ Code-switching.
+2. **Munsit API:** الخيار التجاري الأقوى في دقة اللهجات الصعبة.
+3. **NVIDIA FastConformer Arabic (Self-Hosted):** الانتقال النهائي للـ Open Source للتخلص من تكلفة الـ API.
+
+**ب. متطلبات استضافة FastConformer (إنتاج فعلي):**
+* **البنية التحتية (Hardware):** سيرفر GPU مثل AWS EC2 (g4dn / g5) أو RunPod مزود بـ A10/A100 وذاكرة 32GB كحد أدنى.
+* **البرمجيات (Software):** لا يمكن تشغيله عبر `transformers` عادية. يجب وضعه داخل حاوية **NVIDIA Triton Inference Server** مع `nemo_toolkit[asr]` لإدارة طوابير الطلبات والاتصال عبر `gRPC`.
+* **العزل (Microservice):** يجب أن يُعزل FastConformer في سيرفر مستقل. في `transcription_service.py`، سيتم بناء "Adapter" يحول مخرجات Triton إلى صيغة `TranscriptionSegment` المتوافقة مع النظام.
+* **جودة الصوت المسبقة:** النماذج المحلية صارمة. تأكد من أن الـ `audio_downloader` يخرج الصوت بدقة **16kHz Mono** بمقاطع من 15-30 ثانية لتجنب `OOM`.
+
+## 5. التعرف على اللهجات والوكيل الصوتي (Voice Tutor & Dialect ID)
+* **Dialect ID Routing:** مستقبلاً، يمكن إضافة مصنف (Classifier) مثل `ArTST v2` يكتشف اللهجة، ثم يمررها لـ Gemini Prompt ليزيد من دقة تنقيح النص وتطهيره.
+* **Interactive Voice Tutor:** بعد استقرار النظام، يمكن إضافة VAD (Voice Activity Detection) ومولد صوتي (TTS) مثل Habibi-TTS لبناء مدرس صوتي تفاعلي كامل.
+* **Audio Gates:** تطبيق فلاتر طاقة (RMS/Energy) في `audio_downloader` لرفض المقاطع الفارغة أو المزعجة قبل إهدار موارد الـ GPU عليها.
+
+## 6. سجل التراخيص التجاري (License Registry)
+لحماية المشروع تجارياً في بيئة الإنتاج، هذه هي تراخيص النماذج الحالية:
+* `whisper-large-v3` (OpenAI): **MIT License** ✅ (مسموح تجارياً)
+* `BAAI/bge-m3` (Dense Embeddings): **MIT License** ✅ (مسموح تجارياً)
+* `BAAI/bge-reranker-v2-m3`: **MIT License** ✅ (مسموح تجارياً)
+* `Gemini API` (Google): **Google ToS** ✅ (مسموح تجارياً عبر السحابة)
+* `Qdrant` (Vector DB): **Apache 2.0** ✅ (مسموح تجارياً)

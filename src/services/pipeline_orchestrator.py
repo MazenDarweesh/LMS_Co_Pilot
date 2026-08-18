@@ -139,7 +139,7 @@ class PipelineOrchestrator:
 
                         meta = lesson_metadata or LessonMetadata(
                             lesson_id=lesson_id,
-                            tenant_id="default",
+                            tenant_ids=["default"],
                         )
                         meta.build_allowed_entities()
 
@@ -161,9 +161,11 @@ class PipelineOrchestrator:
                                 end_time=seg.end_time,
                                 text_msa=seg.normalized_text,
                                 text_original=seg.normalized_text,
-                                tenant_id=meta.tenant_id,
+                                tenant_ids=meta.tenant_ids,
                                 module_id=meta.module_id,
                                 unit_id=meta.unit_id,
+                                level_id=meta.level_id,
+                                type_id=meta.type_id,
                                 target_roles=meta.target_roles,
                                 allowed_entities=meta.allowed_entities,
                             )

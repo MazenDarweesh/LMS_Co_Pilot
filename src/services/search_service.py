@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 from src.core.config import settings
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
+from src.models.auth_models import UserContext
 from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
@@ -125,8 +126,8 @@ class SearchService:
     def initialize(self):
         self._gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
-    async def search(self, req: SearchRequest, user_entities: list[str]) -> SearchResponse:
-        logger.info("Search started", query=req.query, scope=req.scope, user_entities_count=len(user_entities))
+    async def search(self, req: SearchRequest, user_ctx: UserContext) -> SearchResponse:
+        logger.info("Search started", query=req.query, scope=req.scope, user_entities_count=len(user_ctx.user_entities))
         metrics = {}
         
         t0 = time.time()
@@ -149,7 +150,7 @@ class SearchService:
         candidates = await qdrant_service.hybrid_search(
             dense_vector=dense_vec,
             sparse_vector=sparse_vec,
-            user_entities=user_entities,
+            user_ctx=user_ctx,
             limit=60,
             extra_filter=scope_filter,
         )

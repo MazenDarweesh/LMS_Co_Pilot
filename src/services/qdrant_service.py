@@ -23,6 +23,7 @@ from qdrant_client.models import (
 )
 from src.core.config import settings
 from src.models.schemas import QdrantChunkPayload
+from src.models.auth_models import UserContext
 
 logger = structlog.get_logger()
 
@@ -87,7 +88,7 @@ class QdrantService:
         keyword_fields = [
             "allowed_entities", "target_roles", "content_type",
             "tenant_id", "lesson_id", "module_id", "unit_id",
-            "video_id", "playlist_id",
+            "video_id", "playlist_id", "level_id", "type_id"
         ]
         for field in keyword_fields:
             await self._client.create_payload_index(  # type: ignore
@@ -157,7 +158,7 @@ class QdrantService:
         self,
         dense_vector: list[float],
         sparse_vector,                  # SparseEmbedding
-        user_entities: list[str],
+        user_ctx: UserContext,
         limit: int = 60,
         extra_filter: Filter | None = None,
     ) -> list[dict]:
@@ -169,15 +170,27 @@ class QdrantService:
         """
         assert self._client is not None
 
-        # فلتر الصلاحيات الأساسي
-        auth_filter = Filter(
-            must=[
-                FieldCondition(
-                    key="allowed_entities",
-                    match=MatchAny(any=user_entities),
-                )
-            ]
-        )
+        # Build module level and type conditions
+        from qdrant_client.models import MatchValue
+        module_conditions = []
+        for module in user_ctx.permissions.accessible_modules:
+            must_inner = [FieldCondition(key="module_id", match=MatchValue(value=module.module_id))]
+            if module.level_filters:
+                must_inner.append(FieldCondition(key="level_id", match=MatchAny(any=module.level_filters)))
+            if module.type_filters:
+                must_inner.append(FieldCondition(key="type_id", match=MatchAny(any=module.type_filters)))
+            module_conditions.append(Filter(must=must_inner))
+
+        # Overall Filter
+        overall_must = [
+            FieldCondition(key="allowed_entities", match=MatchAny(any=user_ctx.user_entities)),
+        ]
+        
+        # Admins bypass specific level/type restrictions, they rely purely on their allowed_entities matching everything
+        if module_conditions and user_ctx.claims.role != "Admin":
+            overall_must.append(Filter(should=module_conditions))
+
+        auth_filter = Filter(must=overall_must)
 
         # دمج الفلتر الإضافي (scope, module_id, ...) إذا وُجد
         if extra_filter and extra_filter.must:

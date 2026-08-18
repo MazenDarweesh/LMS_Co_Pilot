@@ -40,8 +40,8 @@ async def search(req: SearchRequest, user_ctx: UserContext = Depends(get_current
     🔍 Hybrid RAG Search
     Fully protected by JWT & precise Role/Level filtering.
     """
-    # We pass the real user_entities derived strictly from the JWT and LMS Permissions
-    return await search_service.search(req, user_entities=user_ctx.user_entities)
+    # We pass the entire UserContext to enable precise Qdrant filtering
+    return await search_service.search(req, user_ctx=user_ctx)
 
 
 @router.post("/ingest/audio")
@@ -52,7 +52,7 @@ async def start_audio_ingestion(
     background_tasks: BackgroundTasks,
     # يمكننا استدعاء event_store للاستخدام اللحظي هنا، لكن لا نمرره للمهمة الخلفية
     event_store: EventStoreRepository = Depends(get_event_store),
-    admin_ctx: UserContext = Depends(require_role("Admin", "Instructor"))
+    admin_ctx: UserContext = Depends(require_role("Admin"))
 ):
     """
     يبدأ عملية معالجة فيديو يوتيوب في الخلفية.
@@ -106,11 +106,13 @@ async def unified_lesson_webhook(
                 url = context.get("videoUrl")
                 # Parse LMS metadata into our LessonMetadata format
                 meta = LessonMetadata(
-                    tenant_id=context.get("tenantId", "default"),
-                    module_id=context.get("moduleId", ""),
-                    unit_id=context.get("unitId", ""),
+                    tenant_ids=context.get("tenantIds", context.get("TenantIds", ["default"])),
+                    module_id=context.get("moduleId", context.get("ModuleId", "")),
+                    unit_id=context.get("unitId", context.get("UnitId", "")),
+                    level_id=context.get("levelId", context.get("LevelId", "")),
+                    type_id=context.get("typeId", context.get("TypeId", "")),
                     lesson_id=payload.lessonId,
-                    target_roles=context.get("targetRoles", [])
+                    target_roles=context.get("targetRoles", context.get("TargetRoles", []))
                 )
                 # Run the ingestion pipeline securely in the background
                 await pipeline_orchestrator.run_audio_pipeline(

@@ -45,12 +45,9 @@ def _build_user_entities(claims: TokenClaims, perms: UserPermissions) -> list[st
         entities.append("content:playlist")
 
     # 🔴 GAP 1 FIX: Strict Level & Type Filters per Module
+    # We only append module: here. Levels and Types are handled via strict Qdrant 'should' branches in search_service.
     for mod in perms.accessible_modules:
         entities.append(f"module:{mod.module_id}")
-        for lvl in mod.level_filters:
-            entities.append(f"level:{lvl}")
-        for typ in mod.type_filters:
-            entities.append(f"type:{typ}")
 
     # Standard unit and lesson access
     for uid in perms.accessible_unit_ids:
