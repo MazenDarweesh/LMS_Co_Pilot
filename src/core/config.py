@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     # قاعدة البيانات PostgreSQL
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/lms_co_pilot"
 
+    # LMS Backend & JWT Security
+    LMS_BASE_URL: str = "http://localhost:80"
+    SERVICE_TOKEN: str = "change-this-in-env-file"
+    JWT_SECRET: str = "your-lms-jwt-secret-must-match-dotnet"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_AUDIENCE: str | None = None
+    JWT_ISSUER: str | None = None
+
     # Qdrant Vector Database
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_API_KEY: str = ""

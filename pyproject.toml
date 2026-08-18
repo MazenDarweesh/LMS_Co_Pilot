@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.14.2",
     "pydub>=0.25.1",
+    "pyjwt[crypto]>=2.13.0",
     "qdrant-client[fastembed]>=1.13",
     "sentence-transformers>=5.7.0",
     "slowapi>=0.1.10",

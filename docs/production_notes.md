@@ -1,60 +1,28 @@
-# 🚀 مذكرات وبيانات نشر الإنتاج (Production Deployment Notes)
+# ملاحظات ما بعد الإنتاج (Post-Production & Scaling Notes)
+## LMS AI Co-Pilot
 
-هذا الملف يحتوي على الملاحظات الحرجة والمعماريات الخاصة ببيئة الإنتاج الحقيقية (Production)، والتي يجب الالتزام بها لتفادي ثغرات الأداء أو مشاكل البنية التحتية.
-
----
-
-## ⚠️ 1. ملاحظة إنتاجية: Reverse Proxies & Rate Limiting Gotcha
-
-### 🔴 المشكلة (The Problem):
-بالنسبة للـ **Rate Limiter** (`slowapi`):
-الدالة المستخدمة `get_remote_address` تعتمد على قراءة الـ IP الخاص بالعميل المتصل بالخادم.
-في بيئة الإنتاج، الخادم الخاص بك (FastAPI) غالباً ما سيعمل خلف موزع أحمال أو وسيط (Reverse Proxy) مثل:
-* Nginx
-* AWS Application Load Balancer (ALB)
-* Traefik / Caddy
-
-في هذه الحالة، فإن دالة `get_remote_address` ستقرأ **الـ IP الداخلي لـ Nginx** وليس الـ IP الحقيقي للمستخدم!
-هذا يعني أن **جميع المستخدمين سيتم حظرهم معاً** لأن النظام سيعتبرهم جميعاً يأتون من نفس الـ IP (وهو Nginx).
-
-### ✅ الحل المعياري (The Solution):
-لحسن الحظ، **الكود لا يحتاج إلى أي تعديل**. 
-الحل يكمن في طريقة تشغيل خادم `uvicorn` نفسه. يجب إخبار `uvicorn` بأنه يعمل خلف Proxy وأنه يجب عليه قراءة الـ IP الحقيقي من الـ Header الشهير `X-Forwarded-For`.
-
-لتطبيق ذلك في الإنتاج، استخدم أحد هذين الأمرين عند تشغيل السيرفر:
-
-**عن طريق الـ CLI:**
-```bash
-uvicorn src.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
-```
-
-**أو عن طريق Docker (Dockerfile CMD أو docker-compose.yml):**
-```dockerfile
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
-```
-*(ملاحظة: يمكنك وضع الـ IP الخاص بـ Nginx بدلاً من `*` لزيادة الأمان).*
+هذا الملف مخصص لتوثيق التحسينات المعمارية التي يجب النظر فيها مستقبلاً (بعد الإنتاج).
 
 ---
 
-## ⚠️ 2. ملاحظة إنتاجية: Redis Multi-Worker Rate Limiting
+## 1. استبدال الـ In-Memory Cache بـ Redis وإبطاله لحظياً
+**المشكلة الحالية:**
+الـ TTL لمدة دقيقة أو 5 دقائق للكاش المحلي يعني أن تغيير صلاحيات المستخدم لن ينعكس فوراً (Stale Data).
+**الحل (Post-Production):**
+استخدام خادم Redis كطبقة كاش مركزية. والأهم، بناء مسار `POST /webhooks/invalidate-cache` يستدعيه الـ .NET فور تعديل صلاحيات أي مستخدم لإبطال الكاش الخاص به (Cache Invalidation) فوراً.
 
-### 🔴 المشكلة (The Problem):
-الوضع الافتراضي لـ `slowapi` يخزن بيانات الحظر (Rate Limiting) في الذاكرة العشوائية الخاصة بالخادم (In-Memory).
-إذا كنت تستخدم أكثر من Worker (مثلاً `--workers 4`)، فإن كل Worker سيكون له ذاكرة منفصلة، ولن يعرفوا متى يتجاوز المستخدم الحد المطلوب.
+## 2. نظام النسخة الاحتياطية عند توقف الـ LMS (Graceful Degradation)
+**المشكلة الحالية:**
+النظام مصمم كـ `Fail-Closed`، فإذا سقط اتصال الـ LMS، يتوقف الـ Co-Pilot كلياً ويرجع 503.
+**الحل (Post-Production):**
+أرشفة آخر صلاحيات معروفة للمستخدمين في Redis بدون مدة انتهاء. عند سقوط الـ LMS، يعتمد الـ Co-Pilot على هذه النسخة مع تسجيل تحذير (Warning) للمشرفين، بدلاً من إيقاف الخدمة عن الطلاب.
 
-### ✅ الحل المعياري (The Solution):
-في الإنتاج، افتح ملف `src/core/middleware.py` وقم بتفعيل رابط الـ Redis بدل الذاكرة:
+## 3. مستقبل المحتوى المستقل للطلاب (Future Standalone Content)
+**الوضع الحالي:**
+المحتوى المستقل (Standalone) وقوائم التشغيل (Playlists) محصورة برمجياً للمشرفين (`Admin`) فقط عن طريق وسم `content:standalone`.
+**المطلوب مستقبلاً إذا أردنا إتاحته للطلاب:**
+يجب تعديل `auth_service.py` ليقوم بالاستعلام من قاعدة بيانات محلية (PostgreSQL) لمعرفة الفيديوهات المخصصة لدور الطالب (`target_roles`) وشركته (`tenant_id`)، ثم إضافة `video:vid_guid` لقائمة الـ Entities الخاصة به بدلاً من منحه وسم الـ Content المفتوح.
 
-```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-# استبدل هذا السطر:
-# limiter = Limiter(key_func=get_remote_address)
-
-# بهذا السطر (مع وضع رابط خادم Redis الخاص بك):
-limiter = Limiter(
-    key_func=get_remote_address, 
-    storage_uri="redis://localhost:6379/0" 
-)
-```
+## 4. تحسينات الـ Audio Pipeline
+* **FastConformer:** الانتقال لنماذج مستضافة ذاتياً (Self-hosted) إذا زادت التكلفة السحابية.
+* **Audio Gates:** تطبيق فلاتر جودة (SNR/RMS) قبل إرسال المقطع للنموذج لمنع التفريغ العشوائي للأصوات الرديئة.
