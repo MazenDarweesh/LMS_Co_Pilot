@@ -32,3 +32,6 @@ pipeline_test_output.json
 .model_cache/
 
 docs/
+
+# Agent Proposals — personal review queue, not for version control
+.agents/proposals/

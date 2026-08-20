@@ -1,0 +1,20 @@
+{
+  "hooks": [
+    {
+      "name": "pre-commit-pipeline-check",
+      "description": "Automatically run the search pipeline linter before any git commit",
+      "trigger": "pre_tool_call",
+      "tool": "run_command",
+      "condition": "command contains 'git commit'",
+      "skill": "search-pipeline-linter"
+    },
+    {
+      "name": "post-commit-readme-update",
+      "description": "Suggest README update after every commit to keep it market-ready",
+      "trigger": "post_tool_call",
+      "tool": "run_command",
+      "condition": "command contains 'git commit'",
+      "skill": "readme-updater"
+    }
+  ]
+}

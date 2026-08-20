@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from src.models.schemas import (
     AudioTranscriptionRequest, AudioTranscriptionResponse,
-    RAGQueryRequest, RAGQueryResponse, AudioIngestRequest, LessonMetadata
+    AudioIngestRequest, LessonMetadata
 )
 from src.models.search_models import SearchRequest, SearchResponse
 
@@ -13,7 +13,6 @@ class AudioIngestRequestV2(BaseModel):
     youtube_url:     str
     lesson_id:       str
     lesson_metadata: LessonMetadata | None = None
-from src.services.rag_service import rag_service
 from src.services.search_service import search_service
 
 from src.core.middleware import limiter
@@ -27,11 +26,6 @@ from src.services.lms_client import lms_client
 
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
-
-@router.post("/query-rag", response_model=RAGQueryResponse)
-async def query_rag(request: RAGQueryRequest):
-    """Legacy endpoint — delegates to the real SearchService now."""
-    return await rag_service.query_rag(request.query, request.limit)
 
 
 @router.post("/search", response_model=SearchResponse)

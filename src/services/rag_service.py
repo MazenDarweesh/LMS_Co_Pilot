@@ -23,14 +23,19 @@ class RAGService:
         """
         req = SearchRequest(query=query, limit=limit)
 
-        # Temporary test entities — bypasses auth for quick testing
-        test_entities = [
-            "tenant:default_company",
-            "role:Admin",
-            "role:Student",
-        ]
+        # Temporary test context — bypasses auth for quick testing
+        from src.models.auth_models import UserContext, TokenClaims, UserPermissions
+        dummy_ctx = UserContext(
+            claims=TokenClaims(Id="admin123", Username="admin", Role="Admin", CompanyId="default_company"),
+            permissions=UserPermissions(userId="admin123"),
+            user_entities=[
+                "tenant:default_company",
+                "role:Admin",
+                "role:Student",
+            ]
+        )
 
-        result = await search_service.search(req, user_entities=test_entities)
+        result = await search_service.search(req, user_ctx=dummy_ctx)
 
         return RAGQueryResponse(
             answer=result.answer,

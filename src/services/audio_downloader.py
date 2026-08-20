@@ -25,6 +25,13 @@ class AudioDownloaderService:
             'quiet': True,
             'no_warnings': True,
             'noplaylist': True, # منع تحميل قائمة التشغيل بالكامل إذا كان الرابط جزءاً من قائمة تشغيل
+            # 🚀 2026 Best Practice: Bypass YouTube 403 by using mobile clients (correct dict format)
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['android'],
+                    'player_skip': ['webpage'],
+                }
+            },
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
