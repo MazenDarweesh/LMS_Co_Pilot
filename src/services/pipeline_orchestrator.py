@@ -1,5 +1,6 @@
 import os
 import json
+import hashlib
 import asyncio
 import aiofiles
 import structlog
@@ -13,6 +14,18 @@ from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.db.event_store import EventStoreRepository
 
 logger = structlog.get_logger()
+
+
+def make_chunk_id(lesson_id: str, chunk_index: int) -> str:
+    """
+    يُولّد chunk_id حتمياً (Deterministic) من lesson_id + رقم المقطع.
+    نفس المدخلات = نفس الـ ID دائماً.
+
+    الهدف: ضمان أن إعادة تشغيل الـ Pipeline أو حدوث Crash ثم Retry
+    لن يُنتج نقاطاً مكررة في Qdrant — الـ upsert سيُحدّث النقطة الموجودة.
+    """
+    raw = f"{lesson_id}::chunk::{chunk_index}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 CHECKPOINT_DIR = Path("downloads/checkpoints")
 
@@ -152,7 +165,8 @@ class PipelineOrchestrator:
                             text_to_embed = normalize_arabic_text_leaderboard(seg.normalized_text)
                             dense, sparse = await embedding_service.get_both_embeddings(text_to_embed)
                             payload = QdrantChunkPayload(
-                                chunk_id=str(uuid.uuid4()),
+                                # ✅ Fix: Deterministic ID — prevents duplicate Qdrant points on retry/re-run
+                                chunk_id=make_chunk_id(lesson_id, results.index(seg)),
                                 lesson_id=lesson_id,
                                 content_type=ContentType.VIDEO_CHUNK,
                                 source_type=SourceType.YOUTUBE,

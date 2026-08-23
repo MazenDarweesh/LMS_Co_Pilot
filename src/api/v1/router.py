@@ -108,6 +108,12 @@ async def unified_lesson_webhook(
                     lesson_id=payload.lessonId,
                     target_roles=context.get("targetRoles", context.get("TargetRoles", []))
                 )
+
+                # ✅ Fix 3: Delete old chunks FIRST before re-ingesting.
+                # Prevents stale/duplicate vectors after a lesson content update.
+                await qdrant_service.delete_by_lesson_id(payload.lessonId)
+                logger.info("Old Qdrant chunks cleared before re-ingest", lesson_id=payload.lessonId)
+
                 # Run the ingestion pipeline securely in the background
                 await pipeline_orchestrator.run_audio_pipeline(
                     url, payload.lessonId, request.app.state.db_pool, meta

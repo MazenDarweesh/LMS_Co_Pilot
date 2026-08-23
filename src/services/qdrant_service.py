@@ -9,7 +9,6 @@ Best Practices 2026:
 - Payload indexes تُنشأ تلقائياً عند أول init.
 """
 
-import uuid
 import asyncio
 import structlog
 from qdrant_client import AsyncQdrantClient
@@ -116,7 +115,9 @@ class QdrantService:
 
         points = [
             PointStruct(
-                id=str(uuid.uuid4()),
+                # ✅ Fix: point_id = chunk_id (deterministic) — makes upsert idempotent.
+                # Same lesson re-processed = UPDATE existing point, never INSERT duplicate.
+                id=payloads[i].chunk_id,
                 vector={
                     "dense": dense_vectors[i],
                     "sparse": SparseVector(
