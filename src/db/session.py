@@ -82,9 +82,14 @@ async def lifespan(app: FastAPI):
     logger.info("Search service ready ✅")
 
     # ⑥ تهيئة LMS Client (للاتصال بـ .NET ERP)
-    from src.services.lms_client import lms_client
-    lms_client.initialize()
-    app.state.lms_client = lms_client
+    from src.services.lms_client import lms_client_service
+    lms_client_service.initialize()
+    app.state.lms_client_service = lms_client_service
+
+    # ⑦ تهيئة Auth Validator Service
+    from src.services.auth_service import auth_validator_service
+    auth_validator_service.initialize()
+    app.state.auth_validator_service = auth_validator_service
 
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
@@ -95,6 +100,6 @@ async def lifespan(app: FastAPI):
     await qdrant_service.close()
     logger.info("Qdrant connection closed 🛑")
     
-    await lms_client.close()
+    await lms_client_service.close()
     logger.info("LMS Client closed 🛑")
 

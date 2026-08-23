@@ -49,3 +49,15 @@
 * `BAAI/bge-reranker-v2-m3`: **MIT License** ✅ (مسموح تجارياً)
 * `Gemini API` (Google): **Google ToS** ✅ (مسموح تجارياً عبر السحابة)
 * `Qdrant` (Vector DB): **Apache 2.0** ✅ (مسموح تجارياً)
+
+## 7. مهام يجب استكمالها بناءً على Master Plan V2 (الخطوات المتخطاة)
+أثناء اندفاعنا في تأمين محرك البحث، قمنا بتخطي مرحلتين أساسيتين يجب العودة لهما:
+
+**أ. (الأسبوع 6) الـ PDF Ingestion:**
+نحن نعالج ملفات اليوتيوب بنجاح (Audio -> Whisper)، لكن مسار معالجة الـ PDF لم يتم كتابته بعد في `src/services/pdf_service.py`.
+* **⚠️ تحذير ترخيص (Felo Insight):** مكتبة `marker-pdf` التي خططنا لها تحمل ترخيص **GPL-3.0**. إذا كان هذا المشروع تجارياً مغلق المصدر، **يُمنع استخدام Marker** إلا بشراء رخصة تجارية.
+* **البديل المقترح:** استخدام `MinerU` (دقيق للـ Layouts) أو `MarkItDown` (سريع وممتاز للـ Markdown) أو الاعتماد على `PyMuPDF` (ترخيص مزدوج AGPL/Commercial) بحذر. يجب أخذ قرار تجاري هنا قبل برمجة الخدمة.
+
+**ب. (الأسبوع 9) إدارة المحتوى المستقل (Standalone & Playlists):**
+لم نقم بإنشاء جداول `standalone_videos` و `playlists` في قاعدة بيانات PostgreSQL ولم نبنِ الـ Admin API الخاصة بها في `router.py`.
+* **Felo Insight:** هيكلة الـ Qdrant التي بنيناها بـ `is_tenant=True` مثالية لهذا الغرض. يكفينا حفظ الفيديوهات وقوائم التشغيل كمتجهات في نفس الـ Collection `learning_content` مع استخدام `playlist_id` أو `video_id` في الـ Payload للتصفية.
