@@ -55,6 +55,7 @@ await my_service.close()
 - ❌ NEVER import a service and call methods without initializing it via lifespan
 - ✅ ALWAYS use `app.state.<service_name>` to expose to request handlers if needed
 - ✅ ALWAYS add a `close()` method even if it's a no-op (future-proofing)
+- ✅ ALWAYS wrap CPU-bound operations (like loading ML models or running inference) in `asyncio.to_thread` to prevent blocking the FastAPI event loop.
 
 ## Existing Services Reference
 

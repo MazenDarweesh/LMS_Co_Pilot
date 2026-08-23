@@ -134,3 +134,37 @@ Flag any factual claim in the answer that cannot be traced to the retrieved chun
 - Reranker latency > 5000ms (not first call) → "Consider GPU acceleration or smaller reranker model"
 - Token usage > 2000 → "Reduce top_n in reranker from current value, or truncate long text_msa fields"
 - Hallucination detected → "Check normalizer output quality for this chunk, possibly re-index"
+
+## Qdrant REST API Reference (via `fetch` MCP)
+
+You can use the `fetch` MCP server to query Qdrant directly at `http://localhost:6333` if you need to fetch live data or delete duplicates.
+
+**Query Points (Count/Search):**
+```bash
+POST http://localhost:6333/collections/<collection_name>/points/scroll
+Content-Type: application/json
+
+{
+  "filter": {
+    "must": [
+      {
+        "key": "source_url",
+        "match": {
+          "text": "<video_id>"
+        }
+      }
+    ]
+  },
+  "limit": 10
+}
+```
+
+**Delete Points:**
+```bash
+POST http://localhost:6333/collections/<collection_name>/points/delete
+Content-Type: application/json
+
+{
+  "points": ["<duplicate_point_id>"]
+}
+```

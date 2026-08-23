@@ -17,7 +17,7 @@ from qdrant_client.models import (
     SparseVectorParams, SparseIndexParams,
     PointStruct, SparseVector,
     Filter, FieldCondition, MatchAny, MatchValue,
-    PayloadSchemaType,
+    PayloadSchemaType, KeywordIndexParams,
     Prefetch, FusionQuery, Fusion,
 )
 from src.core.config import settings
@@ -90,10 +90,14 @@ class QdrantService:
             "video_id", "playlist_id", "level_id", "type_id"
         ]
         for field in keyword_fields:
+            is_tenant = field in ("tenant_ids", "lesson_id")
             await self._client.create_payload_index(  # type: ignore
                 collection_name=COLLECTION,
                 field_name=field,
-                field_schema=PayloadSchemaType.KEYWORD,
+                field_schema=KeywordIndexParams(
+                    type="keyword",
+                    is_tenant=is_tenant
+                ),
             )
         logger.info("Qdrant payload indexes ensured ✅")
 

@@ -73,6 +73,7 @@ class WebhookPayload(BaseModel):
     action: str  # "Updated" or "Deleted"
 
 @router.post("/webhooks/lesson-updated", status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("10/minute")
 async def unified_lesson_webhook(
     request: Request,
     payload: WebhookPayload,
@@ -170,17 +171,24 @@ async def stream_ingestion_events(
 import os
 import json
 import glob
+import re
 from pathlib import Path
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 CHECKPOINT_DIR = Path("downloads/checkpoints")
 
 @router.get("/lessons/{lesson_id}")
-async def get_lesson_result(lesson_id: str):
+# 🛡️ OWASP A04: Insecure Design (Rate Limiting to prevent DoS)
+@limiter.limit("20/minute")
+async def get_lesson_result(request: Request, lesson_id: str):
     """
     يقوم بجمع كل المقاطع (Chunks) الخاصة بدرس معين من نقاط الحفظ (Checkpoints)
     ويدمجها بالترتيب ليعرض النتيجة النهائية للدرس كاملاً.
     """
+    # 🛡️ OWASP A01: Broken Access Control (Path Traversal Protection)
+    if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+        
     # البحث عن كل ملفات الـ JSON الخاصة بهذا الدرس
     pattern = os.path.join(CHECKPOINT_DIR, f"{lesson_id}_chunk_*.json")
     chunk_files = glob.glob(pattern)
