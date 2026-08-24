@@ -91,6 +91,11 @@ async def lifespan(app: FastAPI):
     auth_validator_service.initialize()
     app.state.auth_validator_service = auth_validator_service
 
+    # ⑧ تهيئة Agent Service (LangGraph Checkpointer)
+    from src.agents.base_agent import agent_service
+    await agent_service.initialize()
+    app.state.agent_service = agent_service
+
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
     # ③ إغلاق الموارد عند إيقاف السيرفر
@@ -102,4 +107,7 @@ async def lifespan(app: FastAPI):
     
     await lms_client_service.close()
     logger.info("LMS Client closed 🛑")
+    
+    await agent_service.close()
+    logger.info("Agent Service (LangGraph Pool) closed 🛑")
 

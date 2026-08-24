@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "skills": {
+    "agentic-evaluation-monitoring": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-evaluation-monitoring/SKILL.md",
+      "computedHash": "e96487644bc6bc23d14f7b766640943766e0f53160259104870102b36ef21aed"
+    },
+    "agentic-exception-handling": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-exception-handling/SKILL.md",
+      "computedHash": "d6d9eac04a822c209d30396893b38c10de3ae1e561ba16005fe6e6fba305ece9"
+    },
+    "agentic-exploration-discovery": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-exploration-discovery/SKILL.md",
+      "computedHash": "967118c8aafe75e76489bdfe24025bbbba90d36faa38b40f8634366f0dc0b54f"
+    },
+    "agentic-goal-setting-monitoring": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-goal-setting-monitoring/SKILL.md",
+      "computedHash": "460b1ff75f8fccee2f5b0da6fd27f6522290b39c449216c3e0a27da0e211925c"
+    },
+    "agentic-inter-agent-communication": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-inter-agent-communication/SKILL.md",
+      "computedHash": "4c7060493508b5260c0862728f14bbda684346dc10c36cdacbd90f8e392a7004"
+    },
+    "agentic-learning-adaptation": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-learning-adaptation/SKILL.md",
+      "computedHash": "390b29f151f5828d44b548a4c920f1160cd993fd6822ab1c4461e3cb4fb6335e"
+    },
+    "agentic-mcp": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-mcp/SKILL.md",
+      "computedHash": "705ad97543799398582a03c7b103fd41dcb96b1c18b0506c229235f6304d65a5"
+    },
+    "agentic-memory-management": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-memory-management/SKILL.md",
+      "computedHash": "3b744bc5d922f69188a84a79f563098131e9951e487af129f0e50e7284c33d13"
+    },
+    "agentic-multi-agent": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-multi-agent/SKILL.md",
+      "computedHash": "5e50b727efdc6214a7cbb52195d56b5c78c7bd85db26fe02f0976bed9b6e892c"
+    },
+    "agentic-parallelization": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-parallelization/SKILL.md",
+      "computedHash": "416e8a6142d42f04e1389aa7dfd1921f29abd9294407af40f4638abdd447c065"
+    },
+    "agentic-pattern-selector": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-pattern-selector/SKILL.md",
+      "computedHash": "623cdb25e71e7149ce5cc5bf5c847c230e9f5380c9df31ca11a2409bb13aff33"
+    },
+    "agentic-prioritization": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-prioritization/SKILL.md",
+      "computedHash": "4ab33def4f97e3d32b3ac34522cd5b720ce15188bd10f07f17598a93ba533e87"
+    },
+    "agentic-prompt-chaining": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-prompt-chaining/SKILL.md",
+      "computedHash": "af1e5ded540f0f6fbf7cc6ef26182d23c2374870313a60560028051ff15336eb"
+    },
+    "agentic-reflection": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-reflection/SKILL.md",
+      "computedHash": "cf9cc1836ff2888787b57f9b69e73db06276308a351640bdfad226e37927a04b"
+    },
+    "agentic-resource-aware-optimization": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-resource-aware-optimization/SKILL.md",
+      "computedHash": "eb0d7f1b2823c32f1c7bb0aae9cd84a51f55e1d5a877bc5cabf4246e5b46c793"
+    },
+    "agentic-routing": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-routing/SKILL.md",
+      "computedHash": "ca15986282e615feda9534a20eddabccc757cfd85406bd79749d837e39540a23"
+    },
+    "agentic-tool-use": {
+      "source": "albertoclemente/agentic-design-patterns-skills",
+      "sourceType": "github",
+      "skillPath": "skills/agentic-tool-use/SKILL.md",
+      "computedHash": "a1d01bf9f369047344e0671ae808044e4bf41d74a5027e49c37ba98afd80bac1"
+    },
+    "executing-plans": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "skillPath": "skills/executing-plans/SKILL.md",
+      "computedHash": "130d80d2d78fa9180f99e160eb55c53b9a223129fd4081d15cb95cac3b99b7c8"
+    }
+  }
+}
