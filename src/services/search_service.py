@@ -195,7 +195,7 @@ class SearchService:
         t3 = time.time()
         response = await asyncio.to_thread(
             self._gemini_client.models.generate_content,
-            model="gemini-3.5-flash-lite",
+            model=settings.GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=1024),
         )

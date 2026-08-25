@@ -95,6 +95,11 @@ async def lifespan(app: FastAPI):
     from src.agents.base_agent import agent_service
     await agent_service.initialize()
     app.state.agent_service = agent_service
+    
+    # ⑨ تهيئة Event Logger Service
+    from src.services.event_logger import event_logger_service
+    event_logger_service.initialize(app.state.db_pool)
+    app.state.event_logger_service = event_logger_service
 
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 

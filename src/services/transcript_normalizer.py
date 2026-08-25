@@ -57,7 +57,7 @@ class TranscriptNormalizerService:
 
         # استدعاء Gemini بشكل غير متزامن مع إجباره على إرجاع JSON يطابق الموديل الخاص بنا
         response = await gemini_client.aio.models.generate_content(
-            model="gemini-3.5-flash-lite",
+            model=settings.GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

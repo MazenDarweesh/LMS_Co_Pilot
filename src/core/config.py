@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     # مفاتيح الـ API ستُقرأ تلقائياً من ملف .env (Best Practice)
     GROQ_API_KEY: str
     GEMINI_API_KEY: str
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"  # Unified model name for all services
 
     # قاعدة البيانات PostgreSQL
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/lms_co_pilot"
