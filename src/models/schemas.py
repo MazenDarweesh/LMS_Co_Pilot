@@ -1,7 +1,7 @@
 import re
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Self
-
 class AudioIngestRequest(BaseModel):
     youtube_url: str = Field(..., description="رابط يوتيوب الخاص بالمحاضرة")
     lesson_id: str = Field(..., description="المعرف الفريد للدرس (سيعمل كـ session_id للمتابعة)")
@@ -116,3 +116,31 @@ class QdrantChunkPayload(BaseModel):
     playlist_id:     str | None = None
     target_roles:    list[str]
     allowed_entities: list[str]
+
+# -------------------------------------------------------------------
+# PR-3: AI Content Generator Schemas (Admin/LMS Integration)
+# -------------------------------------------------------------------
+class QuizOption(BaseModel):
+    id: str = Field(..., description="معرف الخيار (a, b, c, d)")
+    text: str = Field(..., description="نص الخيار")
+
+class QuizQuestion(BaseModel):
+    id: int = Field(..., description="رقم السؤال في التسلسل")
+    question: str = Field(..., description="نص السؤال")
+    options: list[QuizOption] = Field(..., description="قائمة من 4 خيارات")
+    correct_answer_id: str = Field(..., description="الإجابة الصحيحة (a, b, c, d)")
+    explanation: str = Field(..., description="تفسير سبب صحة الإجابة (للتصحيح)")
+
+class GeneratedQuiz(BaseModel):
+    lesson_id: str = Field(..., description="معرف الدرس المرتبط بالاختبار")
+    questions: list[QuizQuestion] = Field(..., description="الأسئلة المولدة")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class SummaryTopic(BaseModel):
+    title: str = Field(..., description="عنوان الموضوع الرئيسي")
+    points: list[str] = Field(..., description="نقاط تفصيلية تشرح الموضوع")
+
+class GeneratedSummary(BaseModel):
+    lesson_id: str = Field(..., description="معرف الدرس المرتبط بالملخص")
+    topics: list[SummaryTopic] = Field(..., description="المواضيع المستخرجة من الدرس")
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

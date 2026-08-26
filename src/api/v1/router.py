@@ -23,6 +23,8 @@ from src.services.auth_service import get_current_user, require_role, UserContex
 from src.core.config import settings
 from src.services.qdrant_service import qdrant_service
 from src.services.lms_client import lms_client
+from src.services.lesson_content_service import lesson_content_service
+from src.models.schemas import GeneratedQuiz, GeneratedSummary
 
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
@@ -215,3 +217,50 @@ async def get_lesson_result(request: Request, lesson_id: str):
         "total_duration_seconds": sum(seg.get("end_time", 0) - seg.get("start_time", 0) for seg in merged_segments),
         "segments": merged_segments
     }
+
+# ---------------------------------------------------------------------------
+# AI Content Generation (Admin Only) - PR-3 Stateless Implementation
+# ---------------------------------------------------------------------------
+
+@router.post("/admin/lessons/{lesson_id}/generate-quiz", response_model=GeneratedQuiz)
+@limiter.limit("5/minute")
+async def generate_lesson_quiz(
+    request: Request,
+    lesson_id: str,
+    admin_ctx: UserContext = Depends(require_role("Admin"))
+):
+    """
+    يقوم بتوليد اختبار (Quiz) للدرس عبر سحب المحتوى من Qdrant، ثم يعيد الـ JSON للـ LMS للحفظ.
+    مخصص للـ Admins فقط.
+    """
+    try:
+        # 🛡️ OWASP A01: Path Traversal Protection — same pattern as GET /lessons/{lesson_id}
+        if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+        # Generate exactly 5 questions across the timeline
+        return await lesson_content_service.generate_quiz(lesson_id=lesson_id, num_questions=5)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="فشل توليد الاختبار بسبب خطأ داخلي.")
+
+@router.post("/admin/lessons/{lesson_id}/generate-summary", response_model=GeneratedSummary)
+@limiter.limit("5/minute")
+async def generate_lesson_summary(
+    request: Request,
+    lesson_id: str,
+    admin_ctx: UserContext = Depends(require_role("Admin"))
+):
+    """
+    يقوم بتوليد ملخص هيكلي للدرس عبر سحب المحتوى من Qdrant، ثم يعيد الـ JSON للـ LMS للحفظ.
+    مخصص للـ Admins فقط.
+    """
+    try:
+        # 🛡️ OWASP A01: Path Traversal Protection
+        if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
+            raise HTTPException(status_code=400, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+        return await lesson_content_service.generate_summary(lesson_id=lesson_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="فشل توليد الملخص بسبب خطأ داخلي.")

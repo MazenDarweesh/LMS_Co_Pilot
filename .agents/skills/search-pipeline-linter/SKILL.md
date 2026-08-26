@@ -1,76 +1,98 @@
 ---
 name: search-pipeline-linter
 description: >
-  Reviews search pipeline service files (search_service.py, qdrant_service.py,
-  reranker_service.py, embedding_service.py) for architecture violations and
-  common bugs. Use when adding new features to the pipeline or before committing.
+  Unified diagnostic skill for the LMS Co-Pilot RAG & Ingestion pipeline.
+  (1) Lints pipeline code files (search, qdrant, reranker, embedding).
+  (2) Analyzes trace JSON logs from downloads/search_debugs/.
+  (3) Checks ingestion status/chunk counts of YouTube videos in Qdrant.
+  Activates for "search lint", "RAG debug", "trace analysis", "ingestion status", or "check video".
 ---
 
-# Search Pipeline Linter Skill
+# Unified RAG Pipeline & Ingestion Diagnostic Skill
 
-You are a code quality reviewer for the LMS Co-Pilot Hybrid RAG search pipeline.
-When activated, read and check all 4 pipeline files, then report violations.
+This skill acts as the single source of truth for checking, debugging, and linting the LMS Co-Pilot Hybrid RAG search and ingestion system.
 
-## Files to Check
+---
 
+## Mode 1: Static Code Linter (search lint)
+
+Verify that the 4 pipeline core files in `src/services/` conform to project constraints:
+
+### Files:
 1. `src/services/search_service.py`
 2. `src/services/qdrant_service.py`
 3. `src/services/reranker_service.py`
 4. `src/services/embedding_service.py`
 
-## Mandatory Checklist — Check Every Item
+### Checklist:
+- **`search_service.py`:**
+  - Uses `await embedding_service.get_both_embeddings(query)`
+  - Passes `user_entities` to `qdrant_service.hybrid_search()`
+  - Logs latency for all stages using `time.time()`
+  - Writes debug log with `metrics` and `token_usage`
+- **`qdrant_service.py`:**
+  - `hybrid_search()` filters by `user_entities`
+  - Injects `_qdrant_point_id` into returned payloads
+  - Uses `AsyncQdrantClient` and integer timeouts
+- **`reranker_service.py`:**
+  - Injects `_reranker_score`
+  - Runs `model.predict()` in `asyncio.to_thread`
+- **`embedding_service.py`:**
+  - Uses thread-safe concurrent execution for dense/sparse embeddings
 
-### search_service.py
-- [ ] Uses `await embedding_service.get_both_embeddings(query)` — NOT separate dense/sparse calls
-- [ ] Passes `user_entities` to `qdrant_service.hybrid_search()` for auth filtering
-- [ ] `time.time()` wraps EVERY pipeline stage: embedding, qdrant, reranker, gemini
-- [ ] `metrics` dict is populated with all 5 keys: `embedding_latency_ms`, `qdrant_latency_ms`, `reranker_latency_ms`, `gemini_latency_ms`, `total_latency_ms`
-- [ ] `token_usage` dict populated from `response.usage_metadata`
-- [ ] `_write_search_debug_file()` called with both `metrics=` and `token_usage=` kwargs
-- [ ] All `asyncio.to_thread()` wrappers present for blocking calls
-- [ ] Type annotations use `dict | None`, not `Optional[dict]`
+---
 
-### qdrant_service.py
-- [ ] `hybrid_search()` builds and applies `auth_filter` using `user_entities`
-- [ ] Return loop injects `_qdrant_point_id = str(point.id)` into every payload dict
-- [ ] `timeout` parameter is `int`, not `float` (AsyncQdrantClient requirement)
-- [ ] Uses `AsyncQdrantClient`, not the synchronous `QdrantClient`
+## Mode 2: RAG Trace Analysis (RAG debug / trace analysis)
 
-### reranker_service.py
-- [ ] `_reranker_score` is injected into every returned payload dict
-- [ ] `model.predict()` is called inside `asyncio.to_thread()` via `_rerank()` closure
-- [ ] `pairs` is constructed as list of tuples: `[(query, str(text)) ...]` — NOT list of lists
-- [ ] `# type: ignore` on `.predict()` call includes explanation comment
+Analyze search trace JSON files from `downloads/search_debugs/search_*.json` (use the most recent file).
 
-### embedding_service.py
-- [ ] `get_both_embeddings()` uses thread-safe concurrent execution
-- [ ] Dense and sparse model calls are inside `asyncio.to_thread()`
-- [ ] Singleton `embedding_service` exists at module level
+### Audit Parameters:
+1. **Latency Audit:** Flag if:
+   - Embedding > 2000ms ⚠️
+   - Qdrant > 500ms ⚠️
+   - Reranker > 5000ms ⚠️ (excluding cold start)
+   - Gemini > 10000ms ⚠️
+2. **Token Efficiency:** Flag total tokens > 2000 ⚠️ (context bloat).
+3. **Duplicate Detection:** Flag if any RRF candidates share the same `chunk_id` but have different `point_id`s.
+4. **Reranker Scores:** Flag chunks with `score < 0.3` ❌ as poor matches that should be pre-filtered.
+5. **Hallucination Spot-check:** Match claims in `gemini_answer` to retrieved chunks.
 
-## How to Run the Check
+---
 
-1. Use `view_file` to read each file
-2. Go through every checklist item
-3. Report all violations before making any fixes
-4. Ask user to confirm before applying fixes
+## Mode 3: Ingestion Status Check (ingestion status / check video)
 
-## Output Format
+Check if a YouTube video URL has been successfully ingested and indexed.
 
+### Steps:
+1. Extract the 11-character video ID from the URL.
+2. Query Qdrant points using the scroll endpoint filtering for `source_url` containing the video ID.
+3. Calculate:
+   - Total number of indexed chunks.
+   - Average character length of text.
+   - Dialect audit of MSA translation (detect Egyptian/Levantine dialect leaks like "ده" or "مش").
+4. Provide a verdict: **Indexed & Healthy** ✅ OR **Needs Re-Ingestion** ❌.
+
+---
+
+## Qdrant REST Reference (Useful for Mode 2 & 3)
+
+### Scroll/Check Video Chunks:
+```bash
+POST http://localhost:6333/collections/learning_content/points/scroll
+{
+  "filter": {
+    "must": [
+      { "key": "source_url", "match": { "text": "<video_id>" } }
+    ]
+  },
+  "limit": 10
+}
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Search Pipeline Lint Report                                 │
-├──────────────────────────┬──────────────────────────────────┤
-│ File                     │ Status                           │
-├──────────────────────────┼──────────────────────────────────┤
-│ search_service.py        │ ✅ 8/8 checks passed             │
-│ qdrant_service.py        │ ⚠️  3/4 checks (1 violation)    │
-│ reranker_service.py      │ ✅ 4/4 checks passed             │
-│ embedding_service.py     │ ✅ 3/3 checks passed             │
-└──────────────────────────┴──────────────────────────────────┘
 
-❌ Violations Found:
-1. [qdrant_service.py] timeout=60.0 (float) — must be int
-   Fix: change to timeout=60
-
-📋 Recommended action: Fix violations before committing.
+### Delete Duplicates:
+```bash
+POST http://localhost:6333/collections/learning_content/points/delete
+{
+  "points": ["<duplicate_point_id>"]
+}
 ```

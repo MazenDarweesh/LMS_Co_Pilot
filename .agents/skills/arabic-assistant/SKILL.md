@@ -1,64 +1,70 @@
 ---
-name: arabic-content-qa
+name: arabic-assistant
 description: >
-  Validates Arabic text quality in Qdrant vector payloads and Gemini RAG responses.
-  Use when reviewing transcript normalization output, checking text_msa field quality,
-  or assessing whether Arabic content is clean for embedding and retrieval.
+  Dual-purpose Arabic language assistant for the LMS Co-Pilot. Explains complex technical concepts in clear Arabic (architecture, ADRs, algorithms), AND validates Arabic text quality in Qdrant payloads and Gemini RAG responses. Activates for "اشرح لي", "Arabic QA", "text_msa check", or "hallucination audit".
 ---
 
-# Arabic Content QA Skill
+# Arabic Assistant Skill (Unified)
 
-You are an Arabic language quality specialist for the LMS Co-Pilot RAG system.
-When activated, validate Arabic text quality across three dimensions.
+Merged from two skills: `arabic-tech-explainer` (architectural explanations) and `arabic-content-qa` (RAG text validation).
 
-## Input Sources
+---
 
-This skill works with:
+## Mode 1: Tech Explainer (اشرح لي)
+
+Use when the user asks "اشرح لي" or needs a breakdown of a complex architectural decision, algorithm, or ADR.
+
+### Workflow
+
+1. **Structure the Explanation** using 3 sections:
+   - **المشكلة** (The Problem): What goes wrong without this pattern?
+   - **الحل التقليدي** (The Naive Solution): The obvious but flawed approach.
+   - **الحل الهندسي** (The Architecture Solution): The best practice used in this project.
+2. **Use a Real-World Analogy** to explain algorithms or data flows (e.g., "HR resume screening" for Rerankers).
+3. **Generate an Artifact** — output well-formatted Markdown to `understanding_[topic].md`.
+4. **Tone**: Professional yet accessible Arabic. Keep technical terms (e.g., "Reranker", "Event Loop", "RRF") in English within the Arabic text.
+
+### Decision Tree
+- **Simple code snippet?** → Explain inline, don't use this skill.
+- **Architecture, ADR, or core algorithm?** → Use this skill and generate an artifact.
+
+---
+
+## Mode 2: Arabic Content QA (RAG Text Validation)
+
+Use when reviewing `text_msa` field quality in Qdrant, auditing Gemini hallucinations, or checking token efficiency in search traces.
+
+### Input Sources
 1. **Search trace files** in `downloads/search_debugs/` — check `text_msa` and `gemini_answer`
 2. **Direct text** — paste Arabic text for assessment
 3. **Qdrant payload inspection** — review `text_msa` field quality
 
-## Check 1: MSA Cleanliness (Dialect Leakage Detection)
+### Check 1: MSA Cleanliness (Dialect Leakage Detection)
 
-The `text_msa` field should contain Modern Standard Arabic (فصحى).
-Flag any Egyptian or Levantine dialect markers that should have been normalized:
+The `text_msa` field should contain Modern Standard Arabic (فصحى). Flag dialect markers:
 
 | Dialect Word | Should Be | Severity |
 |:-------------|:----------|:---------|
 | ده / دي / دول | هذا / هذه / هؤلاء | ⚠️ High |
 | مش / مفيش | لا / ليس / لا يوجد | ⚠️ High |
+| عايز / عاوز | يريد / أريد | ⚠️ High |
+| هيكون / هتكون | سيكون / ستكون | ⚠️ High |
 | بتاع / بتاعت | خاص بـ / الخاص بـ | ⚠️ Medium |
 | إزاي / ازيك | كيف | ⚠️ Medium |
-| عايز / عاوز | يريد / أريد | ⚠️ High |
 | كمان / برضو | أيضاً / كذلك | ⚠️ Medium |
 | اللي | الذي / التي | ⚠️ Low |
-| فيه / فيها | فيه / بداخله (فصحى) | ⚠️ Low |
-| هيكون / هتكون | سيكون / ستكون | ⚠️ High |
 
-> Note: Some dialect words may appear in quoted speech within the text (e.g., a teacher
-> quoting a student). Flag these as "In quoted speech — acceptable" rather than errors.
-
-## Check 2: Hallucination Audit
-
+### Check 2: Hallucination Audit
 Compare `gemini_answer` sentences against ALL `text_msa` fields in `reranker_results`.
-
-**Process:**
-1. Split `gemini_answer` into individual factual claims (sentences)
-2. For each claim, search for supporting evidence in the retrieved `text_msa` chunks
-3. If a claim cannot be traced to ANY chunk → flag as potential hallucination
-
-**Output for each sentence:**
 - ✅ Grounded in chunk [N]: "..."
 - ❌ NOT grounded — potential hallucination: "..."
 
-## Check 3: Token Efficiency Assessment
-
-From `token_usage` in the trace file:
-- `total_tokens` > 2000 → ⚠️ Context bloat — check if low-score chunks (< 0.3) are being included
+### Check 3: Token Efficiency
+- `total_tokens` > 2000 → ⚠️ Context bloat
 - `prompt_tokens` > 1800 → ⚠️ Very large prompt — consider truncating `text_msa` to 500 chars max
 - `completion_tokens` < 30 → ⚠️ Very short answer — may indicate insufficient context
 
-## Output Format
+### Output Format (Mode 2)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -67,8 +73,6 @@ From `token_usage` in the trace file:
 ├─────────────────────────────────────────────────────────────┤
 │ 📝 MSA CLEANLINESS                                          │
 │   Dialect markers found: X                                  │
-│   ⚠️  "ده" found in chunk [N] — should be "هذا"            │
-│   [OR: ✅ All text_msa fields are clean MSA]                │
 ├─────────────────────────────────────────────────────────────┤
 │ 🔍 HALLUCINATION CHECK                                      │
 │   Claim 1: "..." → ✅ Grounded in chunk [1]                 │
@@ -76,15 +80,5 @@ From `token_usage` in the trace file:
 ├─────────────────────────────────────────────────────────────┤
 │ 💰 TOKEN EFFICIENCY                                         │
 │   Total: XXX tokens  [✅/⚠️]                                │
-│   Prompt ratio: XX%                                         │
 └─────────────────────────────────────────────────────────────┘
-
-📋 RECOMMENDATIONS:
-1. ...
 ```
-
-## Recommendations Decision Tree
-
-- Dialect markers found → "Re-run normalization for these chunks, or update GEMINI_NORMALIZATION_PROMPT"
-- Hallucination detected → "Check if this topic is covered in the indexed content; may need more video ingestion"
-- Token bloat → "Add `reranker_score < 0.3` filter in search_service.py before building RAG prompt"
