@@ -144,3 +144,12 @@ class GeneratedSummary(BaseModel):
     lesson_id: str = Field(..., description="معرف الدرس المرتبط بالملخص")
     topics: list[SummaryTopic] = Field(..., description="المواضيع المستخرجة من الدرس")
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AudioIngestRequestV2(BaseModel):
+    youtube_url: str = Field(..., description="رابط فيديو اليوتيوب")
+    lesson_id: str = Field(..., description="معرف الدرس الفريد")
+    lesson_metadata: LessonMetadata | None = Field(None, description="بيانات الدرس الوصفية (اختياري)")
+
+class WebhookPayload(BaseModel):
+    lessonId: str = Field(..., description="معرف الدرس المرتبط بالحدث")
+    action: str = Field(..., description="نوع الإجراء (Updated / Deleted)")

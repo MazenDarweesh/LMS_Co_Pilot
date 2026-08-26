@@ -1,33 +1,41 @@
 import asyncio
-from fastapi import APIRouter, BackgroundTasks, Request, Depends, Header, HTTPException, status
-from sse_starlette.sse import EventSourceResponse
-from pydantic import BaseModel
+import glob
+import json
+import os
+import re
+from pathlib import Path
 
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
+from sse_starlette.sse import EventSourceResponse
+import structlog
+
+from src.api.dependencies import get_event_store
+from src.core.config import settings
+from src.core.middleware import limiter
+from src.db.event_store import EventStoreRepository
 from src.models.schemas import (
-    AudioTranscriptionRequest, AudioTranscriptionResponse,
-    AudioIngestRequest, LessonMetadata
+    AudioIngestRequestV2,
+    GeneratedQuiz,
+    GeneratedSummary,
+    LessonMetadata,
+    WebhookPayload,
 )
 from src.models.search_models import SearchRequest, SearchResponse
-
-class AudioIngestRequestV2(BaseModel):
-    youtube_url:     str
-    lesson_id:       str
-    lesson_metadata: LessonMetadata | None = None
+from src.services.auth_service import UserContext, get_current_user, require_role
+from src.services.lesson_content_service import lesson_content_service
+from src.services.lms_client import lms_client_service
+from src.services.pipeline_orchestrator import pipeline_orchestrator
+from src.services.qdrant_service import qdrant_service
 from src.services.search_service import search_service
 
-from src.core.middleware import limiter
-from src.api.dependencies import get_event_store
-from src.db.event_store import EventStoreRepository
-from src.services.pipeline_orchestrator import pipeline_orchestrator
-from src.services.auth_service import get_current_user, require_role, UserContext
-from src.core.config import settings
-from src.services.qdrant_service import qdrant_service
-from src.services.lms_client import lms_client
-from src.services.lesson_content_service import lesson_content_service
-from src.models.schemas import GeneratedQuiz, GeneratedSummary
+# Initialize Logger
+logger = structlog.get_logger()
 
+# Initialize Router
 router = APIRouter(prefix="/v1", tags=["V1 API"])
 
+# Constants
+CHECKPOINT_DIR = Path("downloads/checkpoints")
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -46,7 +54,6 @@ async def start_audio_ingestion(
     request: Request,
     payload: AudioIngestRequestV2,
     background_tasks: BackgroundTasks,
-    # يمكننا استدعاء event_store للاستخدام اللحظي هنا، لكن لا نمرره للمهمة الخلفية
     event_store: EventStoreRepository = Depends(get_event_store),
     admin_ctx: UserContext = Depends(require_role("Admin"))
 ):
@@ -70,9 +77,6 @@ async def start_audio_ingestion(
         "message": f"Track via /v1/ingest/events/{session_id}"
     }
 
-class WebhookPayload(BaseModel):
-    lessonId: str
-    action: str  # "Updated" or "Deleted"
 
 @router.post("/webhooks/lesson-updated", status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("10/minute")
@@ -98,7 +102,7 @@ async def unified_lesson_webhook(
         # 🔄 سحب تفاصيل الفيديو من LMS (Full Context) وبدء دورة Ingestion جديدة
         async def fetch_and_ingest():
             try:
-                context = await lms_client.get_lesson_full_context(payload.lessonId)
+                context = await lms_client_service.get_lesson_full_context(payload.lessonId)
                 
                 url = context.get("videoUrl")
                 # Parse LMS metadata into our LessonMetadata format
@@ -112,7 +116,7 @@ async def unified_lesson_webhook(
                     target_roles=context.get("targetRoles", context.get("TargetRoles", []))
                 )
 
-                # ✅ Fix 3: Delete old chunks FIRST before re-ingesting.
+                # ✅ Fix: Delete old chunks FIRST before re-ingesting.
                 # Prevents stale/duplicate vectors after a lesson content update.
                 await qdrant_service.delete_by_lesson_id(payload.lessonId)
                 logger.info("Old Qdrant chunks cleared before re-ingest", lesson_id=payload.lessonId)
@@ -170,14 +174,6 @@ async def stream_ingestion_events(
 
     return EventSourceResponse(event_generator())
 
-import os
-import json
-import glob
-import re
-from pathlib import Path
-from fastapi import HTTPException, status
-
-CHECKPOINT_DIR = Path("downloads/checkpoints")
 
 @router.get("/lessons/{lesson_id}")
 # 🛡️ OWASP A04: Insecure Design (Rate Limiting to prevent DoS)
@@ -189,14 +185,20 @@ async def get_lesson_result(request: Request, lesson_id: str):
     """
     # 🛡️ OWASP A01: Broken Access Control (Path Traversal Protection)
     if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid lesson_id format. Potential path traversal attempt blocked."
+        )
         
     # البحث عن كل ملفات الـ JSON الخاصة بهذا الدرس
     pattern = os.path.join(CHECKPOINT_DIR, f"{lesson_id}_chunk_*.json")
     chunk_files = glob.glob(pattern)
     
     if not chunk_files:
-        raise HTTPException(status_code=404, detail=f"No processed data found for lesson: {lesson_id}. It might be still processing or failed.")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No processed data found for lesson: {lesson_id}. It might be still processing or failed."
+        )
         
     merged_segments = []
     
@@ -206,7 +208,10 @@ async def get_lesson_result(request: Request, lesson_id: str):
                 data = json.load(f)
                 merged_segments.append(data)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error reading checkpoint {file_path}: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error reading checkpoint {file_path}: {str(e)}"
+            )
             
     # ترتيب المقاطع بناءً على وقت البداية لضمان تسلسل الدرس بشكل صحيح
     merged_segments.sort(key=lambda x: x.get("start_time", 0))
@@ -217,6 +222,7 @@ async def get_lesson_result(request: Request, lesson_id: str):
         "total_duration_seconds": sum(seg.get("end_time", 0) - seg.get("start_time", 0) for seg in merged_segments),
         "segments": merged_segments
     }
+
 
 # ---------------------------------------------------------------------------
 # AI Content Generation (Admin Only) - PR-3 Stateless Implementation
@@ -236,13 +242,17 @@ async def generate_lesson_quiz(
     try:
         # 🛡️ OWASP A01: Path Traversal Protection — same pattern as GET /lessons/{lesson_id}
         if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
-            raise HTTPException(status_code=400, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid lesson_id format. Potential path traversal attempt blocked."
+            )
         # Generate exactly 5 questions across the timeline
         return await lesson_content_service.generate_quiz(lesson_id=lesson_id, num_questions=5)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="فشل توليد الاختبار بسبب خطأ داخلي.")
+
 
 @router.post("/admin/lessons/{lesson_id}/generate-summary", response_model=GeneratedSummary)
 @limiter.limit("5/minute")
@@ -258,7 +268,10 @@ async def generate_lesson_summary(
     try:
         # 🛡️ OWASP A01: Path Traversal Protection
         if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
-            raise HTTPException(status_code=400, detail="Invalid lesson_id format. Potential path traversal attempt blocked.")
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid lesson_id format. Potential path traversal attempt blocked."
+            )
         return await lesson_content_service.generate_summary(lesson_id=lesson_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
