@@ -1,3 +1,3 @@
 [submodule ".agents"]
 	path = .agents
-	url = file:///e:/Mazen/EgyDynamic/Global_Agents
+	url = https://github.com/MazenDarweesh/Antigravity_Global_Agents.git
