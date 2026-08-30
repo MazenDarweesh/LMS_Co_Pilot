@@ -18,6 +18,8 @@
 - 🔐 **JWT-Based Permission Filtering** — Vector search is scoped per user role, tenant, module, and level at the Qdrant filter layer
 - 📡 **Real-Time Ingestion Pipeline** — YouTube audio → Whisper transcription → Gemini MSA normalization → BGE-M3 embedding → Qdrant upsert, all async with SSE progress streaming
 - 🔄 **Webhook-Driven Sync** — `.NET 10 LMS` notifies this service on lesson update/delete; vectors are re-indexed or purged automatically
+- 📝 **Stateless AI Content Generation** — Generates hallucination-free quizzes and pyramid summaries directly from Qdrant vectors without blocking the event loop
+- 🗣️ **Arabic Speech AI Utilities** — Built-in WER/CER transcription quality evaluation and mathematical Tafqit for accurate Text-to-Speech
 - 📊 **Structured Observability** — Every search request writes a JSON trace file capturing per-stage latency, token usage, reranker scores, and Qdrant point IDs for audit and deduplication
 - ⚡ **Non-Blocking Architecture** — All heavy operations (embedding, reranking, file I/O) offloaded via `asyncio.to_thread()` to keep the Uvicorn event loop responsive
 
@@ -87,6 +89,10 @@
 | `GET` | `/v1/ingest/events/{session_id}` | — | SSE stream for real-time ingestion progress |
 | `POST` | `/v1/webhooks/lesson-updated` | Service Token | Re-index or delete vectors on LMS content change |
 | `GET` | `/v1/lessons/{lesson_id}` | — | Retrieve all processed segments for a lesson |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin | Generate 5-question MCQs from Qdrant chunks |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin | Generate hierarchical pyramid summary of a lesson |
+| `POST` | `/v1/speech/evaluate-quality` | JWT Admin | Calculate WER/CER for AI transcript evaluations |
+| `POST` | `/v1/speech/tafqit` | Rate Limited | Convert numerical digits to Arabic text words |
 
 ### Search Request / Response Example
 
@@ -210,13 +216,15 @@ project-specific knowledge for AI-assisted development:
 
 | Component | Purpose |
 |:----------|:--------|
-| `skills/rag-debug-analyst` | Analyze search trace JSON files automatically |
-| `skills/search-pipeline-linter` | Code health check before every commit |
-| `skills/commit-message-generator` | Professional git commit messages |
-| `skills/service-bootstrapper` | Scaffold new FastAPI services correctly |
-| `skills/arabic-content-qa` | Validate MSA text quality and audit hallucinations |
-| `skills/agent-system-updater` | Detect skill drift and propose updates |
-| `skills/agent-system-planner` | Mine session patterns, propose new components |
+| `skills/production-code-audit` | Comprehensive pre-production readiness review (Security, Perf, Config) |
+| `skills/search-pipeline-linter` | Unified diagnostic check for RAG RRF pipeline traces |
+| `skills/commit-message-generator` | Professional git commit messages generator |
+| `skills/service-bootstrapper` | Scaffold new FastAPI services correctly with structlog/lifespan |
+| `skills/arabic-assistant` | Dual-purpose tech explainer and MSA text quality/hallucination auditor |
+| `skills/architecture-diagram-generator`| Generates standardized Mermaid flowcharts and diagrams |
+| `skills/readme-updater` | Auto-updates README.md to reflect current features and endpoints |
+| `skills/agent-system-updater` | Detect skill drift and propose diff-style updates |
+| `skills/agent-system-planner` | Mine session patterns, propose new workflow components |
 | `rules/` | Always-active coding standards (typing, async, service pattern) |
 | `hooks/` | Pre-commit linter + post-commit README sync |
 
@@ -229,4 +237,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-08-20*
+*Last updated by `readme-updater` skill — 2026-08-30*
