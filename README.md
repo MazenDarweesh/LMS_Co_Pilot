@@ -21,6 +21,7 @@
 - 📝 **Stateless AI Content Generation** — Generates hallucination-free quizzes and pyramid summaries directly from Qdrant vectors without blocking the event loop
 - 🗣️ **Arabic Speech AI Utilities** — Built-in WER/CER transcription quality evaluation and mathematical Tafqit for accurate Text-to-Speech
 - 📊 **Structured Observability** — Every search request writes a JSON trace file capturing per-stage latency, token usage, reranker scores, and Qdrant point IDs for audit and deduplication
+- 🧠 **Stateful Conversational RAG** — LangGraph-powered memory with PostgreSQL checkpointer, featuring a smart Sliding Window and Token Budget Guard to prevent context bloat
 - ⚡ **Non-Blocking Architecture** — All heavy operations (embedding, reranking, file I/O) offloaded via `asyncio.to_thread()` to keep the Uvicorn event loop responsive
 
 ---
@@ -66,11 +67,17 @@
 │                 │ Top-N grounded chunks                         │
 │                 ▼                                               │
 │  ┌─────────────────────────────────┐                           │
+│  │   LangGraph State Orchestrator  │                           │
+│  │  (PostgreSQL Memory Checkpoint) │                           │
+│  └──────────────┬──────────────────┘                           │
+│                 │ Context + History                            │
+│                 ▼                                              │
+│  ┌─────────────────────────────────┐                           │
 │  │   Google Gemini 3.5 Flash Lite  │                           │
 │  │   Arabic RAG Answer Generation  │                           │
 │  └──────────────┬──────────────────┘                           │
-│                 │                                               │
-│                 ▼                                               │
+│                 │                                              │
+│                 ▼                                              │
 │  ┌─────────────────────────────────┐                           │
 │  │  JSON Trace Logger              │                           │
 │  │  downloads/search_debugs/*.json │                           │
@@ -148,6 +155,8 @@
 | **Sparse Embedding** | BM25 (sentence-transformers) | Keyword matching |
 | **Reranker** | BGE-Reranker-v2-m3 | Cross-encoder rescoring |
 | **LLM (RAG)** | Google Gemini 3.5 Flash Lite | Arabic answer generation |
+| **Orchestration** | LangGraph | Stateful agent workflows and memory |
+| **State DB** | PostgreSQL (asyncpg) | LangGraph persistent memory checkpointer |
 | **LLM (Normalize)**| Google Gemini 3.5 Flash Lite | MSA transcription cleanup |
 | **Transcription** | OpenAI Whisper | Audio → text |
 | **Auth** | PyJWT + FastAPI Depends | Role-based access control |
@@ -202,8 +211,8 @@ uvicorn src.main:app --reload
 - [x] Webhook-driven auto re-indexing from .NET LMS
 - [x] Structured JSON observability traces (latency, token usage, point IDs)
 - [x] Antigravity agent system (.agents/ skills, rules, hooks, MCP)
+- [x] LangGraph stateful conversational RAG and persistent memory
 - [ ] PDF ingestion via Marker (Week 9)
-- [ ] LangGraph multi-agent tutoring workflow (Week 10)
 - [ ] GPU-accelerated reranker (ONNX export)
 - [ ] Production deployment (Docker Swarm / Kubernetes)
 
@@ -237,4 +246,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-08-30*
+*Last updated by `readme-updater` skill — 2026-09-01*
