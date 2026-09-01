@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: str = ""
     QDRANT_COLLECTION: str = "learning_content"
 
+    # LangGraph Memory Management
+    AGENT_MAX_HISTORY_MESSAGES: int = 6   # آخر 6 رسائل = 3 أسئلة + 3 إجابات
+    AGENT_MAX_CONTEXT_TOKENS: int = 3000  # حد أقصى للـ Tokens المرسلة للموديل
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

@@ -64,6 +64,41 @@ def _build_rag_context_str(chunks: list[dict]) -> str:
 
     return "\n\n".join(context_blocks)
 
+def _trim_messages(
+    messages: list,
+    max_messages: int,
+    max_tokens_approx: int
+) -> list:
+    """
+    Sliding Window Memory Trimmer — 2026 Best Practice.
+    
+    Strategy (two-layer defense):
+    Layer 1: Keep only the last `max_messages` (hard message count limit).
+    Layer 2: If total chars still too large, trim further from the oldest.
+    
+    Note: We use character count as a cheap proxy for tokens (1 token ≈ 4 chars
+    in Arabic/English mixed text). This avoids the overhead of a full tokenizer call.
+    
+    Always preserves the LAST message (the new student question) intact.
+    """
+    if not messages:
+        return messages
+
+    # Layer 1: Sliding Window — trim by message count
+    trimmed = list(messages[-max_messages:]) if len(messages) > max_messages else list(messages)
+
+    # Layer 2: Token Budget Guard — trim by approximate character budget
+    # 1 token ≈ 4 chars (conservative estimate for Arabic)
+    char_budget = max_tokens_approx * 4
+    total_chars = sum(len(getattr(m, "content", "")) for m in trimmed)
+
+    while total_chars > char_budget and len(trimmed) > 1:
+        # Always drop from the oldest end (index 0), never drop the last message
+        removed = trimmed.pop(0)
+        total_chars -= len(getattr(removed, "content", ""))
+
+    return trimmed
+
 def _write_search_debug_file(
     query: str, 
     candidates: list[dict], 
@@ -127,9 +162,23 @@ class SearchService:
         self.app_graph = workflow.compile(checkpointer=agent_service.checkpointer)
 
     async def _call_model(self, state: AgentState) -> dict:
-        messages = state["messages"]
+        raw_messages = state["messages"]
         context_str = state["context"].get("context_str", "") if state.get("context") else ""
         
+        # Apply Sliding Window + Token Budget trimming before sending to Gemini
+        messages = _trim_messages(
+            messages=raw_messages,
+            max_messages=settings.AGENT_MAX_HISTORY_MESSAGES,
+            max_tokens_approx=settings.AGENT_MAX_CONTEXT_TOKENS,
+        )
+        
+        if len(raw_messages) != len(messages):
+            logger.debug(
+                "Memory trimmed",
+                original_count=len(raw_messages),
+                trimmed_count=len(messages),
+            )
+            
         gemini_contents = []
         for msg in messages:
             role = "user" if isinstance(msg, HumanMessage) else "model"
@@ -165,6 +214,13 @@ class SearchService:
                 "completion_tokens": getattr(response.usage_metadata, "candidates_token_count", 0),
                 "total_tokens": getattr(response.usage_metadata, "total_token_count", 0),
             }
+            
+        if token_usage.get("total_tokens", 0) > settings.AGENT_MAX_CONTEXT_TOKENS * 0.85:
+            logger.warning(
+                "Token usage approaching budget limit",
+                total_tokens=token_usage.get("total_tokens"),
+                budget=settings.AGENT_MAX_CONTEXT_TOKENS
+            )
             
         return {
             "messages": [AIMessage(content=response.text)],
