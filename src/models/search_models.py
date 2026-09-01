@@ -20,6 +20,7 @@ class SearchRequest(BaseModel):
     playlist_id: str | None = None
     video_id: str | None = None
     limit: int = Field(5, ge=1, le=10, description="عدد المصادر المطلوبة")
+    thread_id: str | None = Field(None, description="معرف جلسة المحادثة (لحفظ السياق)")
 
 
 class SourceItem(BaseModel):

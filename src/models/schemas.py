@@ -2,6 +2,10 @@ import re
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Self
+
+from src.models.entities import ContentType, SourceType
+
+YOUTUBE_REGEX = re.compile(r"(?:v=|\/)([a-zA-Z0-9_-]{11})")
 class AudioIngestRequest(BaseModel):
     youtube_url: str = Field(..., description="رابط يوتيوب الخاص بالمحاضرة")
     lesson_id: str = Field(..., description="المعرف الفريد للدرس (سيعمل كـ session_id للمتابعة)")
@@ -42,8 +46,7 @@ class NormalizedTranscriptionSegment(BaseModel):
 
         # ب. تنظيف واستخراج معرف اليوتيوب (Video ID) وإعادة صياغة الرابط بالشكل المطلوب
         # الروابط المدعومة: watch?v=ID أو youtu.be/ID
-        youtube_regex = r"(?:v=|\/)([a-zA-Z0-9_-]{11})"
-        match = re.search(youtube_regex, self.youtube_url)
+        match = YOUTUBE_REGEX.search(self.youtube_url)
         if not match:
             raise ValueError("رابط YouTube غير صالح. يجب أن يحتوي على معرف فيديو (Video ID) مكون من 11 حرفاً.")
 
@@ -53,8 +56,6 @@ class NormalizedTranscriptionSegment(BaseModel):
         self.youtube_url = f"https://youtu.be/{video_id}?t={self.start_time}s"
 
         return self
-
-from src.models.entities import ContentType, SourceType
 
 # -------------------------------------------------------------------
 # نموذج البيانات الوصفية للدرس — يُمرَّر للـ Pipeline عند الاستيعاب

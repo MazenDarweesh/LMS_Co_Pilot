@@ -2,11 +2,17 @@ import asyncio
 import os
 import json
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 import structlog
 from google import genai
 from google.genai import types
+
+from langgraph.graph import StateGraph, START, END
+from langchain_core.messages import HumanMessage, AIMessage
+
 from src.core.config import settings
+from src.agents.base_agent import AgentState, agent_service
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.models.auth_models import UserContext
 from src.services.embedding_service import embedding_service
@@ -42,7 +48,7 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
         
     return Filter(must=must) if must else None
 
-def _build_rag_prompt(query: str, chunks: list[dict]) -> str:
+def _build_rag_context_str(chunks: list[dict]) -> str:
     context_blocks = []
     for i, chunk in enumerate(chunks, 1):
         text = chunk.get("text_msa", "")
@@ -56,20 +62,7 @@ def _build_rag_prompt(query: str, chunks: list[dict]) -> str:
         source_info += ")"
         context_blocks.append(source_info)
 
-    context_str = "\n\n".join(context_blocks)
-    return f"""أنت مساعد تعليمي ذكي متخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى.
-
-## التعليمات:
-- أجب **حصراً** بناءً على المقاطع المُقدَّمة أدناه.
-- استشهد بالمصادر برقمها [1] [2] في نهاية كل جملة مستنِدة إلى مصدر.
-
-## سؤال الطالب:
-{query}
-
-## المقاطع التعليمية المسترجعة:
-{context_str}
-
-## الإجابة:"""
+    return "\n\n".join(context_blocks)
 
 def _write_search_debug_file(
     query: str, 
@@ -84,11 +77,11 @@ def _write_search_debug_file(
     debug_dir = "downloads/search_debugs"
     os.makedirs(debug_dir, exist_ok=True)
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
     file_path = os.path.join(debug_dir, f"search_{timestamp}.json")
     
     debug_data = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "query": query,
         "metrics": metrics or {},
         "token_usage": token_usage or {},
@@ -122,9 +115,65 @@ def _write_search_debug_file(
 class SearchService:
     def __init__(self):
         self._gemini_client = None
+        self.app_graph = None
 
     def initialize(self):
         self._gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        
+        workflow = StateGraph(AgentState)
+        workflow.add_node("agent", self._call_model)
+        workflow.add_edge(START, "agent")
+        workflow.add_edge("agent", END)
+        self.app_graph = workflow.compile(checkpointer=agent_service.checkpointer)
+
+    async def _call_model(self, state: AgentState) -> dict:
+        messages = state["messages"]
+        context_str = state["context"].get("context_str", "") if state.get("context") else ""
+        
+        gemini_contents = []
+        for msg in messages:
+            role = "user" if isinstance(msg, HumanMessage) else "model"
+            gemini_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
+            
+        system_instruction = f"""أنت مساعد تعليمي ذكي متخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى.
+
+## التعليمات:
+- أجب **حصراً** بناءً على المقاطع المُقدَّمة أدناه.
+- إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
+- استشهد بالمصادر برقمها [1] [2] في نهاية كل جملة مستنِدة إلى مصدر.
+
+## المقاطع التعليمية المسترجعة للسؤال الحالي:
+{context_str}"""
+
+        t0 = time.time()
+        response = await asyncio.to_thread(
+            self._gemini_client.models.generate_content,
+            model=settings.GEMINI_MODEL,
+            contents=gemini_contents,
+            config=types.GenerateContentConfig(
+                temperature=0.2, 
+                max_output_tokens=1024,
+                system_instruction=system_instruction
+            ),
+        )
+        gemini_latency_ms = round((time.time() - t0) * 1000, 2)
+        
+        token_usage = {}
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
+            token_usage = {
+                "prompt_tokens": getattr(response.usage_metadata, "prompt_token_count", 0),
+                "completion_tokens": getattr(response.usage_metadata, "candidates_token_count", 0),
+                "total_tokens": getattr(response.usage_metadata, "total_token_count", 0),
+            }
+            
+        return {
+            "messages": [AIMessage(content=response.text)],
+            "context": {
+                "token_usage": token_usage,
+                "gemini_latency_ms": gemini_latency_ms,
+                "system_prompt_used": system_instruction
+            }
+        }
 
     async def search(self, req: SearchRequest, user_ctx: UserContext) -> SearchResponse:
         logger.info("Search started", query=req.query, scope=req.scope, user_entities_count=len(user_ctx.user_entities))
@@ -185,33 +234,28 @@ class SearchService:
         logger.info("Reranked results", top_n=len(top_chunks), ms=metrics["reranker_latency_ms"])
 
         # ──────────────────────────────────────────────
-        # 5. Build prompt with tagged sources
+        # 5. Build context & Invoke LangGraph
         # ──────────────────────────────────────────────
-        # Note: we pass the ORIGINAL query to the LLM prompt (not the normalized one)
-        # so Gemini can understand the student's intent in their own words.
-        prompt = _build_rag_prompt(req.query, top_chunks)
-
-        assert self._gemini_client is not None
-        t3 = time.time()
-        response = await asyncio.to_thread(
-            self._gemini_client.models.generate_content,
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.2, max_output_tokens=1024),
-        )
-        metrics["gemini_latency_ms"] = round((time.time() - t3) * 1000, 2)
-        metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+        context_str = _build_rag_context_str(top_chunks)
         
-        answer_text = response.text.strip()
-        logger.info("Gemini answer generated", answer_length=len(answer_text), ms=metrics["gemini_latency_ms"])
-
-        token_usage = {}
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            token_usage = {
-                "prompt_tokens": getattr(response.usage_metadata, "prompt_token_count", 0),
-                "completion_tokens": getattr(response.usage_metadata, "candidates_token_count", 0),
-                "total_tokens": getattr(response.usage_metadata, "total_token_count", 0),
-            }
+        thread_id = req.thread_id or str(uuid.uuid4())
+        config = {"configurable": {"thread_id": thread_id}}
+        
+        t3 = time.time()
+        final_state = await self.app_graph.ainvoke(
+            {"messages": [HumanMessage(content=req.query)], "context": {"context_str": context_str}},
+            config=config
+        )
+        graph_latency_ms = round((time.time() - t3) * 1000, 2)
+        
+        answer_text = final_state["messages"][-1].content
+        
+        returned_context = final_state.get("context", {})
+        metrics["gemini_latency_ms"] = returned_context.get("gemini_latency_ms", 0)
+        metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+        token_usage = returned_context.get("token_usage", {})
+        
+        logger.info("Gemini answer generated via LangGraph", answer_length=len(answer_text), thread_id=thread_id, ms=graph_latency_ms)
 
         # Write trace log file asynchronously
         await asyncio.to_thread(
@@ -219,7 +263,7 @@ class SearchService:
             query=req.query,
             candidates=candidates,
             reranked=top_chunks,
-            prompt=prompt,
+            prompt=returned_context.get("system_prompt_used", ""),
             answer=answer_text,
             metrics=metrics,
             token_usage=token_usage

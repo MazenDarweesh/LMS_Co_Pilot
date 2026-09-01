@@ -42,6 +42,9 @@ class AgentService:
         # 2. Initialize the checkpointer using the pool
         self.checkpointer = AsyncPostgresSaver(self._pool)
         
+        # 3. Create the LangGraph tables if they don't exist
+        await self.checkpointer.setup()
+        
         logger.info("Agent Service (LangGraph Checkpointer) ready ✅")
 
     async def close(self) -> None:
