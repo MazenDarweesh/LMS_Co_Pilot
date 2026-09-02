@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, AIMessage
 
 from src.core.config import settings
+from src.core.prompts import RAG_SYSTEM_PROMPT
 from src.agents.base_agent import AgentState, agent_service
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.models.auth_models import UserContext
@@ -184,15 +185,7 @@ class SearchService:
             role = "user" if isinstance(msg, HumanMessage) else "model"
             gemini_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
             
-        system_instruction = f"""أنت مساعد تعليمي ذكي متخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى.
-
-## التعليمات:
-- أجب **حصراً** بناءً على المقاطع المُقدَّمة أدناه.
-- إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
-- استشهد بالمصادر برقمها [1] [2] في نهاية كل جملة مستنِدة إلى مصدر.
-
-## المقاطع التعليمية المسترجعة للسؤال الحالي:
-{context_str}"""
+        system_instruction = RAG_SYSTEM_PROMPT.format(context_str=context_str)
 
         t0 = time.time()
         response = await asyncio.to_thread(
