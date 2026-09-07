@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ─── Third-Party ──────────────────────────────────────────────────────────────
-import google.generativeai as genai
+from google import genai
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchAny, ScrollRequest
 
@@ -44,8 +44,7 @@ from src.core.config import settings
 
 
 # ─── Gemini Setup ─────────────────────────────────────────────────────────────
-genai.configure(api_key=settings.GEMINI_API_KEY)
-gemini = genai.GenerativeModel(settings.GEMINI_MODEL)
+gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
 QUESTION_PROMPT = """\
 أنت مساعد تعليمي متخصص في إنشاء أسئلة تقييم.
@@ -106,8 +105,9 @@ async def generate_question(text: str) -> str | None:
     try:
         prompt = QUESTION_PROMPT.format(text=text[:1500])  # حد الـ context
         response = await asyncio.to_thread(
-            gemini.generate_content,
-            prompt,
+            gemini_client.models.generate_content,
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
         )
         question = response.text.strip()
         # تنظيف: إزالة "السؤال:" لو Gemini كتبها

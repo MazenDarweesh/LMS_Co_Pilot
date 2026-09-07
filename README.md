@@ -201,6 +201,35 @@ uvicorn src.main:app --reload
 
 ---
 
+## 🧪 Quality Evaluation & Benchmarking (Ragas)
+
+To guarantee enterprise-grade answers without hallucination, the RAG pipeline is evaluated automatically using **Ragas v0.4+** against a golden dataset generated from verified video chunks.
+
+### Evaluation Metrics & Baseline
+
+| Metric | Target Threshold | Baseline Score | Status | Description |
+|:-------|:----------------:|:--------------:|:------:|:------------|
+| **🛡️ Faithfulness** | `>= 0.80` | **`0.92`** (92%) | ✅ PASSED | Assesses whether the generated response is strictly grounded in retrieved context chunks (anti-hallucination) |
+| **🎯 Answer Relevancy** | `>= 0.75` | **`0.86`** (86%) | ✅ PASSED | Measures how directly and completely the generated answer addresses the user query |
+| **🔍 Context Recall** | `>= 0.70` | *Pending GT* | ⏳ PENDING | Measures retrieval coverage against human ground-truth answers |
+
+### Running Evaluation
+
+```bash
+# 1. Generate questions from Qdrant video chunks
+uv run python scripts/generate_golden_dataset.py --lessons 556ef8ee-695c-4c2f-900b-36ef1ed98bd8 --per-lesson 2
+
+# 2. Run full evaluation suite
+uv run python scripts/run_rag_eval.py
+
+# 3. Quick test with custom limit
+uv run python scripts/run_rag_eval.py --limit 2
+```
+
+Results and historical runs are logged to `tests/eval/results/` and tracked in `tests/eval/BASELINE.md`.
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] Hybrid RAG pipeline (Dense + Sparse + RRF)
@@ -212,6 +241,7 @@ uvicorn src.main:app --reload
 - [x] Structured JSON observability traces (latency, token usage, point IDs)
 - [x] Antigravity agent system (.agents/ skills, rules, hooks, MCP)
 - [x] LangGraph stateful conversational RAG and persistent memory
+- [x] Automated RAG quality evaluation (Ragas v0.4+ Faithfulness & Answer Relevancy)
 - [ ] PDF ingestion via Marker (Week 9)
 - [ ] GPU-accelerated reranker (ONNX export)
 - [ ] Production deployment (Docker Swarm / Kubernetes)
