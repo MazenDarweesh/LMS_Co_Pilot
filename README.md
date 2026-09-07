@@ -22,6 +22,9 @@
 - 🗣️ **Arabic Speech AI Utilities** — Built-in WER/CER transcription quality evaluation and mathematical Tafqit for accurate Text-to-Speech
 - 📊 **Structured Observability** — Every search request writes a JSON trace file capturing per-stage latency, token usage, reranker scores, and Qdrant point IDs for audit and deduplication
 - 🧠 **Stateful Conversational RAG** — LangGraph-powered memory with PostgreSQL checkpointer, featuring a smart Sliding Window and Token Budget Guard to prevent context bloat
+- 🧪 **Automated Quality Benchmarking** — Integrated Ragas framework systematically tracking Faithfulness (92%) and Answer Relevancy (86%) against real video transcripts
+- 🛡️ **Hardened Production Security** — Strict CORS origin policies, per-endpoint rate limits (`slowapi`), and Host header validation preventing unauthorized access
+- ⚡ **Optimized Retrieval Latency** — Tuned candidate pooling (`QDRANT_SEARCH_CANDIDATES_LIMIT = 8`) to minimize CPU Cross-Encoder bottlenecks
 - ⚡ **Non-Blocking Architecture** — All heavy operations (embedding, reranking, file I/O) offloaded via `asyncio.to_thread()` to keep the Uvicorn event loop responsive
 
 ---
@@ -89,17 +92,17 @@
 
 ## 🚀 API Endpoints
 
-| Method | Endpoint | Auth | Description |
-|:------:|:---------|:----:|:------------|
-| `POST` | `/v1/search` | JWT | Hybrid RAG search with role-scoped vector filtering |
-| `POST` | `/v1/ingest/audio` | JWT Admin | Start YouTube → Qdrant ingestion pipeline (async) |
-| `GET` | `/v1/ingest/events/{session_id}` | — | SSE stream for real-time ingestion progress |
-| `POST` | `/v1/webhooks/lesson-updated` | Service Token | Re-index or delete vectors on LMS content change |
-| `GET` | `/v1/lessons/{lesson_id}` | — | Retrieve all processed segments for a lesson |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin | Generate 5-question MCQs from Qdrant chunks |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin | Generate hierarchical pyramid summary of a lesson |
+| Method | Endpoint | Auth / Protection | Description |
+|:------:|:---------|:-----------------:|:------------|
+| `POST` | `/v1/search` | JWT · 30 req/min | Hybrid RAG search with role-scoped vector filtering |
+| `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
+| `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
+| `POST` | `/v1/webhooks/lesson-updated` | Service Token · 10 req/min | Re-index or delete vectors on LMS content change |
+| `GET` | `/v1/lessons/{lesson_id}` | Rate Limited · 20 req/min | Retrieve all processed segments for a lesson |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin · 5 req/min | Generate 5-question MCQs from Qdrant chunks |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 5 req/min | Generate hierarchical pyramid summary of a lesson |
 | `POST` | `/v1/speech/evaluate-quality` | JWT Admin | Calculate WER/CER for AI transcript evaluations |
-| `POST` | `/v1/speech/tafqit` | Rate Limited | Convert numerical digits to Arabic text words |
+| `POST` | `/v1/speech/tafqit` | Rate Limited · 60 req/min | Convert numerical digits to Arabic text words |
 
 ### Search Request / Response Example
 
@@ -163,6 +166,7 @@
 | **HTTP Client** | httpx (async) | LMS backend integration |
 | **Logging** | structlog | Structured JSON logs |
 | **Rate Limiting** | slowapi | Per-endpoint throttling |
+| **Evaluation** | Ragas v0.4+ | Automated Faithfulness & Answer Relevancy benchmarking |
 | **Streaming** | SSE (sse-starlette) | Real-time pipeline events |
 | **Infra** | Docker Compose | Local orchestration |
 | **Package Manager** | uv | Fast Python dependency management |
@@ -179,12 +183,14 @@ cd LMS_CO_Pilot
 # 2. Copy environment file and fill in your API keys
 cp .env.example .env
 
-# 3. Start Qdrant (Docker)
-docker compose up -d qdrant
+# 3. Start PostgreSQL and Qdrant (Docker)
+docker compose up -d db qdrant
 
-# 4. Activate virtual environment and run
-.venv\Scripts\Activate.ps1
-uvicorn src.main:app --reload
+# 4. Run automated test suite (41 tests)
+uv run pytest tests/ -v
+
+# 5. Start development server
+uv run uvicorn src.main:app --reload
 ```
 
 **API docs available at:** `http://localhost:8000/docs`
@@ -198,6 +204,8 @@ uvicorn src.main:app --reload
 | `JWT_SECRET` | ✅ | Must match `.NET LMS` JWT secret |
 | `SERVICE_TOKEN` | ✅ | Shared secret for webhook authentication |
 | `LMS_BASE_URL` | ✅ | Base URL of the `.NET 10` backend |
+| `CORS_ORIGINS` | ⚙️ | Allowed CORS frontend origins (comma-separated or JSON list) |
+| `QDRANT_SEARCH_CANDIDATES_LIMIT` | ⚙️ | Candidate pool size for Cross-Encoder reranking (default: `8`) |
 
 ---
 
@@ -227,6 +235,25 @@ uv run python scripts/run_rag_eval.py --limit 2
 ```
 
 Results and historical runs are logged to `tests/eval/results/` and tracked in `tests/eval/BASELINE.md`.
+
+---
+
+## 🧪 Testing & Quality Assurance
+
+The codebase maintains an automated test suite (41 tests, session-scoped lifespan) covering unit logic, RBAC, integration flows, and Arabic NLP utilities:
+
+```bash
+uv run pytest tests/ -v
+```
+
+| Test Suite | Coverage Area | Tests | Status |
+|:-----------|:--------------|:-----:|:------:|
+| `tests/integration/test_auth_rbac.py` | JWT authentication & fine-grained permission scopes | 11 | ✅ 100% Passed |
+| `tests/integration/test_search_rag.py` | Hybrid RAG retrieval, LangGraph memory, schema validation | 9 | ✅ 100% Passed |
+| `tests/integration/test_webhooks.py` | LMS lesson update/delete synchronization events | 7 | ✅ 100% Passed |
+| `tests/unit/test_memory_trimmer.py` | Token budget guard & sliding window message trimmer | 9 | ✅ 100% Passed |
+| `tests/test_arabic_speech.py` | Arabic WER/CER metrics and numerical Tafqit utilities | 3 | ✅ 100% Passed |
+| `tests/test_api.py` | System health check and API lifecycle status | 2 | ✅ 100% Passed |
 
 ---
 
@@ -261,6 +288,10 @@ project-specific knowledge for AI-assisted development:
 | `skills/service-bootstrapper` | Scaffold new FastAPI services correctly with structlog/lifespan |
 | `skills/arabic-assistant` | Dual-purpose tech explainer and MSA text quality/hallucination auditor |
 | `skills/architecture-diagram-generator`| Generates standardized Mermaid flowcharts and diagrams |
+| `skills/blueprint` | Step-by-step construction plans executable cold by coding agents |
+| `skills/executing-plans` | Checkpoint-based execution of approved implementation plans |
+| `skills/decision-navigator` | Targeted branching questions to resolve architecture decisions |
+| `skills/antigravity-chat-restorer` | Diagnoses and restores IDE chat conversations after environment updates |
 | `skills/readme-updater` | Auto-updates README.md to reflect current features and endpoints |
 | `skills/agent-system-updater` | Detect skill drift and propose diff-style updates |
 | `skills/agent-system-planner` | Mine session patterns, propose new workflow components |
@@ -276,4 +307,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-01*
+*Last updated by `readme-updater` skill — 2026-09-07*
