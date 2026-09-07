@@ -249,7 +249,7 @@ class SearchService:
             dense_vector=dense_vec,
             sparse_vector=sparse_vec,
             user_ctx=user_ctx,
-            limit=60,
+            limit=settings.QDRANT_SEARCH_CANDIDATES_LIMIT,
             extra_filter=scope_filter,
         )
         metrics["qdrant_latency_ms"] = round((time.time() - t1) * 1000, 2)
@@ -276,7 +276,7 @@ class SearchService:
         top_chunks = await reranker_service.rerank(
             query=req.query,
             passages=candidates,
-            top_n=min(req.limit, 10),
+            top_n=min(req.limit, settings.QDRANT_SEARCH_CANDIDATES_LIMIT),
             text_field="text_msa",
         )
         metrics["reranker_latency_ms"] = round((time.time() - t2) * 1000, 2)

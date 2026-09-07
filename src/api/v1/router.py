@@ -39,7 +39,12 @@ CHECKPOINT_DIR = Path("downloads/checkpoints")
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search(req: SearchRequest, user_ctx: UserContext = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def search(
+    request: Request,
+    req: SearchRequest,
+    user_ctx: UserContext = Depends(get_current_user)
+):
     """
     🔍 Hybrid RAG Search
     Fully protected by JWT & precise Role/Level filtering.

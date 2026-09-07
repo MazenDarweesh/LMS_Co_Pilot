@@ -57,7 +57,7 @@ app.add_middleware(
 # ج. ميدل وير الـ CORS (يجب أن يكون خارجياً ليتعامل مع طلبات الـ Preflight)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # يتم تعديلها لروابط الـ Frontend الحقيقية في الإنتاج
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

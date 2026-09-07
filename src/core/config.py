@@ -30,6 +30,21 @@ class Settings(BaseSettings):
     AGENT_MAX_HISTORY_MESSAGES: int = 6   # آخر 6 رسائل = 3 أسئلة + 3 إجابات
     AGENT_MAX_CONTEXT_TOKENS: int = 3000  # حد أقصى للـ Tokens المرسلة للموديل
 
+    # Search & Retrieval Optimization
+    QDRANT_SEARCH_CANDIDATES_LIMIT: int = 8  # عدد المرشحين المسترجعين للـ Reranker (تحسين زمن المعالجة على CPU)
+
+    # CORS Allowed Origins
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:4200",
+        "http://localhost:5173",
+        "http://localhost:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:4200",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+    ]
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
