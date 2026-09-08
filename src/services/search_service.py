@@ -369,7 +369,7 @@ class SearchService:
         # 6. Save in Semantic Cache asynchronously
         # ──────────────────────────────────────────────
         if settings.SEMANTIC_CACHE_ENABLED and answer_text:
-            asyncio.create_task(
+            cache_task = asyncio.create_task(
                 semantic_cache_service.store(
                     query=req.query,
                     query_vector=dense_vec,
@@ -377,7 +377,10 @@ class SearchService:
                     user_ctx=user_ctx,
                 )
             )
+            _background_tasks.add(cache_task)
+            cache_task.add_done_callback(_background_tasks.discard)
 
         return final_response
 
+_background_tasks: set[asyncio.Task] = set()
 search_service = SearchService()

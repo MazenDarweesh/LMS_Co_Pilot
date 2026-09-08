@@ -10,12 +10,15 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/lms_co_pilot
+      - QDRANT_URL=http://qdrant:6333
       - ENVIRONMENT=production
       - SERVICE_TOKEN=MySuperSecretToken2026
       - LMS_BASE_URL=http://dynamicprolearn-app:8080
     depends_on:
       db:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     restart: unless-stopped
     networks:
       - copilot_net

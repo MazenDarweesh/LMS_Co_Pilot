@@ -135,7 +135,7 @@ async def unified_lesson_webhook(
                     url, payload.lessonId, request.app.state.db_pool, meta
                 )
             except Exception as e:
-                print(f"❌ Webhook Ingestion Failed for {payload.lessonId}: {e}")
+                logger.error("Webhook ingestion failed", lesson_id=payload.lessonId, error=str(e))
                 
         background_tasks.add_task(fetch_and_ingest)
         return {"status": "accepted", "message": "Update and Ingestion triggered"}

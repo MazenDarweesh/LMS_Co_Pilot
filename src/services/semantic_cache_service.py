@@ -21,7 +21,6 @@ from qdrant_client.models import (
     FieldCondition,
     MatchValue,
     KeywordIndexParams,
-    PointsSelector,
     FilterSelector,
 )
 

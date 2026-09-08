@@ -27,10 +27,12 @@ RUN uv sync --frozen --no-dev
 # ==========================================
 FROM python:3.13-slim-bookworm AS runtime
 
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-USER appuser
+RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+    mkdir -p /app/.model_cache /app/downloads && \
+    chown -R appuser:appuser /app
 
 WORKDIR /app
+USER appuser
 
 # Copy the environment and source code
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
