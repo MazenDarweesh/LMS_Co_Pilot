@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     # Search & Retrieval Optimization
     QDRANT_SEARCH_CANDIDATES_LIMIT: int = 8  # عدد المرشحين المسترجعين للـ Reranker (تحسين زمن المعالجة على CPU)
 
+    # Semantic Cache Configuration
+    SEMANTIC_CACHE_ENABLED: bool = True
+    SEMANTIC_CACHE_COLLECTION: str = "semantic_cache"
+    SEMANTIC_CACHE_THRESHOLD: float = 0.95  # Cosine similarity threshold (0.95 prevents false positives)
+    SEMANTIC_CACHE_TTL_DAYS: int = 7       # Cache expiration in days
+
+    # Reranker Engine Configuration (Quantized ONNX via FlashRank)
+    RERANKER_MODEL_NAME: str = "miniReranker_arabic_v1"
+    RERANKER_CACHE_DIR: str = "./.model_cache"
+
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

@@ -27,6 +27,7 @@ from src.services.lms_client import lms_client_service
 from src.services.pipeline_orchestrator import pipeline_orchestrator
 from src.services.qdrant_service import qdrant_service
 from src.services.search_service import search_service
+from src.services.semantic_cache_service import semantic_cache_service
 
 # Initialize Logger
 logger = structlog.get_logger()
@@ -99,11 +100,14 @@ async def unified_lesson_webhook(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
 
     if payload.action == "Deleted":
-        # 🗑️ مسح المتجهات من قاعدة البيانات فوراً
+        # 🗑️ مسح المتجهات والكاش من قاعدة البيانات فوراً
         background_tasks.add_task(qdrant_service.delete_by_lesson_id, payload.lessonId)
+        background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
         return {"status": "accepted", "message": "Deletion triggered"}
         
     elif payload.action == "Updated":
+        # 🗑️ مسح الكاش القديم فوراً لمنع إرجاع إجابات قديمة أثناء إعادة المعالجة
+        background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
         # 🔄 سحب تفاصيل الفيديو من LMS (Full Context) وبدء دورة Ingestion جديدة
         async def fetch_and_ingest():
             try:

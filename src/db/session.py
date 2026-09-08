@@ -75,6 +75,12 @@ async def lifespan(app: FastAPI):
     app.state.qdrant_service = qdrant_service
     logger.info("Qdrant service ready ✅")
 
+    # ④.1 تهيئة Semantic Cache Service
+    from src.services.semantic_cache_service import semantic_cache_service
+    await semantic_cache_service.initialize()
+    app.state.semantic_cache_service = semantic_cache_service
+    logger.info("Semantic cache service ready ✅")
+
     # ⑤ تهيئة Search Service (Gemini client for RAG answers)
     from src.services.search_service import search_service
     search_service.initialize()

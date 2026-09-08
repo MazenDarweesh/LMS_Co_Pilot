@@ -35,3 +35,15 @@ class UserContext(BaseModel):
     claims: TokenClaims
     permissions: UserPermissions
     user_entities: list[str] = Field(default_factory=list)
+
+    @property
+    def user_id(self) -> str:
+        return self.claims.user_id
+
+    @property
+    def company_id(self) -> str:
+        return self.claims.company_id
+
+    @property
+    def role(self) -> str:
+        return self.claims.role

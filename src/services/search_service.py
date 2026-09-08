@@ -19,6 +19,7 @@ from src.models.auth_models import UserContext
 from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
+from src.services.semantic_cache_service import semantic_cache_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
 
@@ -242,6 +243,31 @@ class SearchService:
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
         metrics["embedding_latency_ms"] = round((time.time() - t0) * 1000, 2)
 
+        # ──────────────────────────────────────────────
+        # 1.1 Check Semantic Cache (Qdrant)
+        # ──────────────────────────────────────────────
+        if settings.SEMANTIC_CACHE_ENABLED:
+            t_cache = time.time()
+            cached_resp = await semantic_cache_service.lookup(
+                query_vector=dense_vec,
+                user_ctx=user_ctx,
+            )
+            if cached_resp is not None:
+                metrics["cache_hit"] = True
+                metrics["cache_latency_ms"] = round((time.time() - t_cache) * 1000, 2)
+                metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+                logger.info("Serving from Semantic Cache", ms=metrics["total_latency_ms"])
+                await asyncio.to_thread(
+                    _write_search_debug_file,
+                    query=req.query,
+                    candidates=[],
+                    reranked=[],
+                    prompt="CACHED",
+                    answer=cached_resp.answer,
+                    metrics=metrics,
+                )
+                return cached_resp
+
         scope_filter = _build_scope_filter(req)
 
         t1 = time.time()
@@ -327,14 +353,31 @@ class SearchService:
                     url=chunk["source_url"],
                     start=chunk.get("start_time"),
                     end=chunk.get("end_time"),
+                    lesson_id=chunk.get("lesson_id"),
                 ))
             elif c_type == "pdf_chunk":
                 sources.append(SourceItem(
                     type="pdf",
                     page=chunk.get("page_number"),
                     section=chunk.get("section_title"),
+                    lesson_id=chunk.get("lesson_id"),
                 ))
 
-        return SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
+        final_response = SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
+
+        # ──────────────────────────────────────────────
+        # 6. Save in Semantic Cache asynchronously
+        # ──────────────────────────────────────────────
+        if settings.SEMANTIC_CACHE_ENABLED and answer_text:
+            asyncio.create_task(
+                semantic_cache_service.store(
+                    query=req.query,
+                    query_vector=dense_vec,
+                    response=final_response,
+                    user_ctx=user_ctx,
+                )
+            )
+
+        return final_response
 
 search_service = SearchService()

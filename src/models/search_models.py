@@ -31,6 +31,7 @@ class SourceItem(BaseModel):
     end: int | None = None
     page: int | None = None         # للـ PDF فقط
     section: str | None = None      # عنوان القسم في PDF
+    lesson_id: str | None = None    # معرف الدرس للاستشهاد والتحقق من الصلاحيات
 
 
 class SearchResponse(BaseModel):

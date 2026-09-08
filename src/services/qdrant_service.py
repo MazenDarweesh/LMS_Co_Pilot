@@ -54,6 +54,11 @@ class QdrantService:
         await self._ensure_payload_indexes()
         logger.info("Qdrant service ready ✅", collection=COLLECTION)
 
+    @property
+    def client(self) -> AsyncQdrantClient:
+        assert self._client is not None, "QdrantService not initialized. Call initialize() first."
+        return self._client
+
     async def close(self) -> None:
         if self._client:
             await self._client.close()
