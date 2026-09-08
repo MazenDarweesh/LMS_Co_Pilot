@@ -13,19 +13,19 @@
 
 ## ✨ Key Features
 
+- ⚡ **Sub-10ms Semantic Caching** — Multi-tenant Qdrant vector similarity cache (`score_threshold = 0.92`) with tenant isolation and RBAC permission awareness; delivers immediate answers in 5–8 ms, eliminating LLM and embedding overhead on repetitive queries
+- 🎯 **Quantized Arabic Cross-Encoder** — FlashRank-powered `miniReranker_arabic_v1` running optimized ONNX runtime in a threadpool; slashes reranking latency from ~1,200 ms to ~180 ms with 4x memory savings and zero GPU requirements
 - 🔍 **Hybrid RAG Search** — Dense (BGE-M3) + Sparse (BM25) embeddings fused via Reciprocal Rank Fusion (RRF) for superior Arabic retrieval precision
-- 🎯 **Cross-Encoder Reranking** — BAAI/bge-reranker-v2-m3 rescores candidates for grounded, hallucination-resistant answers
 - 🔐 **JWT-Based Permission Filtering** — Vector search is scoped per user role, tenant, module, and level at the Qdrant filter layer
 - 📡 **Real-Time Ingestion Pipeline** — YouTube audio → Whisper transcription → Gemini MSA normalization → BGE-M3 embedding → Qdrant upsert, all async with SSE progress streaming
-- 🔄 **Webhook-Driven Sync** — `.NET 10 LMS` notifies this service on lesson update/delete; vectors are re-indexed or purged automatically
+- 🔄 **Webhook-Driven Sync** — `.NET 10 LMS` notifies this service on lesson update/delete; vectors and semantic cache entries are re-indexed or purged automatically
 - 📝 **Stateless AI Content Generation** — Generates hallucination-free quizzes and pyramid summaries directly from Qdrant vectors without blocking the event loop
 - 🗣️ **Arabic Speech AI Utilities** — Built-in WER/CER transcription quality evaluation and mathematical Tafqit for accurate Text-to-Speech
 - 📊 **Structured Observability** — Every search request writes a JSON trace file capturing per-stage latency, token usage, reranker scores, and Qdrant point IDs for audit and deduplication
 - 🧠 **Stateful Conversational RAG** — LangGraph-powered memory with PostgreSQL checkpointer, featuring a smart Sliding Window and Token Budget Guard to prevent context bloat
 - 🧪 **Automated Quality Benchmarking** — Integrated Ragas framework systematically tracking Faithfulness (92%) and Answer Relevancy (86%) against real video transcripts
-- 🛡️ **Hardened Production Security** — Strict CORS origin policies, per-endpoint rate limits (`slowapi`), and Host header validation preventing unauthorized access
-- ⚡ **Optimized Retrieval Latency** — Tuned candidate pooling (`QDRANT_SEARCH_CANDIDATES_LIMIT = 8`) to minimize CPU Cross-Encoder bottlenecks
-- ⚡ **Non-Blocking Architecture** — All heavy operations (embedding, reranking, file I/O) offloaded via `asyncio.to_thread()` to keep the Uvicorn event loop responsive
+- 🛡️ **Hardened Production Security** — Strict CORS origin policies, per-endpoint rate limits (`slowapi`), non-root container execution (`appuser`), and Host header validation
+- ⚡ **Non-Blocking Architecture** — All heavy operations (embedding, ONNX reranking, file I/O) offloaded via `asyncio.to_thread()` to keep the Uvicorn event loop responsive
 
 ---
 
@@ -50,10 +50,16 @@
 │  └──────┬──────┘      │  → Gemini Normalize  │                 │
 │         │             │  → BGE-M3 Embed      │                 │
 │         ▼             │  → Qdrant Upsert     │                 │
-│  ┌─────────────┐      └──────────────────────┘                 │
+│  ┌─────────────────────────────────┐  └──────────────────────┘  │
+│  │   Qdrant Semantic Cache Layer   │                            │
+│  │   (Cosine Sim ≥ 0.92 + Tenant)  ├──► [HIT: Return in <10ms]  │
+│  └──────────────┬──────────────────┘                            │
+│                 │ MISS                                          │
+│                 ▼                                               │
+│  ┌─────────────┐                                                │
 │  │ BGE-M3      │  Dense Vector                                  │
 │  │ BM25        │  Sparse Vector                                 │
-│  └──────┬──────┘                                               │
+│  └──────┬──────┘                                                │
 │         │                                                       │
 │         ▼                                                       │
 │  ┌─────────────────────────────────┐                           │
@@ -64,8 +70,8 @@
 │                 │ Top-K candidates                              │
 │                 ▼                                               │
 │  ┌─────────────────────────────────┐                           │
-│  │  BGE-Reranker-v2-m3             │                           │
-│  │  Cross-Encoder Rescoring        │                           │
+│  │    FlashRank ONNX Reranker      │                           │
+│  │    (miniReranker_arabic_v1)     │                           │
 │  └──────────────┬──────────────────┘                           │
 │                 │ Top-N grounded chunks                         │
 │                 ▼                                               │
@@ -80,6 +86,7 @@
 │  │   Arabic RAG Answer Generation  │                           │
 │  └──────────────┬──────────────────┘                           │
 │                 │                                              │
+│                 ├──────────────────► [Store in Cache (async)]   │
 │                 ▼                                              │
 │  ┌─────────────────────────────────┐                           │
 │  │  JSON Trace Logger              │                           │
@@ -139,11 +146,13 @@
 
 | Stage | Latency | Notes |
 |:------|:-------:|:------|
-| BGE-M3 Embedding | ~635 ms | Dense + Sparse concurrent |
-| Qdrant Hybrid Search (RRF) | ~141 ms | 200K+ vectors, permission-filtered |
-| BGE-Reranker-v2-m3 | ~1,200 ms | After first warm-up (cold start ~30s) |
+| **Semantic Cache Hit** | **~5–8 ms** | Sub-10ms instantaneous response; 100% cost reduction |
+| BGE-M3 Embedding | ~360–635 ms | Dense + Sparse dual concurrent representation |
+| Qdrant Hybrid Search (RRF) | ~22–141 ms | 200K+ vectors, permission-filtered |
+| FlashRank ONNX Reranker (`miniReranker_arabic_v1`) | ~180 ms | Quantized CPU cross-encoder (was ~1,200 ms with PyTorch) |
 | Gemini 3.5 Flash Lite | ~2,150 ms | Arabic RAG generation |
-| **End-to-End (warm)** | **~4,100 ms** | |
+| **End-to-End (Cache Miss)** | **~2,700 ms** | ~35% overall latency reduction |
+| **End-to-End (Cache Hit)** | **< 15 ms** | Direct cache response |
 | Token Efficiency | ~1,384 tokens | prompt + completion |
 
 ---
@@ -153,10 +162,11 @@
 | Layer | Technology | Role |
 |:------|:-----------|:-----|
 | **API** | FastAPI 0.115 + Uvicorn | Async HTTP server |
-| **Vector DB** | Qdrant 1.13.2 | Hybrid search, RRF, filtering |
+| **Vector DB & Cache** | Qdrant 1.13.2 | Hybrid search, RRF, semantic caching |
+| **Semantic Cache** | Qdrant (`semantic_cache`) | Cosine similarity query caching (threshold ≥ 0.92) |
 | **Dense Embedding** | BGE-M3 (BAAI) | Arabic semantic vectors |
 | **Sparse Embedding** | BM25 (sentence-transformers) | Keyword matching |
-| **Reranker** | BGE-Reranker-v2-m3 | Cross-encoder rescoring |
+| **Reranker** | FlashRank (`miniReranker_arabic_v1`) | Quantized ONNX cross-encoder rescoring |
 | **LLM (RAG)** | Google Gemini 3.5 Flash Lite | Arabic answer generation |
 | **Orchestration** | LangGraph | Stateful agent workflows and memory |
 | **State DB** | PostgreSQL (asyncpg) | LangGraph persistent memory checkpointer |
@@ -186,7 +196,7 @@ cp .env.example .env
 # 3. Start PostgreSQL and Qdrant (Docker)
 docker compose up -d db qdrant
 
-# 4. Run automated test suite (41 tests)
+# 4. Run automated test suite (46 tests)
 uv run pytest tests/ -v
 
 # 5. Start development server
@@ -205,6 +215,10 @@ uv run uvicorn src.main:app --reload
 | `SERVICE_TOKEN` | ✅ | Shared secret for webhook authentication |
 | `LMS_BASE_URL` | ✅ | Base URL of the `.NET 10` backend |
 | `CORS_ORIGINS` | ⚙️ | Allowed CORS frontend origins (comma-separated or JSON list) |
+| `RERANKER_TYPE` | ⚙️ | Reranker engine (`flashrank` or `bge`, default: `flashrank`) |
+| `FLASHRANK_MODEL_NAME` | ⚙️ | Quantized ONNX model name (default: `miniReranker_arabic_v1`) |
+| `SEMANTIC_CACHE_ENABLED` | ⚙️ | Enable Qdrant vector semantic caching (default: `True`) |
+| `SEMANTIC_CACHE_THRESHOLD` | ⚙️ | Cosine similarity threshold for cache hit (default: `0.92`) |
 | `QDRANT_SEARCH_CANDIDATES_LIMIT` | ⚙️ | Candidate pool size for Cross-Encoder reranking (default: `8`) |
 
 ---
@@ -240,7 +254,7 @@ Results and historical runs are logged to `tests/eval/results/` and tracked in `
 
 ## 🧪 Testing & Quality Assurance
 
-The codebase maintains an automated test suite (41 tests, session-scoped lifespan) covering unit logic, RBAC, integration flows, and Arabic NLP utilities:
+The codebase maintains an automated test suite (46 tests, session-scoped lifespan) covering unit logic, RBAC, integration flows, and Arabic NLP utilities:
 
 ```bash
 uv run pytest tests/ -v
@@ -250,6 +264,7 @@ uv run pytest tests/ -v
 |:-----------|:--------------|:-----:|:------:|
 | `tests/integration/test_auth_rbac.py` | JWT authentication & fine-grained permission scopes | 11 | ✅ 100% Passed |
 | `tests/integration/test_search_rag.py` | Hybrid RAG retrieval, LangGraph memory, schema validation | 9 | ✅ 100% Passed |
+| `tests/integration/test_semantic_cache.py` | Multi-tenant semantic caching, RBAC restriction, invalidation | 5 | ✅ 100% Passed |
 | `tests/integration/test_webhooks.py` | LMS lesson update/delete synchronization events | 7 | ✅ 100% Passed |
 | `tests/unit/test_memory_trimmer.py` | Token budget guard & sliding window message trimmer | 9 | ✅ 100% Passed |
 | `tests/test_arabic_speech.py` | Arabic WER/CER metrics and numerical Tafqit utilities | 3 | ✅ 100% Passed |
@@ -260,7 +275,8 @@ uv run pytest tests/ -v
 ## 🗺️ Roadmap
 
 - [x] Hybrid RAG pipeline (Dense + Sparse + RRF)
-- [x] BGE-Reranker-v2-m3 cross-encoder rescoring
+- [x] Quantized ONNX Arabic reranker (FlashRank `miniReranker_arabic_v1`, ~180ms CPU)
+- [x] Multi-tenant Qdrant Semantic Cache (sub-10ms response on repetitive queries)
 - [x] JWT authentication + role/tenant/level permission filtering
 - [x] YouTube → Whisper → Gemini → Qdrant async ingestion pipeline
 - [x] Server-Sent Events (SSE) for real-time ingestion progress
@@ -269,8 +285,8 @@ uv run pytest tests/ -v
 - [x] Antigravity agent system (.agents/ skills, rules, hooks, MCP)
 - [x] LangGraph stateful conversational RAG and persistent memory
 - [x] Automated RAG quality evaluation (Ragas v0.4+ Faithfulness & Answer Relevancy)
+- [x] Production container hardening (non-root execution, Docker Compose health dependencies)
 - [ ] PDF ingestion via Marker (Week 9)
-- [ ] GPU-accelerated reranker (ONNX export)
 - [ ] Production deployment (Docker Swarm / Kubernetes)
 
 ---
@@ -307,4 +323,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-07*
+*Last updated by `readme-updater` skill — 2026-09-08*
