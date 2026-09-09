@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Standalone / Load Testing Controls
     MOCK_LMS: bool = False
 
+    # Observability & Metrics (Prometheus)
+    METRICS_ENABLED: bool = True
+    METRICS_PATH: str = "/metrics"
+
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

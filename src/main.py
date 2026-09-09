@@ -72,3 +72,7 @@ app.include_router(speech_router)
 @app.get("/health", tags=["System"])
 async def health_check():
     return {"status": "ok", "environment": settings.ENVIRONMENT}
+
+# 6. إعداد مقاييس المراقبة الحية (Prometheus Metrics)
+from src.core.metrics import init_metrics
+init_metrics(app)

@@ -20,6 +20,7 @@ from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
 from src.services.semantic_cache_service import semantic_cache_service
+from src.core.metrics import record_cache_lookup, record_stage_duration, record_token_usage
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
 
@@ -241,7 +242,9 @@ class SearchService:
         normalized_query = normalize_arabic_text_leaderboard(req.query)
         logger.debug("Query normalized for embedding", original=req.query, normalized=normalized_query)
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
-        metrics["embedding_latency_ms"] = round((time.time() - t0) * 1000, 2)
+        embedding_duration = time.time() - t0
+        metrics["embedding_latency_ms"] = round(embedding_duration * 1000, 2)
+        record_stage_duration("embedding", embedding_duration)
 
         # ──────────────────────────────────────────────
         # 1.1 Check Semantic Cache (Qdrant)
@@ -252,10 +255,14 @@ class SearchService:
                 query_vector=dense_vec,
                 user_ctx=user_ctx,
             )
+            cache_duration = time.time() - t_cache
+            record_stage_duration("cache_lookup", cache_duration)
             if cached_resp is not None:
+                record_cache_lookup(hit=True)
                 metrics["cache_hit"] = True
-                metrics["cache_latency_ms"] = round((time.time() - t_cache) * 1000, 2)
+                metrics["cache_latency_ms"] = round(cache_duration * 1000, 2)
                 metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+                record_stage_duration("total", time.time() - t0)
                 logger.info("Serving from Semantic Cache", ms=metrics["total_latency_ms"])
                 await asyncio.to_thread(
                     _write_search_debug_file,
@@ -267,6 +274,8 @@ class SearchService:
                     metrics=metrics,
                 )
                 return cached_resp
+            else:
+                record_cache_lookup(hit=False)
 
         scope_filter = _build_scope_filter(req)
 
@@ -278,7 +287,9 @@ class SearchService:
             limit=settings.QDRANT_SEARCH_CANDIDATES_LIMIT,
             extra_filter=scope_filter,
         )
-        metrics["qdrant_latency_ms"] = round((time.time() - t1) * 1000, 2)
+        qdrant_duration = time.time() - t1
+        metrics["qdrant_latency_ms"] = round(qdrant_duration * 1000, 2)
+        record_stage_duration("vector_search", qdrant_duration)
 
         if not candidates:
             await asyncio.to_thread(
@@ -305,7 +316,9 @@ class SearchService:
             top_n=min(req.limit, settings.QDRANT_SEARCH_CANDIDATES_LIMIT),
             text_field="text_msa",
         )
-        metrics["reranker_latency_ms"] = round((time.time() - t2) * 1000, 2)
+        reranker_duration = time.time() - t2
+        metrics["reranker_latency_ms"] = round(reranker_duration * 1000, 2)
+        record_stage_duration("reranking", reranker_duration)
         logger.info("Reranked results", top_n=len(top_chunks), ms=metrics["reranker_latency_ms"])
 
         # ──────────────────────────────────────────────
@@ -322,6 +335,8 @@ class SearchService:
             config=config
         )
         graph_latency_ms = round((time.time() - t3) * 1000, 2)
+        record_stage_duration("gemini_generation", time.time() - t3)
+        record_stage_duration("total", time.time() - t0)
         
         answer_text = final_state["messages"][-1].content
         
@@ -329,6 +344,12 @@ class SearchService:
         metrics["gemini_latency_ms"] = returned_context.get("gemini_latency_ms", 0)
         metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
         token_usage = returned_context.get("token_usage", {})
+        if token_usage:
+            record_token_usage(
+                prompt_tokens=token_usage.get("prompt_tokens", 0),
+                completion_tokens=token_usage.get("completion_tokens", 0),
+                total_tokens=token_usage.get("total_tokens", 0),
+            )
         
         logger.info("Gemini answer generated via LangGraph", answer_length=len(answer_text), thread_id=thread_id, ms=graph_latency_ms)
 
