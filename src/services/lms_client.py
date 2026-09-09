@@ -36,6 +36,19 @@ class LMSClientService:
         if user_id in self._perms_cache:
             return self._perms_cache[user_id]
         
+        # 🧪 Standalone load testing / offline dev mode
+        if settings.MOCK_LMS:
+            perms = UserPermissions.model_validate({
+                "userId": user_id,
+                "accessibleModules": [
+                    {"moduleId": "mod-erp-101", "levelFilters": [], "typeFilters": []}
+                ],
+                "accessibleUnitIds": ["unit-01"],
+                "accessibleLessonIds": ["lesson-001"],
+            })
+            self._perms_cache[user_id] = perms
+            return perms
+
         # 🌐 Ask LMS for real-time permissions
         resp = await self._client.get(f"/api/internal/user-permissions/{user_id}")
         resp.raise_for_status()

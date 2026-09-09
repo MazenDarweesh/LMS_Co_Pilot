@@ -29,6 +29,15 @@ downloads/
 pipeline_test_output.json
 tests/eval/results/*
 !tests/eval/results/.gitkeep
+tests/load/results/*
+!tests/load/results/.gitkeep
+
+# Coverage & Profiling
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+*.lprof
 
 # Model Cache (Local Embeddings/Rerankers)
 .model_cache/

@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     RERANKER_MODEL_NAME: str = "miniReranker_arabic_v1"
     RERANKER_CACHE_DIR: str = "./.model_cache"
 
+    # Rate Limiting Control
+    RATE_LIMIT_ENABLED: bool = True
+
+    # Standalone / Load Testing Controls
+    MOCK_LMS: bool = False
+
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

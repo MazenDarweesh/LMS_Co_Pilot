@@ -5,12 +5,13 @@ import structlog
 from starlette.types import ASGIApp, Scope, Receive, Send
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from src.core.config import settings
 
 # 1. إعداد الـ Rate Limiter
 # ⚠️ ملاحظة للإنتاج (Production):
 # في بيئة متعددة الخوادم، يجب استبدال التخزين الداخلي (In-Memory) بـ Redis كالتالي:
 # limiter = Limiter(key_func=get_remote_address, storage_uri="redis://localhost:6379")
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, enabled=settings.RATE_LIMIT_ENABLED)
 
 # 2. إعداد Pure ASGI Middleware عالي الأداء (مع إضافة Correlation ID)
 class PerformanceMetricsMiddleware:
