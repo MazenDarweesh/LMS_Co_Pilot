@@ -6,7 +6,6 @@ standard HTTP metrics (RPS, latency percentiles, error rates) and custom
 domain metrics (Semantic Cache hit rate, RAG stage latency, token consumption).
 """
 
-from typing import Literal
 from fastapi import FastAPI
 import structlog
 from prometheus_client import Counter, Histogram, Gauge

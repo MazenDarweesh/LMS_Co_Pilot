@@ -33,6 +33,8 @@ class PerformanceMetricsMiddleware:
         
         # 🔗 ربط الـ Request ID بجميع سجلات (Logs) هذا الطلب (Structlog Context)
         structlog.contextvars.bind_contextvars(request_id=request_id)
+        from src.core.metrics import ACTIVE_REQUESTS
+        ACTIVE_REQUESTS.inc()
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
@@ -49,6 +51,7 @@ class PerformanceMetricsMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
+            ACTIVE_REQUESTS.dec()
             # 🧹 تنظيف المتغيرات بعد انتهاء الطلب لمنع تسرب البيانات بين الطلبات
             structlog.contextvars.clear_contextvars()
 
