@@ -41,10 +41,11 @@ class LMSClientService:
             perms = UserPermissions.model_validate({
                 "userId": user_id,
                 "accessibleModules": [
-                    {"moduleId": "mod-erp-101", "levelFilters": [], "typeFilters": []}
+                    {"moduleId": "mod-erp-101", "levelFilters": [], "typeFilters": []},
+                    {"moduleId": "53c15d6c-56b6-498b-bceb-57894530aa6e", "levelFilters": [], "typeFilters": []},
                 ],
-                "accessibleUnitIds": ["unit-01"],
-                "accessibleLessonIds": ["lesson-001"],
+                "accessibleUnitIds": ["unit-01", "694265c4-26c4-44e6-8561-a3650513b02d"],
+                "accessibleLessonIds": [],
             })
             self._perms_cache[user_id] = perms
             return perms

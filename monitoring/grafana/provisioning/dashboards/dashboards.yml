@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: 'LMS AI Co-Pilot'
+    orgId: 1
+    folder: 'LMS Telemetry'
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/dashboards

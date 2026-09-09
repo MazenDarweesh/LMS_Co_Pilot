@@ -51,7 +51,7 @@ app.add_middleware(PerformanceMetricsMiddleware)
 # ب. ميدل وير حماية الـ Host
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=["localhost", "127.0.0.1", "*.egydynamic.com"]
+    allowed_hosts=settings.ALLOWED_HOSTS
 )
 
 # ج. ميدل وير الـ CORS (يجب أن يكون خارجياً ليتعامل مع طلبات الـ Preflight)

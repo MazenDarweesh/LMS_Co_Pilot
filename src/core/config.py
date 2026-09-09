@@ -65,6 +65,15 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
     ]
 
+    # Trusted Host Security
+    ALLOWED_HOSTS: list[str] = [
+        "localhost",
+        "127.0.0.1",
+        "host.docker.internal",
+        "*.egydynamic.com",
+        "testserver",
+    ]
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()

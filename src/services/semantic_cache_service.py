@@ -114,7 +114,8 @@ class SemanticCacheService:
             cached_lessons: list[str] = payload.get("lesson_ids", [])
 
             # Verify permissions: check if user has access to all lessons referenced by the cached response
-            if cached_lessons and user_ctx.permissions:
+            # Note: Admins possess full company-wide access and bypass lesson-level restrictions.
+            if user_ctx.claims.role != "Admin" and cached_lessons and user_ctx.permissions:
                 allowed_lessons = set(user_ctx.permissions.accessible_lesson_ids)
                 # If student is restricted and missing access to any lesson in the answer, treat as MISS
                 if allowed_lessons and not set(cached_lessons).issubset(allowed_lessons):
