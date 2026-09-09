@@ -53,7 +53,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "Prometheus" },
           "editorMode": "code",
-          "expr": "(sum(rate(lms_cache_requests_total{result=\"hit\"}[5m])) / (sum(rate(lms_cache_requests_total[5m])) > 0 or 1)) * 100",
+          "expr": "((sum(rate(lms_cache_requests_total{result=\"hit\"}[5m])) / sum(rate(lms_cache_requests_total[5m]))) * 100) or vector(0)",
           "legendFormat": "Cache Hit Rate",
           "range": true,
           "refId": "A"
@@ -249,5 +249,5 @@
   "timezone": "browser",
   "title": "LMS AI Co-Pilot — Production Observability",
   "uid": "lms-ai-copilot-overview",
-  "version": 1
+  "version": 2
 }
