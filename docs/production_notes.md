@@ -1,3 +1,11 @@
+---
+document_type: "Architectural Decision Registry (ADR) & Post-Production Notes"
+last_updated_commit: "e02f7d1"
+last_updated_date: "2026-09-10"
+adrs_count: 8
+status: "Active"
+---
+
 # ملاحظات ما بعد الإنتاج (Post-Production & Scaling Notes)
 ## LMS AI Co-Pilot
 
@@ -73,3 +81,9 @@
 **ب. (الأسبوع 9) إدارة المحتوى المستقل (Standalone & Playlists):**
 لم نقم بإنشاء جداول `standalone_videos` و `playlists` في قاعدة بيانات PostgreSQL ولم نبنِ الـ Admin API الخاصة بها في `router.py`.
 * **Felo Insight:** هيكلة الـ Qdrant التي بنيناها بـ `is_tenant=True` مثالية لهذا الغرض. يكفينا حفظ الفيديوهات وقوائم التشغيل كمتجهات في نفس الـ Collection `learning_content` مع استخدام `playlist_id` أو `video_id` في الـ Payload للتصفية.
+
+## 8. أدوات القراءة الخارجية الحية (External Read Tools / APIs)
+* **المشكلة الحالية:**
+  النظام معزول عن أي مصادر خارجية؛ لا يمتلك أدوات قراءة مثل (Web Search API) للبحث عن أحدث التحديثات، أو استعلامات قواعد البيانات الحية (Text-to-SQL) للاستعلام عن درجات الطالب الحالية، أو مواعيد تسليم الواجبات، أو حالة الحضور في نظام الـ LMS.
+* **الحل والتطوير المستقبلي (Post-Production):**
+  تزويد الوكيل الذكي (LangGraph Agent) بأدوات قراءة متخصصة (`External Read Tools`) يتم تفعيلها ديناميكياً عند حاجة استفسار الطالب لبيانات حية من خارج المحتوى المؤرشف في Qdrant.

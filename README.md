@@ -1,3 +1,5 @@
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "e02f7d1", "last_synced_at": "2026-09-10T15:30:00Z", "documented_endpoints": 6} -->
+
 # 🎓 LMS AI Co-Pilot
 
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)

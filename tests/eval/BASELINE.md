@@ -1,3 +1,13 @@
+---
+benchmark_type: "Ragas RAG Quality Baseline"
+last_eval_commit: "e02f7d1"
+last_eval_date: "2026-09-07T12:25:56Z"
+faithfulness_score: 0.92
+answer_relevancy_score: 0.86
+eval_dataset_path: "tests/eval/golden_dataset.jsonl"
+status: "PASSED"
+---
+
 # 📊 RAG Quality Baseline & Evaluation Log
 
 > **Baseline Date:** 2026-09-07  
