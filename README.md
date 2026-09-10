@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "e02f7d1", "last_synced_at": "2026-09-10T15:30:00Z", "documented_endpoints": 6} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "180199c", "last_synced_at": "2026-09-10T17:35:00Z", "documented_endpoints": 6} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -350,15 +350,17 @@ project-specific knowledge for AI-assisted development:
 | `skills/service-bootstrapper` | Scaffold new FastAPI services correctly with structlog/lifespan |
 | `skills/arabic-assistant` | Dual-purpose tech explainer and MSA text quality/hallucination auditor |
 | `skills/architecture-diagram-generator`| Generates standardized Mermaid flowcharts and diagrams |
+| `skills/project-chronicle` | Strategic milestone ledger & architectural chronicle (`docs/chronicle/`) |
+| `skills/interview-prep-planner` | Living technical interview preparation dossier (`docs/INTERVIEW_PORTFOLIO_MASTER_GUIDE.md`) |
 | `skills/blueprint` | Step-by-step construction plans executable cold by coding agents |
 | `skills/executing-plans` | Checkpoint-based execution of approved implementation plans |
 | `skills/decision-navigator` | Targeted branching questions to resolve architecture decisions |
 | `skills/antigravity-chat-restorer` | Diagnoses and restores IDE chat conversations after environment updates |
-| `skills/readme-updater` | Auto-updates README.md to reflect current features and endpoints |
+| `skills/readme-updater` | Auto-updates README.md, Project Chronicle, and Interview Portfolio suite |
 | `skills/agent-system-updater` | Detect skill drift and propose diff-style updates |
 | `skills/agent-system-planner` | Mine session patterns, propose new workflow components |
 | `rules/` | Always-active coding standards (typing, async, service pattern) |
-| `hooks/` | Pre-commit linter + post-commit README sync |
+| `hooks/` | Pre-commit linter + post-commit showcase cascade |
 
 ---
 
@@ -369,4 +371,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-09*
+*Last updated by `readme-updater` skill — 2026-09-10*
