@@ -1,12 +1,28 @@
 # src/db/session.py
-from src.core.config import settings
+import asyncio
 import json
-import asyncpg
 from contextlib import asynccontextmanager
+import asyncpg
 from fastapi import FastAPI
 import structlog
+from src.core.config import settings
 
 logger = structlog.get_logger()
+
+async def _periodic_semantic_cache_eviction(interval_hours: int):
+    """Periodically cleans up expired semantic cache points in Qdrant."""
+    from src.services.semantic_cache_service import semantic_cache_service
+    interval_seconds = max(interval_hours * 3600, 60)
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            evicted = await semantic_cache_service.evict_expired_entries()
+            if evicted > 0:
+                logger.info("Periodic cache eviction completed", evicted_count=evicted)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning("Periodic cache eviction encountered error", error=str(e))
 
 async def init_connection(conn: asyncpg.Connection):
     """
@@ -75,11 +91,26 @@ async def lifespan(app: FastAPI):
     app.state.qdrant_service = qdrant_service
     logger.info("Qdrant service ready ✅")
 
-    # ④.1 تهيئة Semantic Cache Service
+    # ④.1 تهيئة Exact In-Memory Cache Service (Tier-1)
+    from src.services.exact_cache_service import exact_cache_service
+    exact_cache_service.initialize()
+    app.state.exact_cache_service = exact_cache_service
+
+    # ④.2 تهيئة Semantic Cache Service (Tier-2)
     from src.services.semantic_cache_service import semantic_cache_service
     await semantic_cache_service.initialize()
     app.state.semantic_cache_service = semantic_cache_service
     logger.info("Semantic cache service ready ✅")
+
+    # تشغيل مهمة التنظيف الدوري للمتجهات المنتهية في الكاش الدلالي (Background Task)
+    eviction_task = asyncio.create_task(
+        _periodic_semantic_cache_eviction(settings.CACHE_EVICTION_INTERVAL_HOURS)
+    )
+
+    # ④.3 تهيئة Fast Ingress Intent Router
+    from src.services.intent_router import intent_router
+    intent_router.initialize()
+    app.state.intent_router = intent_router
 
     # ⑤ تهيئة Search Service (Gemini client for RAG answers)
     from src.services.search_service import search_service
@@ -110,6 +141,15 @@ async def lifespan(app: FastAPI):
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
     # ③ إغلاق الموارد عند إيقاف السيرفر
+    eviction_task.cancel()
+    try:
+        await eviction_task
+    except asyncio.CancelledError:
+        pass
+
+    exact_cache_service.close()
+    intent_router.close()
+
     await app.state.db_pool.close()
     logger.info("Database pool closed gracefully 🛑")
     

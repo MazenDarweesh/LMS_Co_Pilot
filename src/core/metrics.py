@@ -24,12 +24,26 @@ CACHE_REQUESTS = Counter(
     labelnames=["result"],  # "hit" | "miss"
 )
 
+# 1.1 Exact In-Memory Cache Metric (Hit vs Miss)
+EXACT_CACHE_REQUESTS = Counter(
+    "lms_exact_cache_requests_total",
+    "Total count of exact in-memory cache lookups categorized by result",
+    labelnames=["result"],  # "hit" | "miss"
+)
+
+# 1.2 Fast Ingress Intent Router Metric
+INTENT_REQUESTS = Counter(
+    "lms_intent_requests_total",
+    "Total requests routed by the Fast Ingress Intent Router",
+    labelnames=["intent"],  # "greeting" | "out_of_scope" | "rag_query"
+)
+
 # 2. RAG Pipeline Latency Breakdown
 RAG_STAGE_DURATION = Histogram(
     "lms_rag_stage_duration_seconds",
     "Latency per RAG pipeline stage in seconds",
-    labelnames=["stage"],  # "cache_lookup", "embedding", "vector_search", "reranking", "gemini_generation", "total"
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    labelnames=["stage"],  # "exact_cache", "intent_router", "cache_lookup", "embedding", "vector_search", "reranking", "gemini_generation", "total"
+    buckets=(0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
 
 # 3. LLM Token Consumption
@@ -52,6 +66,17 @@ def record_cache_lookup(hit: bool) -> None:
     """Records a Semantic Cache hit or miss."""
     result = "hit" if hit else "miss"
     CACHE_REQUESTS.labels(result=result).inc()
+
+
+def record_exact_cache_lookup(hit: bool) -> None:
+    """Records an Exact In-Memory Cache hit or miss."""
+    result = "hit" if hit else "miss"
+    EXACT_CACHE_REQUESTS.labels(result=result).inc()
+
+
+def record_intent_classified(intent: str) -> None:
+    """Records an intent classification event."""
+    INTENT_REQUESTS.labels(intent=intent.lower()).inc()
 
 
 def record_stage_duration(stage: str, duration_seconds: float) -> None:

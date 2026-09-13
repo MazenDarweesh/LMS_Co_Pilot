@@ -20,7 +20,14 @@ from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
 from src.services.semantic_cache_service import semantic_cache_service
-from src.core.metrics import record_cache_lookup, record_stage_duration, record_token_usage
+from src.services.exact_cache_service import exact_cache_service
+from src.services.intent_router import intent_router, IntentType
+from src.core.metrics import (
+    record_cache_lookup,
+    record_exact_cache_lookup,
+    record_stage_duration,
+    record_token_usage,
+)
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
 
@@ -111,7 +118,10 @@ def _write_search_debug_file(
     metrics: dict | None = None,
     token_usage: dict | None = None
 ) -> None:
-    """حفظ تفاصيل عملية البحث بالكامل في ملف JSON منفصل في مجلد downloads/search_debugs/"""
+    """حفظ تفاصيل عملية البحث في ملف JSON عند تفعيل SEARCH_DEBUG_ENABLED فقط لمنع استهلاك القرص."""
+    if not settings.SEARCH_DEBUG_ENABLED:
+        return
+
     debug_dir = "downloads/search_debugs"
     os.makedirs(debug_dir, exist_ok=True)
     
@@ -229,25 +239,75 @@ class SearchService:
     async def search(self, req: SearchRequest, user_ctx: UserContext) -> SearchResponse:
         logger.info("Search started", query=req.query, scope=req.scope, user_entities_count=len(user_ctx.user_entities))
         metrics = {}
-        
         t0 = time.time()
+
         # ──────────────────────────────────────────────
-        # 1. Normalize query → Embed → Dense + Sparse
+        # 0. Fast Ingress: Intent Router (< 1ms bypass)
         # ──────────────────────────────────────────────
-        # 2026 Best Practice (Arabic Speech AI Research §13.6 & §17):
-        # Apply Leaderboard-standard normalization to the query BEFORE embedding.
-        # This closes the semantic gap between colloquial student queries
-        # (e.g. "إزاي أعمل الـ Database؟") and MSA-normalized indexed text,
-        # which directly improves Cosine Similarity accuracy in Qdrant.
+        if settings.INTENT_ROUTER_ENABLED:
+            t_intent = time.time()
+            intent_res = intent_router.classify(req.query)
+            intent_duration = time.time() - t_intent
+            record_stage_duration("intent_router", intent_duration)
+
+            if intent_res.intent != IntentType.RAG_QUERY and intent_res.canned_response:
+                metrics["intent"] = intent_res.intent.value
+                metrics["intent_latency_ms"] = round(intent_duration * 1000, 2)
+                metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+                record_stage_duration("total", time.time() - t0)
+                logger.info("Fast Ingress intercept", intent=intent_res.intent.value, ms=metrics["total_latency_ms"])
+                return SearchResponse(
+                    answer=intent_res.canned_response,
+                    sources=[],
+                    query_used=req.query,
+                )
+
+        # ──────────────────────────────────────────────
+        # 1. Normalize query
+        # ──────────────────────────────────────────────
         normalized_query = normalize_arabic_text_leaderboard(req.query)
-        logger.debug("Query normalized for embedding", original=req.query, normalized=normalized_query)
+        logger.debug("Query normalized for cache & embedding", original=req.query, normalized=normalized_query)
+
+        # ──────────────────────────────────────────────
+        # 1.1 Fast Ingress: Tier-1 Exact In-Memory Cache (< 2ms)
+        # ──────────────────────────────────────────────
+        if settings.EXACT_CACHE_ENABLED:
+            t_exact = time.time()
+            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
+            exact_duration = time.time() - t_exact
+            record_stage_duration("exact_cache", exact_duration)
+            if exact_hit is not None:
+                record_exact_cache_lookup(hit=True)
+                metrics["exact_cache_hit"] = True
+                metrics["exact_cache_latency_ms"] = round(exact_duration * 1000, 2)
+                metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
+                record_stage_duration("total", time.time() - t0)
+                logger.info("Serving from Exact In-Memory Cache ⚡", ms=metrics["total_latency_ms"])
+                if settings.SEARCH_DEBUG_ENABLED:
+                    await asyncio.to_thread(
+                        _write_search_debug_file,
+                        query=req.query,
+                        candidates=[],
+                        reranked=[],
+                        prompt="EXACT_CACHED",
+                        answer=exact_hit.answer,
+                        metrics=metrics,
+                    )
+                return exact_hit
+            else:
+                record_exact_cache_lookup(hit=False)
+
+        # ──────────────────────────────────────────────
+        # 2. Embed → Dense + Sparse
+        # ──────────────────────────────────────────────
+        t_embed = time.time()
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
-        embedding_duration = time.time() - t0
+        embedding_duration = time.time() - t_embed
         metrics["embedding_latency_ms"] = round(embedding_duration * 1000, 2)
         record_stage_duration("embedding", embedding_duration)
 
         # ──────────────────────────────────────────────
-        # 1.1 Check Semantic Cache (Qdrant)
+        # 2.1 Tier-2 Semantic Cache (Qdrant Vector Cache)
         # ──────────────────────────────────────────────
         if settings.SEMANTIC_CACHE_ENABLED:
             t_cache = time.time()
@@ -259,20 +319,25 @@ class SearchService:
             record_stage_duration("cache_lookup", cache_duration)
             if cached_resp is not None:
                 record_cache_lookup(hit=True)
+                # Auto-populate Tier-1 Exact Cache for immediate subsequent hits
+                if settings.EXACT_CACHE_ENABLED:
+                    exact_cache_service.store(normalized_query, cached_resp, user_ctx)
+
                 metrics["cache_hit"] = True
                 metrics["cache_latency_ms"] = round(cache_duration * 1000, 2)
                 metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
                 record_stage_duration("total", time.time() - t0)
                 logger.info("Serving from Semantic Cache", ms=metrics["total_latency_ms"])
-                await asyncio.to_thread(
-                    _write_search_debug_file,
-                    query=req.query,
-                    candidates=[],
-                    reranked=[],
-                    prompt="CACHED",
-                    answer=cached_resp.answer,
-                    metrics=metrics,
-                )
+                if settings.SEARCH_DEBUG_ENABLED:
+                    await asyncio.to_thread(
+                        _write_search_debug_file,
+                        query=req.query,
+                        candidates=[],
+                        reranked=[],
+                        prompt="CACHED",
+                        answer=cached_resp.answer,
+                        metrics=metrics,
+                    )
                 return cached_resp
             else:
                 record_cache_lookup(hit=False)
@@ -292,15 +357,16 @@ class SearchService:
         record_stage_duration("vector_search", qdrant_duration)
 
         if not candidates:
-            await asyncio.to_thread(
-                _write_search_debug_file,
-                query=req.query,
-                candidates=[],
-                reranked=[],
-                prompt="",
-                answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
-                metrics=metrics
-            )
+            if settings.SEARCH_DEBUG_ENABLED:
+                await asyncio.to_thread(
+                    _write_search_debug_file,
+                    query=req.query,
+                    candidates=[],
+                    reranked=[],
+                    prompt="",
+                    answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
+                    metrics=metrics
+                )
             return SearchResponse(
                 answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
                 sources=[],
@@ -353,17 +419,18 @@ class SearchService:
         
         logger.info("Gemini answer generated via LangGraph", answer_length=len(answer_text), thread_id=thread_id, ms=graph_latency_ms)
 
-        # Write trace log file asynchronously
-        await asyncio.to_thread(
-            _write_search_debug_file,
-            query=req.query,
-            candidates=candidates,
-            reranked=top_chunks,
-            prompt=returned_context.get("system_prompt_used", ""),
-            answer=answer_text,
-            metrics=metrics,
-            token_usage=token_usage
-        )
+        # Write trace log file asynchronously only if diagnostic logging is enabled
+        if settings.SEARCH_DEBUG_ENABLED:
+            await asyncio.to_thread(
+                _write_search_debug_file,
+                query=req.query,
+                candidates=candidates,
+                reranked=top_chunks,
+                prompt=returned_context.get("system_prompt_used", ""),
+                answer=answer_text,
+                metrics=metrics,
+                token_usage=token_usage
+            )
 
         sources = []
         for chunk in top_chunks:
@@ -387,8 +454,15 @@ class SearchService:
         final_response = SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
 
         # ──────────────────────────────────────────────
-        # 6. Save in Semantic Cache asynchronously
+        # 6. Save in Exact Cache & Semantic Cache
         # ──────────────────────────────────────────────
+        if settings.EXACT_CACHE_ENABLED and answer_text:
+            exact_cache_service.store(
+                normalized_query=normalized_query,
+                response=final_response,
+                user_ctx=user_ctx,
+            )
+
         if settings.SEMANTIC_CACHE_ENABLED and answer_text:
             cache_task = asyncio.create_task(
                 semantic_cache_service.store(

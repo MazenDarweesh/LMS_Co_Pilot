@@ -4,8 +4,8 @@
 # ==========================================
 FROM python:3.13-slim-bookworm AS builder
 
-# Install uv from the official image
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Install uv from the official image (Pinned version for deterministic builds)
+COPY --from=ghcr.io/astral-sh/uv:0.6.1 /uv /uvx /bin/
 
 WORKDIR /app
 

@@ -33,7 +33,7 @@ class UserPermissions(BaseModel):
 # Passed around within FastAPI requests after Auth completes
 class UserContext(BaseModel):
     claims: TokenClaims
-    permissions: UserPermissions
+    permissions: UserPermissions | None = None
     user_entities: list[str] = Field(default_factory=list)
 
     @property

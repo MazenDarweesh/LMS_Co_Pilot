@@ -3,6 +3,7 @@ import glob
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
@@ -28,6 +29,7 @@ from src.services.pipeline_orchestrator import pipeline_orchestrator
 from src.services.qdrant_service import qdrant_service
 from src.services.search_service import search_service
 from src.services.semantic_cache_service import semantic_cache_service
+from src.services.exact_cache_service import exact_cache_service
 
 # Initialize Logger
 logger = structlog.get_logger()
@@ -96,18 +98,20 @@ async def unified_lesson_webhook(
     مسار Webhook موحد يستقبل إشعارات التحديث أو الحذف من سيرفر الـ .NET.
     محمي بـ Service Token لمنع الهجمات الخارجية.
     """
-    if x_service_token != settings.SERVICE_TOKEN:
+    if not secrets.compare_digest(x_service_token, settings.SERVICE_TOKEN):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
 
     if payload.action == "Deleted":
         # 🗑️ مسح المتجهات والكاش من قاعدة البيانات فوراً
         background_tasks.add_task(qdrant_service.delete_by_lesson_id, payload.lessonId)
         background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
+        background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, payload.lessonId)
         return {"status": "accepted", "message": "Deletion triggered"}
         
     elif payload.action == "Updated":
         # 🗑️ مسح الكاش القديم فوراً لمنع إرجاع إجابات قديمة أثناء إعادة المعالجة
         background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
+        background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, payload.lessonId)
         # 🔄 سحب تفاصيل الفيديو من LMS (Full Context) وبدء دورة Ingestion جديدة
         async def fetch_and_ingest():
             try:
@@ -144,6 +148,7 @@ async def unified_lesson_webhook(
 
 
 @router.get("/ingest/events/{session_id}")
+@limiter.limit("20/minute")
 async def stream_ingestion_events(
     request: Request,
     session_id: str,
@@ -152,13 +157,20 @@ async def stream_ingestion_events(
     """
     مسار SSE (Server-Sent Events) يبث تقدم المعالجة للمستخدم مباشرة.
     """
+    # 🛡️ OWASP A01: Input Validation / Path Traversal & Injection Protection
+    if not re.match(r"^[a-zA-Z0-9_-]+$", session_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid session_id format. Potential injection attempt blocked."
+        )
+
     async def event_generator():
         last_event_count = 0
         
         while True:
             # 🚨 2026 Best Practice: فحص انفصال العميل لإنهاء الـ Loop وتوفير الموارد
             if await request.is_disconnected():
-                print(f"🔌 Client disconnected from stream: {session_id}")
+                logger.info("Client disconnected from SSE stream", session_id=session_id)
                 break
                 
             events = await event_store.get_session_events(session_id)

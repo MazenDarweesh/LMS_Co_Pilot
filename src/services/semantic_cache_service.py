@@ -11,7 +11,7 @@ Best Practices Applied (2026):
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import structlog
 from qdrant_client.models import (
     VectorParams,
@@ -21,7 +21,10 @@ from qdrant_client.models import (
     FieldCondition,
     MatchValue,
     KeywordIndexParams,
+    IntegerIndexParams,
     FilterSelector,
+    PointIdsList,
+    Range,
 )
 
 from src.core.config import settings
@@ -41,6 +44,7 @@ class SemanticCacheService:
         self.collection_name = settings.SEMANTIC_CACHE_COLLECTION
         self.threshold = settings.SEMANTIC_CACHE_THRESHOLD
         self.enabled = settings.SEMANTIC_CACHE_ENABLED
+        self.ttl_days = settings.SEMANTIC_CACHE_TTL_DAYS
 
     async def initialize(self) -> None:
         """
@@ -66,6 +70,11 @@ class SemanticCacheService:
                     field_name=field,
                     field_schema=KeywordIndexParams(type="keyword"),
                 )
+            await client.create_payload_index(
+                collection_name=self.collection_name,
+                field_name="created_at_ts",
+                field_schema=IntegerIndexParams(type="integer"),
+            )
             logger.info("Semantic cache collection created successfully", collection=self.collection_name)
         else:
             logger.info("Semantic cache collection ready", collection=self.collection_name)
@@ -115,10 +124,17 @@ class SemanticCacheService:
 
             # Verify permissions: check if user has access to all lessons referenced by the cached response
             # Note: Admins possess full company-wide access and bypass lesson-level restrictions.
-            if user_ctx.claims.role != "Admin" and cached_lessons and user_ctx.permissions:
+            if user_ctx.claims.role != "Admin" and cached_lessons:
+                if not user_ctx.permissions or not user_ctx.permissions.accessible_lesson_ids:
+                    logger.warning(
+                        "Semantic cache match rejected: student has no valid permissions or enrollments",
+                        user_id=user_ctx.user_id,
+                    )
+                    return None
+
                 allowed_lessons = set(user_ctx.permissions.accessible_lesson_ids)
                 # If student is restricted and missing access to any lesson in the answer, treat as MISS
-                if allowed_lessons and not set(cached_lessons).issubset(allowed_lessons):
+                if not set(cached_lessons).issubset(allowed_lessons):
                     logger.info(
                         "Semantic cache match rejected due to permission restrictions",
                         cached_lessons=cached_lessons,
@@ -166,6 +182,7 @@ class SemanticCacheService:
                 if getattr(s, "lesson_id", None)
             })
 
+            now = datetime.now(timezone.utc)
             point = PointStruct(
                 id=str(uuid.uuid4()),
                 vector=query_vector,
@@ -176,7 +193,8 @@ class SemanticCacheService:
                     "lesson_ids": lesson_ids,
                     "company_id": user_ctx.company_id,
                     "user_id": user_ctx.user_id,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": now.isoformat(),
+                    "created_at_ts": int(now.timestamp()),
                 },
             )
 
@@ -217,6 +235,82 @@ class SemanticCacheService:
 
         except Exception as e:
             logger.warning("Failed to invalidate semantic cache for lesson", lesson_id=lesson_id, error=str(e))
+
+    async def evict_expired_entries(self) -> int:
+        """
+        Evicts entries older than SEMANTIC_CACHE_TTL_DAYS (default: 7 days)
+        from the Qdrant semantic cache collection.
+        Returns the count of evicted points.
+        """
+        if not self.enabled:
+            return 0
+
+        try:
+            client = qdrant_service.client
+            cutoff_dt = datetime.now(timezone.utc) - timedelta(days=self.ttl_days)
+            cutoff_ts = int(cutoff_dt.timestamp())
+
+            # Method 1: Delete via Range filter on created_at_ts
+            delete_filter = Filter(
+                must=[
+                    FieldCondition(
+                        key="created_at_ts",
+                        range=Range(lt=cutoff_ts),
+                    )
+                ]
+            )
+
+            res = await client.delete(
+                collection_name=self.collection_name,
+                points_selector=FilterSelector(filter=delete_filter),
+            )
+            logger.info(
+                "Evicted expired semantic cache entries",
+                cutoff_days=self.ttl_days,
+                cutoff_ts=cutoff_ts,
+                status=getattr(res, "status", "ok"),
+            )
+
+            # Method 2: Fallback scroll to clean up legacy records that lack created_at_ts
+            legacy_expired_ids: list[str] = []
+            offset = None
+            while True:
+                scroll_res = await client.scroll(
+                    collection_name=self.collection_name,
+                    limit=100,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                points, offset = scroll_res
+                for pt in points:
+                    p = pt.payload or {}
+                    if "created_at_ts" not in p and "created_at" in p:
+                        try:
+                            pt_dt = datetime.fromisoformat(p["created_at"])
+                            if pt_dt < cutoff_dt:
+                                legacy_expired_ids.append(str(pt.id))
+                        except Exception:
+                            pass
+
+                if offset is None or not points:
+                    break
+
+            if legacy_expired_ids:
+                await client.delete(
+                    collection_name=self.collection_name,
+                    points_selector=PointIdsList(points=legacy_expired_ids),
+                )
+                logger.info(
+                    "Evicted legacy semantic cache entries",
+                    count=len(legacy_expired_ids),
+                )
+
+            return len(legacy_expired_ids)
+
+        except Exception as e:
+            logger.warning("Semantic cache TTL eviction failed", error=str(e))
+            return 0
 
 
 # Module-level singleton instance — initialized in lifespan

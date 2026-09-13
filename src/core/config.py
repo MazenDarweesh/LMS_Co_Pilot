@@ -33,11 +33,20 @@ class Settings(BaseSettings):
     # Search & Retrieval Optimization
     QDRANT_SEARCH_CANDIDATES_LIMIT: int = 8  # عدد المرشحين المسترجعين للـ Reranker (تحسين زمن المعالجة على CPU)
 
-    # Semantic Cache Configuration
+    # Exact In-Memory Cache Configuration (Tier-1)
+    EXACT_CACHE_ENABLED: bool = True
+    EXACT_CACHE_MAX_SIZE: int = 10000
+    EXACT_CACHE_TTL_SECONDS: int = 3600  # 1 hour in-memory TTL
+
+    # Semantic Vector Cache Configuration (Tier-2)
     SEMANTIC_CACHE_ENABLED: bool = True
     SEMANTIC_CACHE_COLLECTION: str = "semantic_cache"
     SEMANTIC_CACHE_THRESHOLD: float = 0.95  # Cosine similarity threshold (0.95 prevents false positives)
     SEMANTIC_CACHE_TTL_DAYS: int = 7       # Cache expiration in days
+    CACHE_EVICTION_INTERVAL_HOURS: int = 24  # Periodic eviction background task interval
+
+    # Fast Ingress Intent Router Configuration
+    INTENT_ROUTER_ENABLED: bool = True
 
     # Reranker Engine Configuration (Quantized ONNX via FlashRank)
     RERANKER_MODEL_NAME: str = "miniReranker_arabic_v1"
@@ -52,6 +61,7 @@ class Settings(BaseSettings):
     # Observability & Metrics (Prometheus)
     METRICS_ENABLED: bool = True
     METRICS_PATH: str = "/metrics"
+    SEARCH_DEBUG_ENABLED: bool = False  # Set to True only for offline diagnostic traces
 
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] = [
