@@ -255,12 +255,16 @@ class SearchService:
                 metrics["intent_latency_ms"] = round(intent_duration * 1000, 2)
                 metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
                 record_stage_duration("total", time.time() - t0)
-                logger.info("Fast Ingress intercept", intent=intent_res.intent.value, ms=metrics["total_latency_ms"])
+                if intent_res.intent == IntentType.SECURITY_VIOLATION:
+                    logger.warning("Security violation intercepted at Fast Ingress 🛡️", query_snippet=req.query[:50], ms=metrics["total_latency_ms"])
+                else:
+                    logger.info("Fast Ingress intercept", intent=intent_res.intent.value, ms=metrics["total_latency_ms"])
                 return SearchResponse(
                     answer=intent_res.canned_response,
                     sources=[],
                     query_used=req.query,
                 )
+
 
         # ──────────────────────────────────────────────
         # 1. Normalize query

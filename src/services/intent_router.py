@@ -12,13 +12,19 @@ Best Practices Applied (2026):
 """
 
 import re
+import unicodedata
 from enum import Enum
 from pydantic import BaseModel
 import structlog
 
 from src.core.config import settings
 from src.core.metrics import record_intent_classified
-from src.core.prompts import GREETING_RESPONSE, OUT_OF_SCOPE_RESPONSE, INVALID_QUERY_RESPONSE
+from src.core.prompts import (
+    GREETING_RESPONSE,
+    OUT_OF_SCOPE_RESPONSE,
+    INVALID_QUERY_RESPONSE,
+    SECURITY_VIOLATION_RESPONSE,
+)
 
 logger = structlog.get_logger()
 
@@ -26,6 +32,7 @@ logger = structlog.get_logger()
 class IntentType(str, Enum):
     GREETING = "GREETING"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
+    SECURITY_VIOLATION = "SECURITY_VIOLATION"
     RAG_QUERY = "RAG_QUERY"
     INVALID_QUERY = "INVALID_QUERY"
 
@@ -36,14 +43,53 @@ class IntentResult(BaseModel):
     confidence: float = 1.0
 
 
+def _normalize_arabizi_and_text(text: str) -> str:
+    """
+    Normalizes input text:
+    - Applies Unicode NFKC normalization.
+    - Strips zero-width and non-printing formatting characters.
+    """
+    norm = unicodedata.normalize("NFKC", text)
+    norm = re.sub(r"[\u200B-\u200D\uFEFF]", "", norm)
+    return norm
+
+
 class IntentRouterService:
     """
-    Fast Ingress Intent Classifier.
-    Routes queries in < 1ms to prevent wasteful LLM token generation on non-educational traffic.
+    Fast Ingress Intent Classifier & Security Interceptor.
+    Routes queries in < 1ms to prevent wasteful LLM token generation on non-educational traffic
+    and intercept prompt injection or jailbreak attempts.
     """
 
     def __init__(self) -> None:
         self._enabled = settings.INTENT_ROUTER_ENABLED
+
+        # 0. Security Violation & Jailbreak patterns (Egyptian colloquialisms + English + Franco)
+        self._security_patterns = [
+            # Egyptian & Arabic dialect instruction bypasses
+            re.compile(
+                r"(سيبك\s+من|فكك\s+من|انسى\s+(كل\s+)?اللي\s+فات|متسمعش\s+كلامهم|كلام\s+فاضي|كبر\s+دماغك|كبر\s+مخك|تجاهل\s+(كل\s+)?(التعليمات|الأوامر|التوجيهات|القيود))",
+                re.IGNORECASE | re.UNICODE,
+            ),
+            # Persona hijacking & Jailbreaks
+            re.compile(
+                r"(وضع\s+المطور|أنت\s+الآن\s+بدون\s+قيود|تظاهر\s+بأنك|dan\s+mode|developer\s+mode|jailbreak|unrestricted|bypass\s+(rules|restrictions|guardrails))",
+                re.IGNORECASE,
+            ),
+            # Prompt extraction & exfiltration attempts
+            re.compile(
+                r"(ما\s+هو\s+(الـ\s*)?(system\s*prompt|برومبت\s+(النظام|الأصلي)|تعليماتك\s+السرية)|"
+                r"(أريد|أعطني|اكشف|اطبع|عرض)\s+(لي\s+)?(البرومبت|الـ\s*system\s*prompt|التعليمات\s+الأصلية|التوجيهات\s+السرية)|"
+                r"reveal\s+(your\s+)?(system\s+)?prompt|print\s+(your\s+)?(system\s+)?instructions|"
+                r"<\|im_start\|>|<\|im_end\|>|\[INST\]|<<SYS>>|###\s*System:)",
+                re.IGNORECASE,
+            ),
+            # Franco-Arabic & Latin jailbreak bypasses
+            re.compile(
+                r"(sib\s*(el\s*)?kalam|fakkak\s*mn|fakkar\s*nafsek|ediny\s*el\s*emte7an|ignore\s+(all\s+)?(previous\s+)?instructions)",
+                re.IGNORECASE,
+            ),
+        ]
 
         # 1. Greetings regex patterns (Arabic dialects + English)
         self._greeting_pattern = re.compile(
@@ -84,7 +130,7 @@ class IntentRouterService:
         if not self._enabled:
             return IntentResult(intent=IntentType.RAG_QUERY, confidence=1.0)
 
-        cleaned = query.strip()
+        cleaned = _normalize_arabizi_and_text(query.strip())
         if not cleaned:
             record_intent_classified(IntentType.INVALID_QUERY.value)
             logger.info("Intent classified: INVALID_QUERY ⚠️")
@@ -93,6 +139,17 @@ class IntentRouterService:
                 canned_response=INVALID_QUERY_RESPONSE,
                 confidence=1.0,
             )
+
+        # Step 0: Intercept Security Violations, Dialect Bypasses & Jailbreaks FIRST (< 0.1ms)
+        for pattern in self._security_patterns:
+            if pattern.search(cleaned):
+                record_intent_classified(IntentType.SECURITY_VIOLATION.value)
+                logger.warning("Security violation intercepted 🛡️", query_snippet=cleaned[:50])
+                return IntentResult(
+                    intent=IntentType.SECURITY_VIOLATION,
+                    canned_response=SECURITY_VIOLATION_RESPONSE,
+                    confidence=0.99,
+                )
 
         # Step 1: Check Greetings
         if self._greeting_pattern.match(cleaned):
@@ -122,3 +179,4 @@ class IntentRouterService:
 
 # Module-level singleton instance
 intent_router = IntentRouterService()
+
