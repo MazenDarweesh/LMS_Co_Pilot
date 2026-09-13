@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices
 
 # 1. Token Claims (Data extracted directly from the decoded JWT)
 # Using aliases to map .NET PascalCase token claims to Python's snake_case.
@@ -47,3 +47,55 @@ class UserContext(BaseModel):
     @property
     def role(self) -> str:
         return self.claims.role
+
+
+# 5. Full Lesson Context (Returned by LMS internal API)
+# Uses AliasChoices to seamlessly support both camelCase and PascalCase from .NET serialization.
+class LessonFullContext(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    lesson_id: str = Field(default="", validation_alias=AliasChoices("lessonId", "LessonId"))
+    video_url: str | None = Field(default=None, validation_alias=AliasChoices("videoUrl", "VideoUrl"))
+    tenant_ids: list[str] = Field(default_factory=list, validation_alias=AliasChoices("tenantIds", "TenantIds"))
+    module_id: str = Field(default="", validation_alias=AliasChoices("moduleId", "ModuleId"))
+    unit_id: str = Field(default="", validation_alias=AliasChoices("unitId", "UnitId"))
+    level_id: str = Field(default="", validation_alias=AliasChoices("levelId", "LevelId"))
+    type_id: str = Field(default="", validation_alias=AliasChoices("typeId", "TypeId"))
+    target_roles: list[str] = Field(default_factory=list, validation_alias=AliasChoices("targetRoles", "TargetRoles"))
+
+    def __getitem__(self, item: str):
+        mapping = {
+            "lessonId": self.lesson_id,
+            "LessonId": self.lesson_id,
+            "lesson_id": self.lesson_id,
+            "videoUrl": self.video_url,
+            "VideoUrl": self.video_url,
+            "video_url": self.video_url,
+            "tenantIds": self.tenant_ids,
+            "TenantIds": self.tenant_ids,
+            "tenant_ids": self.tenant_ids,
+            "moduleId": self.module_id,
+            "ModuleId": self.module_id,
+            "module_id": self.module_id,
+            "unitId": self.unit_id,
+            "UnitId": self.unit_id,
+            "unit_id": self.unit_id,
+            "levelId": self.level_id,
+            "LevelId": self.level_id,
+            "level_id": self.level_id,
+            "typeId": self.type_id,
+            "TypeId": self.type_id,
+            "type_id": self.type_id,
+            "targetRoles": self.target_roles,
+            "TargetRoles": self.target_roles,
+            "target_roles": self.target_roles,
+        }
+        if item in mapping:
+            return mapping[item]
+        raise KeyError(item)
+
+    def get(self, item: str, default=None):
+        try:
+            return self[item]
+        except KeyError:
+            return default

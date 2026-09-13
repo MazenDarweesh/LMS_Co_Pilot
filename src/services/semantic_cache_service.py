@@ -20,6 +20,7 @@ from qdrant_client.models import (
     Filter,
     FieldCondition,
     MatchValue,
+    MatchAny,
     KeywordIndexParams,
     IntegerIndexParams,
     FilterSelector,
@@ -28,6 +29,7 @@ from qdrant_client.models import (
 )
 
 from src.core.config import settings
+from src.core.metrics import record_cache_rbac_rejection
 from src.services.qdrant_service import qdrant_service
 from src.models.auth_models import UserContext
 from src.models.search_models import SearchResponse, SourceItem
@@ -126,6 +128,7 @@ class SemanticCacheService:
             # Note: Admins possess full company-wide access and bypass lesson-level restrictions.
             if user_ctx.claims.role != "Admin" and cached_lessons:
                 if not user_ctx.permissions or not user_ctx.permissions.accessible_lesson_ids:
+                    record_cache_rbac_rejection("semantic")
                     logger.warning(
                         "Semantic cache match rejected: student has no valid permissions or enrollments",
                         user_id=user_ctx.user_id,
@@ -135,6 +138,7 @@ class SemanticCacheService:
                 allowed_lessons = set(user_ctx.permissions.accessible_lesson_ids)
                 # If student is restricted and missing access to any lesson in the answer, treat as MISS
                 if not set(cached_lessons).issubset(allowed_lessons):
+                    record_cache_rbac_rejection("semantic")
                     logger.info(
                         "Semantic cache match rejected due to permission restrictions",
                         cached_lessons=cached_lessons,
@@ -222,7 +226,7 @@ class SemanticCacheService:
                     must=[
                         FieldCondition(
                             key="lesson_ids",
-                            match=MatchValue(value=lesson_id),
+                            match=MatchAny(any=[lesson_id]),
                         )
                     ]
                 )
@@ -239,7 +243,7 @@ class SemanticCacheService:
     async def evict_expired_entries(self) -> int:
         """
         Evicts entries older than SEMANTIC_CACHE_TTL_DAYS (default: 7 days)
-        from the Qdrant semantic cache collection.
+        and enforces FIFO capacity limits (SEMANTIC_CACHE_MAX_POINTS).
         Returns the count of evicted points.
         """
         if not self.enabled:
@@ -305,6 +309,32 @@ class SemanticCacheService:
                     "Evicted legacy semantic cache entries",
                     count=len(legacy_expired_ids),
                 )
+
+            # Method 3: FIFO capacity guard against SEMANTIC_CACHE_MAX_POINTS
+            max_points = getattr(settings, "SEMANTIC_CACHE_MAX_POINTS", 100000)
+            count_res = await client.count(collection_name=self.collection_name, exact=False)
+            if count_res.count > max_points:
+                excess = count_res.count - max_points
+                logger.info(
+                    "Semantic cache exceeded capacity limit, pruning oldest FIFO",
+                    current=count_res.count,
+                    max=max_points,
+                    excess=excess,
+                )
+                prune_scroll, _ = await client.scroll(
+                    collection_name=self.collection_name,
+                    limit=min(excess, 500),
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                sorted_pts = sorted(prune_scroll, key=lambda p: (p.payload or {}).get("created_at_ts", 0))
+                excess_ids = [str(pt.id) for pt in sorted_pts[:excess]]
+                if excess_ids:
+                    await client.delete(
+                        collection_name=self.collection_name,
+                        points_selector=PointIdsList(points=excess_ids),
+                    )
+                    logger.info("FIFO pruned oldest semantic cache points", count=len(excess_ids))
 
             return len(legacy_expired_ids)
 

@@ -35,7 +35,14 @@ EXACT_CACHE_REQUESTS = Counter(
 INTENT_REQUESTS = Counter(
     "lms_intent_requests_total",
     "Total requests routed by the Fast Ingress Intent Router",
-    labelnames=["intent"],  # "greeting" | "out_of_scope" | "rag_query"
+    labelnames=["intent"],  # "greeting" | "out_of_scope" | "rag_query" | "invalid_query"
+)
+
+# 1.3 Cache RBAC Rejection Metric
+CACHE_RBAC_REJECTIONS = Counter(
+    "lms_cache_rbac_rejections_total",
+    "Total cache matches rejected due to student missing course permissions",
+    labelnames=["tier"],  # "exact" | "semantic"
 )
 
 # 2. RAG Pipeline Latency Breakdown
@@ -77,6 +84,11 @@ def record_exact_cache_lookup(hit: bool) -> None:
 def record_intent_classified(intent: str) -> None:
     """Records an intent classification event."""
     INTENT_REQUESTS.labels(intent=intent.lower()).inc()
+
+
+def record_cache_rbac_rejection(tier: str) -> None:
+    """Records a cache lookup rejection caused by RBAC entitlement checks."""
+    CACHE_RBAC_REJECTIONS.labels(tier=tier.lower()).inc()
 
 
 def record_stage_duration(stage: str, duration_seconds: float) -> None:

@@ -2,7 +2,7 @@
 document_type: "Architectural Decision Registry (ADR) & Post-Production Notes"
 last_updated_commit: "e02f7d1"
 last_updated_date: "2026-09-10"
-adrs_count: 8
+adrs_count: 9
 status: "Active"
 ---
 
@@ -21,7 +21,17 @@ status: "Active"
 1. **الوكلاء (LangGraph):** نعتمد على `AsyncPostgresSaver` مع `Connection Pool` متين في قاعدة بيانات PostgreSQL لحفظ حالة الوكلاء والأحداث (Event Sourcing) بدلاً من `RedisSaver`.
 2. **صلاحيات الـ LMS:** استخدام `cachetools.TTLCache` (في الذاكرة العشوائية لمدة 5 دقائق) يكفي حالياً ولا يسبب ضغطاً على الـ ERP.
 3. **طوابير المهام (Background Jobs):** استخدام `asyncio.Semaphore` و `TaskGroup` داخل `pipeline_orchestrator.py` يكفي لإدارة معالجة الملفات الصوتية دون تعقيد البنية التحتية.
-**متى نراجع القرار؟** في حال سقط السيرفر تحت ضغط معالجة آلاف الفيديوهات المتزامنة، سيتم إدخال Redis كـ Message Broker مع Celery لمعالجة الصوتيات، أو عند الحاجة لإبطال كاش الصلاحيات لحظياً (كما هو مذكور في النقطة 1 أدناه).
+### ADR-09: إدارة أقفال المزامنة للدروس (Per-Lesson Lock) والتوسع الأفقي (Multi-Pod Deployment)
+**القرار:** استخدام `asyncio.Lock` محلي في الذاكرة مع حماية TOCTOU وتقييد الذاكرة (Bounded Pruning) لمرحلة الإنتاج الحالية (Single-Replica).
+**السبب (Context):**
+1. **طبيعة العملية:** معالجة الفيديو والـ Ingestion قد تستغرق من 30 إلى 120 ثانية (تنزيل، تقطيع، تفريغ صوتي، وتضمين متجهات).
+2. **خطورة Postgres Advisory Locks في العمليات الطويلة:** استخدام `pg_advisory_xact_lock` يقتضي حجز اتصال نشط من `db_pool` طوال مدة المعالجة (حتى دقيقتين)، مما يؤدي سريعاً إلى استنزاف مجمع الاتصالات (Connection Pool Starvation) وتوقف طلبات الـ API الأخرى.
+3. **استبعاد Redis في الـ MVP (وفقاً لـ ADR-01):** لا توجد حالياً بنية تحتية لـ Redis في بيئة الـ MVP.
+**خطة الترقية عند الانتقال إلى Multi-Pod (Replicas > 1):**
+عند تشغيل أكثر من Pod في Kubernetes أو وراء Load Balancer، يتم اعتماد أحد الخيارين:
+- **الخيار المفضل (بدون Redis):** إنشاء جدول عقود تأجير مؤقتة في PostgreSQL باسم `lesson_ingest_leases` (بأعمدة: `lesson_id`, `pod_id`, `lease_expires_at`). يتم حجز القفل باستعلام ذري مدته 5 دقائق (`INSERT ... ON CONFLICT DO UPDATE WHERE lease_expires_at < NOW()`) ثم تحرير الاتصال فوراً للـ Pool دون حبس الاتصال.
+- **خيار Redis Distributed Lock:** عند إدخال Redis في البنية التحتية طبقاً لمراجعة ADR-01، يتم استخدام `Redlock` أو `redis.lock(f"ingest:lesson:{lesson_id}", timeout=300)`.
+**قيد التشغيل الحالي:** يُمنع نشر أكثر من نسخة Pod واحدة (`replicas: 1`) حتى يتم تطبيق جدول عقود التأجير أو Redis.
 
 ---
 

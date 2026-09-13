@@ -3,8 +3,8 @@ Exact In-Memory Cache Service — Fast Ingress Tier-1 Cache
 =========================================================
 Best Practices Applied (2026):
 - Sub-2ms Exact Match In-Memory Cache using cachetools.TTLCache with LRU eviction.
-- Key Generation: SHA256(company_id + ":" + normalized_query).
-- Multi-Tenant Isolation: Enforces company_id boundary directly within cache key and entry metadata.
+- Key Generation: SHA256(company_id + ":" + department_id + ":" + role + ":" + normalized_query).
+- Multi-Tenant & Department Isolation: Enforces tenant, department, and role boundaries directly within cache key.
 - Permission Verification: Re-checks student lesson entitlements before returning cached SearchResponse.
 - Thread-Safe: Uses threading.Lock to synchronize in-memory dictionary access under high concurrency.
 - Invalidation Support: `invalidate_by_lesson_id` purges matching entries on LMS webhooks.
@@ -18,6 +18,7 @@ import structlog
 from cachetools import TTLCache
 
 from src.core.config import settings
+from src.core.metrics import record_cache_rbac_rejection
 from src.models.auth_models import UserContext
 from src.models.search_models import SearchResponse, SourceItem
 
@@ -76,9 +77,11 @@ class ExactCacheService:
                 self._cache.clear()
         logger.info("Exact In-Memory Cache cleared and closed 🛑")
 
-    def _compute_key(self, normalized_query: str, company_id: str) -> str:
-        """Generates a deterministic SHA256 key scoped strictly by tenant."""
-        raw_key = f"{company_id}:{normalized_query.strip().lower()}"
+    def _compute_key(self, normalized_query: str, user_ctx: UserContext) -> str:
+        """Generates a deterministic 4D SHA256 key scoped strictly by tenant, department, and role."""
+        dept = user_ctx.claims.department_id or "global"
+        role = user_ctx.claims.role
+        raw_key = f"{user_ctx.company_id}:{dept}:{role}:{normalized_query.strip().lower()}"
         return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
     def lookup(
@@ -93,7 +96,7 @@ class ExactCacheService:
         if not self._enabled or self._cache is None:
             return None
 
-        cache_key = self._compute_key(normalized_query, user_ctx.company_id)
+        cache_key = self._compute_key(normalized_query, user_ctx)
 
         with self._lock:
             entry: CachedEntry | None = self._cache.get(cache_key)
@@ -114,6 +117,7 @@ class ExactCacheService:
         # Admins have global access. For students, strictly verify all lesson_ids in the response are accessible.
         if user_ctx.claims.role != "Admin" and entry.lesson_ids:
             if not user_ctx.permissions or not user_ctx.permissions.accessible_lesson_ids:
+                record_cache_rbac_rejection("exact")
                 logger.warning(
                     "Exact cache match rejected: student has no valid permissions or enrollments",
                     user_id=user_ctx.user_id,
@@ -122,6 +126,7 @@ class ExactCacheService:
 
             allowed = set(user_ctx.permissions.accessible_lesson_ids)
             if not set(entry.lesson_ids).issubset(allowed):
+                record_cache_rbac_rejection("exact")
                 logger.info(
                     "Exact cache match rejected due to student permission restrictions",
                     cached_lessons=entry.lesson_ids,
@@ -152,7 +157,7 @@ class ExactCacheService:
         if not self._enabled or self._cache is None:
             return
 
-        cache_key = self._compute_key(normalized_query, user_ctx.company_id)
+        cache_key = self._compute_key(normalized_query, user_ctx)
         lesson_ids = list({
             getattr(s, "lesson_id", None)
             for s in response.sources

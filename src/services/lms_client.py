@@ -2,7 +2,7 @@ import httpx
 import structlog
 from cachetools import TTLCache
 from src.core.config import settings
-from src.models.auth_models import UserPermissions
+from src.models.auth_models import UserPermissions, LessonFullContext
 
 logger = structlog.get_logger()
 
@@ -15,6 +15,7 @@ class LMSClientService:
     def __init__(self):
         self._client: httpx.AsyncClient | None = None
         self._perms_cache: TTLCache | None = None
+        self._lesson_context_cache: TTLCache | None = None
 
     def initialize(self) -> None:
         """Called from FastAPI lifespan — never in __init__."""
@@ -24,6 +25,7 @@ class LMSClientService:
             timeout=10.0,
         )
         self._perms_cache = TTLCache(maxsize=1000, ttl=300) # 5 minutes TTL
+        self._lesson_context_cache = TTLCache(maxsize=5000, ttl=300) # 5 minutes TTL
         logger.info("LMS Client service ready ✅", base_url=settings.LMS_BASE_URL)
 
     async def get_user_permissions(self, user_id: str) -> UserPermissions:
@@ -59,14 +61,28 @@ class LMSClientService:
         self._perms_cache[user_id] = perms
         return perms
 
-    async def get_lesson_full_context(self, lesson_id: str) -> dict:
+    async def get_lesson_full_context(self, lesson_id: str) -> LessonFullContext:
         """
         Fetches the full metadata (url, module, level, etc.) for a lesson.
+        Cached in-memory via TTLCache (5 minutes) to eliminate internal LMS round-trip latency.
+        Returns a validated LessonFullContext model supporting both camelCase and PascalCase.
         """
-        assert self._client is not None, "LMSClientService not initialized"
+        assert self._client is not None and self._lesson_context_cache is not None, "LMSClientService not initialized"
+
+        if lesson_id in self._lesson_context_cache:
+            entry = self._lesson_context_cache[lesson_id]
+            return entry if isinstance(entry, LessonFullContext) else LessonFullContext.model_validate(entry)
+
         resp = await self._client.get(f"/api/internal/lessons/{lesson_id}/full-context")
         resp.raise_for_status()
-        return resp.json()
+        context = LessonFullContext.model_validate(resp.json())
+        self._lesson_context_cache[lesson_id] = context
+        return context
+
+    def invalidate_lesson_context(self, lesson_id: str) -> None:
+        """Purges cached lesson context on LMS webhook updates."""
+        if self._lesson_context_cache is not None:
+            self._lesson_context_cache.pop(lesson_id, None)
 
     async def close(self) -> None:
         if self._client:

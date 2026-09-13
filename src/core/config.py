@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     SEMANTIC_CACHE_COLLECTION: str = "semantic_cache"
     SEMANTIC_CACHE_THRESHOLD: float = 0.95  # Cosine similarity threshold (0.95 prevents false positives)
     SEMANTIC_CACHE_TTL_DAYS: int = 7       # Cache expiration in days
+    SEMANTIC_CACHE_MAX_POINTS: int = 100000  # Upper threshold for vector collection capacity
     CACHE_EVICTION_INTERVAL_HOURS: int = 24  # Periodic eviction background task interval
 
     # Fast Ingress Intent Router Configuration

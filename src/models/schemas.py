@@ -153,4 +153,15 @@ class AudioIngestRequestV2(BaseModel):
 
 class WebhookPayload(BaseModel):
     lessonId: str = Field(..., description="معرف الدرس المرتبط بالحدث")
-    action: str = Field(..., description="نوع الإجراء (Updated / Deleted)")
+    action: str = Field(..., description="نوع الإجراء (Updated / Deleted)")
+
+
+class SyncFailedRequest(BaseModel):
+    lesson_ids: list[str] = Field(..., min_length=1, description="قائمة بمعرفات الدروس المراد إعادة مزامنتها ومعالجتها")
+
+
+class SyncFailedResponse(BaseModel):
+    status: str = "accepted"
+    lessons_queued: list[str]
+    count: int
+    message: str = "Reconciliation and re-ingestion scheduled successfully"

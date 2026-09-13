@@ -18,7 +18,7 @@ import structlog
 
 from src.core.config import settings
 from src.core.metrics import record_intent_classified
-from src.core.prompts import GREETING_RESPONSE, OUT_OF_SCOPE_RESPONSE
+from src.core.prompts import GREETING_RESPONSE, OUT_OF_SCOPE_RESPONSE, INVALID_QUERY_RESPONSE
 
 logger = structlog.get_logger()
 
@@ -27,6 +27,7 @@ class IntentType(str, Enum):
     GREETING = "GREETING"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     RAG_QUERY = "RAG_QUERY"
+    INVALID_QUERY = "INVALID_QUERY"
 
 
 class IntentResult(BaseModel):
@@ -44,21 +45,22 @@ class IntentRouterService:
     def __init__(self) -> None:
         self._enabled = settings.INTENT_ROUTER_ENABLED
 
-        # 1. Greetings regex patterns (Arabic & English)
+        # 1. Greetings regex patterns (Arabic dialects + English)
         self._greeting_pattern = re.compile(
             r"^\s*("
-            r"أهلاً|اهلا|مرحبا|مرحباً|سلام|السلام\s+عليكم(\s+ورحمة\s+الله(\s+وبركاته)?)?|سلام\s+عليكم|"
-            r"صباح\s+الخير|مساء\s+الخير|ازيك|إزيك|ازي\s+حضرتك|عامل\s+ايه|"
+            r"أهلاً|اهلا|مرحبا|مرحباً|مرحبتين|سلام|السلام\s+عليكم(\s+ورحمة\s+الله(\s+وبركاته)?)?|سلام\s+عليكم|"
+            r"هلا|يا\s+هلا|كيفك|شلونك|وش\s+أخبارك|ازيك|إزيك|ازي\s+حضرتك|عامل\s+ايه|"
+            r"صباح\s+الخير|مساء\s+الخير|"
             r"ألو|الو|هاي|هلو|"
             r"hello|hi|hey|good\s+morning|good\s+evening|howdy|greetings|how\s+are\s+you"
-            r")(\s+(يا\s+[\w]+|there|all|everyone))?[\s!.,؟?]*$",
+            r")(\s+(يا\s+[\w]+|والله|وغلا|there|all|everyone))?[\s!.,؟?]*$",
             re.IGNORECASE | re.UNICODE,
         )
 
-        # 2. Obvious Out-of-Scope triggers (Weather, Jokes, Politics, General gossip)
+        # 2. Obvious Out-of-Scope triggers (Weather, explicit jokes, Politics, General gossip)
         self._out_of_scope_patterns = [
             re.compile(r"(الطقس|درجة\s+الحرارة|حالة\s+الجو|weather|temperature)", re.IGNORECASE),
-            re.compile(r"(قولي\s+نكتة|احكيلي\s+نكتة|نكتة|joke|tell\s+me\s+a\s+joke)", re.IGNORECASE),
+            re.compile(r"(قولي\s+نكتة|احكيلي\s+نكتة|احكِ\s+لي\s+نكتة|قول\s+نكتة|اضحكني|ضحكني|tell\s+me\s+a\s+joke|joke\s+please)", re.IGNORECASE),
             re.compile(r"(مين\s+رئيس|من\s+هو\s+رئيس|الانتخابات|political|politics|president\s+of)", re.IGNORECASE),
             re.compile(r"(سعر\s+الدولار|سعر\s+الذهب|gold\s+price|dollar\s+rate)", re.IGNORECASE),
             re.compile(r"(نتيجة\s+مباراة|ماتش\s+النهاردة|دوري\s+أبطال|football\s+match|who\s+won\s+the\s+match)", re.IGNORECASE),
@@ -84,9 +86,11 @@ class IntentRouterService:
 
         cleaned = query.strip()
         if not cleaned:
+            record_intent_classified(IntentType.INVALID_QUERY.value)
+            logger.info("Intent classified: INVALID_QUERY ⚠️")
             return IntentResult(
-                intent=IntentType.GREETING,
-                canned_response=GREETING_RESPONSE,
+                intent=IntentType.INVALID_QUERY,
+                canned_response=INVALID_QUERY_RESPONSE,
                 confidence=1.0,
             )
 

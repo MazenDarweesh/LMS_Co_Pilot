@@ -4,6 +4,7 @@ import json
 import os
 import re
 import secrets
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
@@ -20,8 +21,11 @@ from src.models.schemas import (
     GeneratedSummary,
     LessonMetadata,
     WebhookPayload,
+    SyncFailedRequest,
+    SyncFailedResponse,
 )
 from src.models.search_models import SearchRequest, SearchResponse
+from src.models.auth_models import LessonFullContext
 from src.services.auth_service import UserContext, get_current_user, require_role
 from src.services.lesson_content_service import lesson_content_service
 from src.services.lms_client import lms_client_service
@@ -103,48 +107,146 @@ async def unified_lesson_webhook(
 
     if payload.action == "Deleted":
         # 🗑️ مسح المتجهات والكاش من قاعدة البيانات فوراً
+        lms_client_service.invalidate_lesson_context(payload.lessonId)
         background_tasks.add_task(qdrant_service.delete_by_lesson_id, payload.lessonId)
         background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
         background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, payload.lessonId)
         return {"status": "accepted", "message": "Deletion triggered"}
         
     elif payload.action == "Updated":
-        # 🗑️ مسح الكاش القديم فوراً لمنع إرجاع إجابات قديمة أثناء إعادة المعالجة
-        background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
-        background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, payload.lessonId)
-        # 🔄 سحب تفاصيل الفيديو من LMS (Full Context) وبدء دورة Ingestion جديدة
-        async def fetch_and_ingest():
-            try:
-                context = await lms_client_service.get_lesson_full_context(payload.lessonId)
-                
-                url = context.get("videoUrl")
-                # Parse LMS metadata into our LessonMetadata format
-                meta = LessonMetadata(
-                    tenant_ids=context.get("tenantIds", context.get("TenantIds", ["default"])),
-                    module_id=context.get("moduleId", context.get("ModuleId", "")),
-                    unit_id=context.get("unitId", context.get("UnitId", "")),
-                    level_id=context.get("levelId", context.get("LevelId", "")),
-                    type_id=context.get("typeId", context.get("TypeId", "")),
-                    lesson_id=payload.lessonId,
-                    target_roles=context.get("targetRoles", context.get("TargetRoles", []))
-                )
-
-                # ✅ Fix: Delete old chunks FIRST before re-ingesting.
-                # Prevents stale/duplicate vectors after a lesson content update.
-                await qdrant_service.delete_by_lesson_id(payload.lessonId)
-                logger.info("Old Qdrant chunks cleared before re-ingest", lesson_id=payload.lessonId)
-
-                # Run the ingestion pipeline securely in the background
-                await pipeline_orchestrator.run_audio_pipeline(
-                    url, payload.lessonId, request.app.state.db_pool, meta
-                )
-            except Exception as e:
-                logger.error("Webhook ingestion failed", lesson_id=payload.lessonId, error=str(e))
-                
-        background_tasks.add_task(fetch_and_ingest)
+        # 🔄 الترتيب الصارم: 1. إبطال الكاش الدلالي -> 2. إبطال الكاش الفوري -> 3. مسح Qdrant -> 4. إعادة الـ Ingestion
+        lms_client_service.invalidate_lesson_context(payload.lessonId)
+        background_tasks.add_task(
+            sync_and_reingest_lesson,
+            payload.lessonId,
+            request.app.state.db_pool,
+        )
         return {"status": "accepted", "message": "Update and Ingestion triggered"}
 
     raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid action")
+
+
+# ⚠️ ARCHITECTURAL CONSTRAINT:
+# This in-memory lock is scoped to a single-replica deployment (current Phase 1 / MVP).
+# If scaling horizontally to multi-pod (replicas > 1), migrate to a distributed lock
+# (PostgreSQL lease table or Redis lock) as documented in docs/production_notes.md (ADR-09).
+_ingest_locks: dict[str, asyncio.Lock] = {}
+_ingest_locks_last_used: dict[str, float] = {}
+_ingest_locks_guard = asyncio.Lock()
+_INGEST_LOCK_MAX = 10_000
+_INGEST_LOCK_IDLE_PRUNE_SECONDS = 3600  # 1 hour grace period to prevent TOCTOU race conditions
+
+
+async def _get_lesson_ingest_lock(lesson_id: str) -> asyncio.Lock:
+    """
+    Thread-safe acquisition of a per-lesson lock with bounded memory pruning.
+    Protects against TOCTOU race conditions by requiring locks to be both unlocked
+    AND idle (> 1 hour) before eligible for pruning.
+    Pruning evicts oldest-idle locks first and updates both structures atomically.
+    """
+    async with _ingest_locks_guard:
+        now = time.monotonic()
+        if lesson_id not in _ingest_locks:
+            if len(_ingest_locks) >= _INGEST_LOCK_MAX:
+                # Prune only locks that are unlocked AND idle > 1 hour
+                stale_keys = [
+                    k for k, ts in _ingest_locks_last_used.items()
+                    if (now - ts) > _INGEST_LOCK_IDLE_PRUNE_SECONDS
+                    and not _ingest_locks[k].locked()
+                ]
+                # Evict oldest idle entries first
+                stale_keys.sort(key=lambda k: _ingest_locks_last_used.get(k, 0.0))
+                for k in stale_keys:
+                    _ingest_locks.pop(k, None)
+                    _ingest_locks_last_used.pop(k, None)
+                    if len(_ingest_locks) < 8000:
+                        break
+            _ingest_locks[lesson_id] = asyncio.Lock()
+
+        _ingest_locks_last_used[lesson_id] = now
+        return _ingest_locks[lesson_id]
+
+
+async def sync_and_reingest_lesson(lesson_id: str, db_pool) -> None:
+    """
+    الترتيب الحتمي والصارم لعملية تحديث أو إعادة مزامنة درس مع قفل تزامني (Per-Lesson Lock):
+    1. اكتساب قفل مخصص للدرس لمنع التنافس (Race Condition).
+    2. إبطال الكاش الدلالي (Semantic Cache Invalidation).
+    3. إبطال الكاش اللحظي (Exact LRU Cache Invalidation).
+    4. حذف المتجهات القديمة من Qdrant لمنع الازدواجية والتسريب.
+    5. جلب سياق الدرس من LMS وإعادة تشغيل مسار المعالجة الصوتية.
+    """
+    lock = await _get_lesson_ingest_lock(lesson_id)
+    async with lock:
+        try:
+            # 1. إبطال الكاش الدلالي فوراً
+            await semantic_cache_service.invalidate_by_lesson_id(lesson_id)
+
+            # 2. إبطال الكاش الفوري
+            exact_cache_service.invalidate_by_lesson_id(lesson_id)
+
+            # 3. مسح المتجهات القديمة من Qdrant قبل إعادة المعالجة
+            await qdrant_service.delete_by_lesson_id(lesson_id)
+            logger.info("Caches and old Qdrant chunks cleared in strict order", lesson_id=lesson_id)
+
+            # 4. جلب سياق الدرس وتشغيل الـ Ingestion
+            raw_context = await lms_client_service.get_lesson_full_context(lesson_id)
+            context = raw_context if isinstance(raw_context, LessonFullContext) else LessonFullContext.model_validate(raw_context)
+            url = context.video_url or ""
+            meta = LessonMetadata(
+                tenant_ids=context.tenant_ids or ["default"],
+                module_id=context.module_id,
+                unit_id=context.unit_id,
+                level_id=context.level_id,
+                type_id=context.type_id,
+                lesson_id=lesson_id,
+                target_roles=context.target_roles,
+            )
+
+            await pipeline_orchestrator.run_audio_pipeline(
+                url, lesson_id, db_pool, meta
+            )
+            logger.info("Sync and re-ingestion finished successfully", lesson_id=lesson_id)
+        except Exception as e:
+            logger.error("Sync and re-ingestion failed for lesson", lesson_id=lesson_id, error=str(e))
+
+
+@router.post("/admin/sync-failed", response_model=SyncFailedResponse, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/minute")
+async def trigger_sync_failed(
+    request: Request,
+    payload: SyncFailedRequest,
+    background_tasks: BackgroundTasks,
+    admin_ctx: UserContext = Depends(require_role("Admin"))
+):
+    """
+    مسار إداري للتعافي من فشل الـ Webhooks وإعادة مزامنة الدروس المتأخرة أثناء الـ Downtime.
+    مخصص للـ Admins فقط، ويطبق الترتيب الحتمي للتطهير وإعادة الـ Ingestion.
+    """
+    sanitized_ids: list[str] = []
+    for lid in payload.lesson_ids:
+        clean_lid = lid.strip()
+        if not re.match(r"^[a-zA-Z0-9_-]+$", clean_lid):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid lesson_id format: '{clean_lid}'"
+            )
+        sanitized_ids.append(clean_lid)
+
+    for lid in sanitized_ids:
+        background_tasks.add_task(
+            sync_and_reingest_lesson,
+            lid,
+            request.app.state.db_pool,
+        )
+
+    logger.info("Scheduled sync-failed reconciliation", count=len(sanitized_ids), admin_id=admin_ctx.user_id)
+    return SyncFailedResponse(
+        status="accepted",
+        lessons_queued=sanitized_ids,
+        count=len(sanitized_ids),
+        message="Reconciliation and re-ingestion scheduled successfully"
+    )
 
 
 @router.get("/ingest/events/{session_id}")
@@ -199,10 +301,15 @@ async def stream_ingestion_events(
 @router.get("/lessons/{lesson_id}")
 # 🛡️ OWASP A04: Insecure Design (Rate Limiting to prevent DoS)
 @limiter.limit("20/minute")
-async def get_lesson_result(request: Request, lesson_id: str):
+async def get_lesson_result(
+    request: Request,
+    lesson_id: str,
+    user_ctx: UserContext = Depends(get_current_user),
+):
     """
     يقوم بجمع كل المقاطع (Chunks) الخاصة بدرس معين من نقاط الحفظ (Checkpoints)
     ويدمجها بالترتيب ليعرض النتيجة النهائية للدرس كاملاً.
+    محمي بالكامل ضد ثغرة BOLA (OWASP API Security Top 1).
     """
     # 🛡️ OWASP A01: Broken Access Control (Path Traversal Protection)
     if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
@@ -210,6 +317,69 @@ async def get_lesson_result(request: Request, lesson_id: str):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid lesson_id format. Potential path traversal attempt blocked."
         )
+
+    # 🛡️ OWASP A01: Broken Object Level Authorization (BOLA) Check
+    if user_ctx.claims.role != "Admin":
+        # For students, strictly verify lesson entitlement
+        if (
+            not user_ctx.permissions
+            or not user_ctx.permissions.accessible_lesson_ids
+            or lesson_id not in user_ctx.permissions.accessible_lesson_ids
+        ):
+            logger.warning(
+                "BOLA access blocked: user unauthorized for lesson checkpoints",
+                lesson_id=lesson_id,
+                user_id=user_ctx.user_id,
+                company_id=user_ctx.company_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You do not have permission to view this lesson."
+            )
+    else:
+        # Cross-Tenant Protection for Admin: Verify lesson belongs to admin's organization (Fail-Closed)
+        try:
+            raw_context = await lms_client_service.get_lesson_full_context(lesson_id)
+            context = raw_context if isinstance(raw_context, LessonFullContext) else LessonFullContext.model_validate(raw_context)
+            lesson_tenants = context.tenant_ids
+            
+            # Fail-Closed: A lesson with no associated organization cannot be accessed
+            if not lesson_tenants:
+                logger.warning(
+                    "Lesson without organization rejected for admin access",
+                    lesson_id=lesson_id,
+                    admin_id=user_ctx.user_id,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Lesson is not associated with any organization."
+                )
+
+            if user_ctx.company_id not in lesson_tenants:
+                logger.warning(
+                    "Cross-tenant admin access blocked for lesson checkpoints",
+                    lesson_id=lesson_id,
+                    admin_id=user_ctx.user_id,
+                    admin_company=user_ctx.company_id,
+                    lesson_tenants=lesson_tenants,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: This lesson does not belong to your organization."
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(
+                "Cross-tenant check FAILED - rejecting admin access (Fail-Closed)",
+                lesson_id=lesson_id,
+                admin_id=user_ctx.user_id,
+                error=str(e),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Unable to verify lesson organization ownership. Please try again later."
+            )
         
     # البحث عن كل ملفات الـ JSON الخاصة بهذا الدرس
     pattern = os.path.join(CHECKPOINT_DIR, f"{lesson_id}_chunk_*.json")
