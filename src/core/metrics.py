@@ -66,6 +66,14 @@ ACTIVE_REQUESTS = Gauge(
     "Current number of concurrent in-flight requests in the AI engine",
 )
 
+# 5. Student Search Feedback
+SEARCH_FEEDBACK_TOTAL = Counter(
+    "lms_search_feedback_total",
+    "Total student feedback ratings submitted on search answers",
+    labelnames=["rating"],  # "up", "down"
+)
+
+
 
 # ─── Recording Helpers ────────────────────────────────────────────────────────
 
@@ -109,7 +117,13 @@ def record_token_usage(prompt_tokens: int = 0, completion_tokens: int = 0, total
         LLM_TOKENS.labels(type="total").inc(prompt_tokens + completion_tokens)
 
 
+def record_search_feedback(rating: str) -> None:
+    """Records a student feedback rating event (UP or DOWN)."""
+    SEARCH_FEEDBACK_TOTAL.labels(rating=rating.lower()).inc()
+
+
 # ─── Instrumentator Initialization ────────────────────────────────────────────
+
 
 def init_metrics(app: FastAPI) -> Instrumentator | None:
     """

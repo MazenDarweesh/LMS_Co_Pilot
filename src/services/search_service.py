@@ -3,13 +3,16 @@ import os
 import json
 import time
 import uuid
-from datetime import datetime, timezone
+import threading
+from typing import AsyncIterator
 import structlog
+from fastapi import Request
 from google import genai
 from google.genai import types
 
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, AIMessage
+
 
 from src.core.config import settings
 from src.core.prompts import RAG_SYSTEM_PROMPT
@@ -160,7 +163,17 @@ def _write_search_debug_file(
         json.dump(debug_data, f, ensure_ascii=False, indent=4)
     logger.info("Search debug file written", path=file_path)
 
+
+def _format_sse(event_type: str, data: dict) -> str:
+    """Formats a payload dictionary into a standard, UTF-8 compliant SSE message."""
+    payload = json.dumps(data, ensure_ascii=False)
+    lines = payload.split("\n")
+    data_lines = "\n".join(f"data: {line}" for line in lines)
+    return f"event: {event_type}\n{data_lines}\n\n"
+
+
 class SearchService:
+
     def __init__(self):
         self._gemini_client = None
         self.app_graph = None
@@ -480,6 +493,223 @@ class SearchService:
             cache_task.add_done_callback(_background_tasks.discard)
 
         return final_response
+
+    async def search_stream(
+        self, req: SearchRequest, user_ctx: UserContext, request: Request
+    ) -> AsyncIterator[str]:
+        """
+        Production-grade Server-Sent Events (SSE) streaming search endpoint:
+        - Step 0: Fast Ingress Intent Router (< 0.1ms short-circuit)
+        - Step 1: 2-Tier Caching (Exact LRU + Semantic Qdrant Vector Cache)
+        - Step 2: Dense + Sparse Qdrant retrieval + FlashRank Reranker (< 25ms)
+        - Step 3: Yields 'sources' event first for immediate citation rendering
+        - Step 4: Streams tokens in real time from Gemini SDK with heartbeat & disconnect protection
+        - Step 5: Post-stream exact & semantic cache storage and terminal 'done' event
+        """
+        logger.info("Search stream started", query=req.query, scope=req.scope)
+        t0 = time.time()
+
+        # ──────────────────────────────────────────────
+        # 0. Fast Ingress: Intent Router (< 1ms bypass)
+        # ──────────────────────────────────────────────
+        if settings.INTENT_ROUTER_ENABLED:
+            intent_res = intent_router.classify(req.query)
+            if intent_res.intent != IntentType.RAG_QUERY and intent_res.canned_response:
+                yield _format_sse("sources", {"sources": []})
+                yield _format_sse("token", {"text": intent_res.canned_response})
+                yield _format_sse("done", {
+                    "intent": intent_res.intent.value,
+                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                })
+                return
+
+        # ──────────────────────────────────────────────
+        # 1. Normalize Query & Check 2-Tier Cache
+        # ──────────────────────────────────────────────
+        normalized_query = normalize_arabic_text_leaderboard(req.query)
+
+        # 1.1 Exact In-Memory Cache
+        if settings.EXACT_CACHE_ENABLED:
+            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
+            if exact_hit is not None:
+                record_exact_cache_lookup(hit=True)
+                yield _format_sse("sources", {"sources": [s.model_dump() for s in exact_hit.sources]})
+                yield _format_sse("token", {"text": exact_hit.answer})
+                yield _format_sse("done", {
+                    "cache_hit": True,
+                    "cache_tier": "exact",
+                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                })
+                return
+            else:
+                record_exact_cache_lookup(hit=False)
+
+        # 1.2 Embedding & Semantic Cache
+        dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
+
+        if settings.SEMANTIC_CACHE_ENABLED:
+            cached_resp = await semantic_cache_service.lookup(query_vector=dense_vec, user_ctx=user_ctx)
+            if cached_resp is not None:
+                record_cache_lookup(hit=True)
+                if settings.EXACT_CACHE_ENABLED:
+                    exact_cache_service.store(normalized_query, cached_resp, user_ctx)
+                yield _format_sse("sources", {"sources": [s.model_dump() for s in cached_resp.sources]})
+                yield _format_sse("token", {"text": cached_resp.answer})
+                yield _format_sse("done", {
+                    "cache_hit": True,
+                    "cache_tier": "semantic",
+                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                })
+                return
+            else:
+                record_cache_lookup(hit=False)
+
+        # ──────────────────────────────────────────────
+        # 2. Qdrant Hybrid Search & FlashRank Reranker
+        # ──────────────────────────────────────────────
+        scope_filter = _build_scope_filter(req)
+        candidates = await qdrant_service.hybrid_search(
+            dense_vector=dense_vec,
+            sparse_vector=sparse_vec,
+            user_ctx=user_ctx,
+            limit=settings.QDRANT_SEARCH_CANDIDATES_LIMIT,
+            extra_filter=scope_filter,
+        )
+
+        if not candidates:
+            yield _format_sse("sources", {"sources": []})
+            yield _format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
+            yield _format_sse("done", {
+                "status": "no_candidates",
+                "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+            })
+            return
+
+        top_chunks = await reranker_service.rerank(
+            query=req.query,
+            passages=candidates,
+            top_n=min(req.limit, settings.QDRANT_SEARCH_CANDIDATES_LIMIT),
+            text_field="text_msa",
+        )
+
+        sources = []
+        for chunk in top_chunks:
+            c_type = chunk.get("content_type")
+            if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"] and chunk.get("source_url"):
+                sources.append(SourceItem(
+                    type="video",
+                    url=chunk["source_url"],
+                    start=chunk.get("start_time"),
+                    end=chunk.get("end_time"),
+                    lesson_id=chunk.get("lesson_id"),
+                ))
+            elif c_type == "pdf_chunk":
+                sources.append(SourceItem(
+                    type="pdf",
+                    page=chunk.get("page_number"),
+                    section=chunk.get("section_title"),
+                    lesson_id=chunk.get("lesson_id"),
+                ))
+
+        # Yield sources event first for immediate citation rendering in frontend
+        yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
+
+        # ──────────────────────────────────────────────
+        # 3. Gemini Streaming with Heartbeat & Disconnect Guard
+        # ──────────────────────────────────────────────
+        context_str = _build_rag_context_str(top_chunks)
+        system_instruction = RAG_SYSTEM_PROMPT.format(context_str=context_str)
+        thread_id = req.thread_id or str(uuid.uuid4())
+
+        gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=req.query)])]
+
+        loop = asyncio.get_running_loop()
+        stop_event = threading.Event()
+        # Bounded queue (maxsize=30) enforces Backpressure on slow clients and prevents memory bloat
+        queue: asyncio.Queue[str | Exception | None] = asyncio.Queue(maxsize=30)
+
+        def _produce_tokens():
+            try:
+                stream_res = self._gemini_client.models.generate_content_stream(
+                    model=settings.GEMINI_MODEL,
+                    contents=gemini_contents,
+                    config=types.GenerateContentConfig(
+                        temperature=0.2,
+                        max_output_tokens=1024,
+                        system_instruction=system_instruction,
+                    ),
+                )
+                for chunk in stream_res:
+                    if stop_event.is_set():
+                        break
+                    if chunk.text:
+                        # Thread-safe put with backpressure: blocks worker thread if queue reaches maxsize
+                        future = asyncio.run_coroutine_threadsafe(queue.put(chunk.text), loop)
+                        future.result(timeout=30.0)
+                if not stop_event.is_set():
+                    asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=5.0)
+            except Exception as e:
+                if not stop_event.is_set():
+                    asyncio.run_coroutine_threadsafe(queue.put(e), loop).result(timeout=5.0)
+
+        producer_task = asyncio.create_task(asyncio.to_thread(_produce_tokens))
+
+        accumulated_answer: list[str] = []
+        is_client_disconnected = False
+
+        try:
+            while True:
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during SSE stream — cancelling generation", thread_id=thread_id)
+                    is_client_disconnected = True
+                    break
+
+                try:
+                    item = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # W3C SSE comment keeps reverse proxy sockets alive without consumer consumption
+                    yield ": heartbeat\n\n"
+                    continue
+
+                if item is None:
+                    break
+                elif isinstance(item, Exception):
+                    logger.error("Error during Gemini stream generation", error=str(item))
+                    yield _format_sse("error", {"message": "حدث خطأ أثناء معالجة الرد."})
+                    break
+                else:
+                    accumulated_answer.append(item)
+                    yield _format_sse("token", {"text": item})
+        finally:
+            stop_event.set()
+            producer_task.cancel()
+
+        # ──────────────────────────────────────────────
+        # 4. Cache Accumulation & Terminal Done Event
+        # ──────────────────────────────────────────────
+        if not is_client_disconnected:
+            full_answer = "".join(accumulated_answer)
+            if full_answer:
+                final_resp = SearchResponse(answer=full_answer, sources=sources, query_used=req.query)
+                if settings.EXACT_CACHE_ENABLED:
+                    exact_cache_service.store(normalized_query, final_resp, user_ctx)
+                if settings.SEMANTIC_CACHE_ENABLED:
+                    cache_task = asyncio.create_task(
+                        semantic_cache_service.store(
+                            query=req.query,
+                            query_vector=dense_vec,
+                            response=final_resp,
+                            user_ctx=user_ctx,
+                        )
+                    )
+                    _background_tasks.add(cache_task)
+                    cache_task.add_done_callback(_background_tasks.discard)
+
+            yield _format_sse("done", {
+                "thread_id": thread_id,
+                "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+            })
+
 
 _background_tasks: set[asyncio.Task] = set()
 search_service = SearchService()

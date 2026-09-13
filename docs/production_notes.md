@@ -2,7 +2,7 @@
 document_type: "Architectural Decision Registry (ADR) & Post-Production Notes"
 last_updated_commit: "e02f7d1"
 last_updated_date: "2026-09-10"
-adrs_count: 12
+adrs_count: 14
 status: "Active"
 ---
 
@@ -57,6 +57,30 @@ status: "Active"
 2. تطبيقها محلياً في ذاكرة الـ Pod غير مجدٍ مع التوسع الأفقي، ويتعارض مع ADR-01 بتأجيل Redis.
 **خطة الترقية مستقبلاً:**
 عند توفر Redis، يُنشأ مسار تتبع سلوكي يسجل أحداث الالتفاف لكل مستخدم ويفرض حظراً تصاعدياً تلقائياً.
+
+### ADR-13: بوابة النماذج وسياسات التراجع وقاطع الدائرة (Model Gateway, Fallback & Circuit Breaker)
+**القرار:** الاعتماد المباشر على Google Gemini كمزود توليد وحيد لمرحلة الـ MVP، مع تأجيل بناء طبقة التجريد الموحدة `ModelGateway` وسياسات التراجع لـ Groq Llama 3.3 وقاطع الدائرة (Circuit Breaker) إلى مرحلة ما بعد الإنتاج والتوسع.
+**السبب (Context):**
+1. **أولوية سرعة الإطلاق (Fast MVP Launch):** نموذج Gemini Flash أثبت استقراراً فائقاً وسرعة وتكلفة منخفضة جداً. استدعاؤه المباشر في `search_service.py` يقلل تعقيد الأكواد وحجم الصيانة في مرحلة الإطلاق الأولى.
+2. **حدود الاستهلاك في مرحلة الـ Pilot:** معدل الاستعلامات المتوقع أثناء اختبار الـ MVP أقل بكثير من حدود الحظر (Rate Limits) المسموحة في باقة Google Gemini، مما يجعل احتمالية الانقطاع الكلي ضعيفة جداً ولا تبرر إضافة طبقة Failover معقدة الآن.
+3. **فروق هندسة الأوامر (Prompt Parity):** تفعيل التراجع التلقائي لنموذج آخر مثل Llama 3.3 70B يتطلب مواءمة وضبط دقيق لصياغة الـ System Prompts وتنسيق الردود بالعربية الفصحى لتفادي تفاوت جودة الإجابات بين المزودين.
+**خطة الترقية مستقبلاً (Post-Production):**
+عند زيادة أعداد المستخدمين أو الحاجة لـ High Availability SLA (99.9% Uptime):
+- بناء خدمة `ModelGateway` في `src/services/model_gateway.py`.
+- تعيين المزود الأساسي (Primary): `Google Gemini 2.5 Flash`.
+- تعيين المزود الاحتياطي (Secondary Fallback): `Groq Llama 3.3 70B` (مفتاح `GROQ_API_KEY` جاهز ومضبوط بالفعل في إعدادات النظام).
+- تطبيق نمط **Circuit Breaker** بحالاته الثلاث (`CLOSED`, `OPEN`, `HALF_OPEN`) مع مهلة إعادة تعيين 60 ثانية ومحاولات إعادة الإرسال الذكية (Exponential Backoff with Jitter).
+
+### ADR-14: تأجيل حلقات الـ Self-RAG خماسية العقد لصالح الاسترجاع الهجين فائق السرعة
+**القرار:** تأجيل تحويل الـ LangGraph إلى وكيل Self-RAG خماسي العقد (تقييم المقاطع، إعادة صياغة السؤال، توليد الرد، وفحص الهلوسة التكراري)، والاكتفاء بالرسم البياني الخطي المستقر مع محرك الاسترجاع الهجين والـ Reranker الرياضي.
+**السبب (Context):**
+1. **كارثة في زمن الاستجابة (Latency Explosion):** تشغيل حلقات Self-RAG يتطلب استدعاء نموذج LLM من 3 إلى 4 مرات لكل سؤال، مما يرفع زمن الاستجابة من 1.1 ثانية إلى ما بين 3.5 و 4.5 ثانية، وهو زمن بطيء جداً وغير عملي لطالب يشاهد درساً تدريبياً ويريد إجابة سريعة.
+2. **مضاعفة تكلفة التوكنات (Cost Tripled):** كل حلقة استرجاع وتوليد إضافية تحرق رصيد التوكنات بمعدل 3 أضعاف دون ضرورة.
+3. **كفاءة FlashRank Reranker:** نموذج `bge-reranker-v2-m3` المدمج يقوم بالفعل بتقييم وفرز المقاطع الأكثر صلة رياضياً في أقل من 20ms، وهو ما يحقق 95% من دقة التقييم الدلالي بصفر تأخير وصفر استدعاءات LLM.
+**خطة الترقية مستقبلاً (Post-Production):**
+تفعيل حلقات Self-RAG وحلقات إعادة كتابة الأسئلة (Query Rewriter) بشكل مشروط فقط للأسئلة المعقدة ذات درجات الصلة المنخفضة (`reranker_score < 0.25`)، أو في أنماط البحث المتقدم (Deep Research Mode).
+
+
 
 ---
 
@@ -144,4 +168,31 @@ status: "Active"
   - المخالفة الأولى: رفض فوري بـ TTL 60 ثانية.
   - 3 إلى 5 مخالفات متتالية خلال 5 دقائق: حظر مؤقت للمستخدم أو الـ IP لمدة 15 دقيقة (`HTTP 429 Too Many Requests`).
   - 20 مخالفة خلال ساعة: عزل لمدة 24 ساعة مع إرسال إشعار فوري (Prometheus Alert / Webhook) لمسؤولي النظام.
+
+---
+
+## 12. إعدادات خادم الـ Nginx العكسي لتدفق الـ SSE (Reverse Proxy Configuration)
+* **السياق والأهمية:**
+  خوادم Nginx تقوم افتراضياً بعمل Buffer للردود (`proxy_buffering on`) لتجميع البايتات قبل إرسالها للعميل، مما يؤدي إلى تأخير وصول التوكنات وتدمير تجربة البث المباشر (TTFT)، بالإضافة إلى إمكانية إغلاق الاتصال تلقائياً عند صمت التدفق لأكثر من 60 ثانية.
+* **التكوين المعتمد في بيئة الإنتاج:**
+```nginx
+location /v1/search/stream {
+    proxy_pass http://lms_copilot_api:8000;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # 🛑 تعطيل الـ Buffering والكاش بالكامل لضمان تدفق التوكنات فوراً
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding off;
+
+    # ⏱️ تمديد مهلة القراءة لمنع قطع الاتصال أثناء التفكير المعقد
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
 

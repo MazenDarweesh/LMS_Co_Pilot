@@ -45,6 +45,11 @@ class UserContext(BaseModel):
         return self.claims.company_id
 
     @property
+    def tenant_id(self) -> str:
+        """Alias for company_id to support multi-tenant conventions uniformly."""
+        return self.claims.company_id
+
+    @property
     def role(self) -> str:
         return self.claims.role
 

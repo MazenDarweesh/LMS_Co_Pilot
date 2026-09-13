@@ -4,8 +4,10 @@ Search Models — Request/Response schemas for the Hybrid RAG Search endpoint.
 Separated from schemas.py to keep concerns clean (Week 8).
 """
 
-from pydantic import BaseModel, Field
+from enum import Enum
 from typing import Literal
+from pydantic import BaseModel, Field
+
 
 
 class SearchRequest(BaseModel):
@@ -39,3 +41,26 @@ class SearchResponse(BaseModel):
     answer: str
     sources: list[SourceItem]
     query_used: str
+
+
+class FeedbackRating(str, Enum):
+    UP = "UP"
+    DOWN = "DOWN"
+
+
+class FeedbackRequest(BaseModel):
+    """طلب تسجيل تقييم الطالب للإجابة مع منع التكرار."""
+    query: str = Field(..., min_length=2, description="سؤال الطالب الأصلي")
+    answer: str = Field(..., min_length=2, description="الإجابة المقدمة من النظام")
+    rating: FeedbackRating = Field(..., description="تقييم الطالب: إيجابي UP أو سلبي DOWN")
+    comment: str | None = Field(None, max_length=1000, description="ملاحظة الطالب الاختيارية")
+    lesson_id: str | None = Field(None, description="معرف الدرس المرتبط")
+    thread_id: str | None = Field(None, description="معرف جلسة المحادثة")
+    query_hash: str | None = Field(None, description="بصمة الطلب الفريدة لمنع تكرار التصويت")
+
+
+class FeedbackResponse(BaseModel):
+    """استجابة تسجيل التقييم."""
+    status: Literal["success", "duplicate"] = "success"
+    message: str = "شكراً لمشاركتك! تم تسجيل ملاحظاتك للمساعدة في تحسين جودة الإجابات. 🎓"
+

@@ -1,5 +1,6 @@
 import asyncio
 import glob
+import hashlib
 import json
 import os
 import re
@@ -7,12 +8,15 @@ import secrets
 import time
 from pathlib import Path
 
+from cachetools import TTLCache
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 import structlog
 
 from src.api.dependencies import get_event_store
 from src.core.config import settings
+from src.core.metrics import record_search_feedback
 from src.core.middleware import limiter
 from src.db.event_store import EventStoreRepository
 from src.models.schemas import (
@@ -24,10 +28,11 @@ from src.models.schemas import (
     SyncFailedRequest,
     SyncFailedResponse,
 )
-from src.models.search_models import SearchRequest, SearchResponse
+from src.models.search_models import SearchRequest, SearchResponse, FeedbackRequest, FeedbackResponse
 from src.models.auth_models import LessonFullContext
 from src.services.auth_service import UserContext, get_current_user, require_role
 from src.services.lesson_content_service import lesson_content_service
+
 from src.services.lms_client import lms_client_service
 from src.services.pipeline_orchestrator import pipeline_orchestrator
 from src.services.qdrant_service import qdrant_service
@@ -58,6 +63,78 @@ async def search(
     """
     # We pass the entire UserContext to enable precise Qdrant filtering
     return await search_service.search(req, user_ctx=user_ctx)
+
+
+# In-memory deduplication cache for feedback (24h TTL)
+_feedback_cache: TTLCache[str, bool] = TTLCache(maxsize=10_000, ttl=86400)
+
+
+@router.post("/search/stream")
+@limiter.limit("30/minute")
+async def search_stream_endpoint(
+    request: Request,
+    req: SearchRequest,
+    user_ctx: UserContext = Depends(get_current_user),
+) -> StreamingResponse:
+    """
+    ⚡ Real-time Token Streaming Search via Server-Sent Events (SSE).
+    - Emits sources event first for instant video citation rendering.
+    - Streams tokens with heartbeat pings (: heartbeat\n\n) to defeat proxy timeouts.
+    - Listens for client disconnects to abort upstream token generation immediately.
+    """
+    return StreamingResponse(
+        search_service.search_stream(req, user_ctx, request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/search/feedback", response_model=FeedbackResponse)
+@limiter.limit("30/minute")
+async def search_feedback_endpoint(
+    request: Request,
+    req: FeedbackRequest,
+    user_ctx: UserContext = Depends(get_current_user),
+) -> FeedbackResponse:
+    """
+    💬 Student Feedback Endpoint (Thumbs Up / Down).
+    - Deduplicates repeat votes on the same answer via in-memory TTLCache (24 hours).
+    - Records Prometheus counter and emits structured audit logs for offline RAG quality optimization.
+    """
+    # Deduplicate repeat submissions on the same answer
+    query_hash = req.query_hash or hashlib.sha256(f"{req.query}:{req.lesson_id or ''}".encode("utf-8")).hexdigest()
+    dedup_key = f"{user_ctx.user_id}:{query_hash}"
+
+    if dedup_key in _feedback_cache:
+        logger.info(
+            "Duplicate student feedback ignored",
+            user_id=user_ctx.user_id,
+            query_hash=query_hash,
+        )
+        return FeedbackResponse(
+            status="duplicate",
+            message="تم تسجيل تقييمك مسبقاً لهذا السؤال. شكراً لمشاركتك! 🎓",
+        )
+
+    _feedback_cache[dedup_key] = True
+    record_search_feedback(req.rating.value)
+
+    logger.info(
+        "Student search feedback recorded 💬",
+        user_id=user_ctx.user_id,
+        tenant_id=user_ctx.tenant_id,
+        rating=req.rating.value,
+        lesson_id=req.lesson_id,
+        thread_id=req.thread_id,
+        query_snippet=req.query[:50],
+        has_comment=bool(req.comment),
+    )
+    return FeedbackResponse()
+
 
 
 @router.post("/ingest/audio")
