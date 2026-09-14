@@ -207,3 +207,29 @@ location /v1/search/stream {
 }
 ```
 
+---
+
+## 13. استراتيجية رصد الانجراف والتقييم المستمر للنماذج (Continuous Evaluation & Drift Strategy)
+* **المشكلة:**
+  النماذج السحابية مثل Google Gemini تتلقى تحديثات دورية من المزود (Silent Model Updates) قد تؤدي إلى تراجع جودة الإجابات، أو قد تتغير صياغات أسئلة الطلاب تدريجياً (Data / Concept Drift).
+* **المبدأ المعماري المعتمد:**
+  كشف الانجراف **لا يعمل كخدمة حية داخل الـ API** (تفادياً لاستهلاك موارد الخادم والتوكنات)، بل يُدار كـ **Offline Scheduled Evaluation Pipeline**:
+  1. **تغذية البيانات (Data Ingress):** سحب الاستفسارات ذات التقييم السلبي دورياً عبر المسار المخصص:
+     `GET /v1/admin/feedback?format=ragas&limit=100`
+  2. **حزمة التقييم المرجعية (Golden Dataset Spot-Checks):** تشغيل سكربت أسبوعي (`scripts/eval_drift.py`) يقوم باختبار:
+     - **System Prompt Drift:** التأكد من استمرار التزام النموذج بالصيغة المحاسبية الرسمية.
+     - **Underlying Model Drift:** قياس درجات Faithfulness و Answer Relevance عبر مكتبة Ragas ومقارنتها بالأساس المرجعي (Baseline > 0.85).
+     - **User Drift:** مراقبة متوسط أطوال الأسئلة وتكرار الموضوعات الخارجة عن المنهج.
+  3. **الإشعار والتصحيح:** إذا هبط معدل الـ Faithfulness عن 0.80 في أسبوعين متتاليين، يتم إرسال تنبيه للمشرفين لمراجعة الـ System Prompt وإعادة توجيهه.
+
+---
+
+## 14. استراتيجية التنبيهات وقواعد الـ SLA (Prometheus Alerting & Reliability Thresholds)
+* **الملف المعتمد:** [`monitoring/alerts.yml`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/monitoring/alerts.yml) المرتبط بـ Prometheus عبر `rule_files`.
+* **عتبات التنبيه الحرجة:**
+  1. **HighErrorRate (Critical):** يتم إطلاقه إذا تجاوز معدل أخطاء HTTP 5xx نسبة 5% خلال نافذة 5 دقائق.
+  2. **HighSearchLatencyP95 (Warning):** يتم إطلاقه إذا تخطى الـ p95 Search Latency عتبة 3.0 ثوانٍ لمدة 3 دقائق متصلة.
+  3. **HighGuardrailRefusalSpike (Warning):** يتم إطلاقه عند رصد قفزة غير معتادة في حجب الأمان (`> 0.5 refusals/sec`) تشير إلى محاولات استدراج واختراق مكثفة.
+  4. **LowCacheHitRate (Info):** يتم إطلاقه إذا هبط معدل نجاح الكاش الدلالي عن 10% أثناء فترات الذروة لتنبيه مهندسي الأداء بتحديث المتجهات الشائعة.
+
+

@@ -73,6 +73,26 @@ SEARCH_FEEDBACK_TOTAL = Counter(
     labelnames=["rating"],  # "up", "down"
 )
 
+# 6. Real-time Streaming Latency Telemetry (TTFT & TPOT)
+STREAMING_TTFT = Histogram(
+    "lms_ttft_seconds",
+    "Time to First Token (TTFT) in seconds for SSE search stream",
+    buckets=(0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 5.0),
+)
+
+STREAMING_TPOT = Histogram(
+    "lms_tpot_seconds",
+    "Time Per Output Token (TPOT) in seconds for SSE search stream",
+    buckets=(0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.15, 0.25),
+)
+
+# 7. Security Guardrail & Injection Refusals
+GUARDRAIL_REFUSALS = Counter(
+    "lms_guardrail_refusals_total",
+    "Total security guardrail refusals and policy violations blocked",
+    labelnames=["reason"],  # "security_violation" | "prompt_injection" | "out_of_scope"
+)
+
 
 
 # ─── Recording Helpers ────────────────────────────────────────────────────────
@@ -120,6 +140,23 @@ def record_token_usage(prompt_tokens: int = 0, completion_tokens: int = 0, total
 def record_search_feedback(rating: str) -> None:
     """Records a student feedback rating event (UP or DOWN)."""
     SEARCH_FEEDBACK_TOTAL.labels(rating=rating.lower()).inc()
+
+
+def record_streaming_ttft(duration_seconds: float) -> None:
+    """Records Time to First Token (TTFT) in seconds for SSE search stream."""
+    if duration_seconds >= 0:
+        STREAMING_TTFT.observe(duration_seconds)
+
+
+def record_streaming_tpot(seconds_per_token: float) -> None:
+    """Records Time Per Output Token (TPOT) in seconds for SSE search stream."""
+    if seconds_per_token >= 0:
+        STREAMING_TPOT.observe(seconds_per_token)
+
+
+def record_guardrail_refusal(reason: str = "security_violation") -> None:
+    """Records a security guardrail refusal event."""
+    GUARDRAIL_REFUSALS.labels(reason=reason.lower()).inc()
 
 
 # ─── Instrumentator Initialization ────────────────────────────────────────────

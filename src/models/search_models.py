@@ -57,7 +57,7 @@ class FeedbackRequest(BaseModel):
     comment: str | None = Field(None, max_length=1000, description="ملاحظة الطالب الاختيارية")
     lesson_id: str | None = Field(None, description="معرف الدرس المرتبط")
     thread_id: str | None = Field(None, description="معرف جلسة المحادثة")
-    query_hash: str | None = Field(None, description="بصمة الطلب الفريدة لمنع تكرار التصويت")
+    # NOTE: query_hash & answer_hash are computed server-side from content — not accepted from client.
     sources: list[SourceItem] | None = Field(None, description="المصادر والاستشهادات المرتبطة بالإجابة (حد أقصى 5)")
 
 

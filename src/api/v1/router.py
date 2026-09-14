@@ -59,6 +59,8 @@ router = APIRouter(prefix="/v1", tags=["V1 API"])
 
 # Constants
 CHECKPOINT_DIR = Path("downloads/checkpoints")
+# Whitelist of SourceItem fields safe for JSONB storage (prevents leaking unknown client fields)
+_SOURCE_FIELDS: frozenset[str] = frozenset({"type", "url", "start", "end", "page", "section", "lesson_id"})
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -140,9 +142,6 @@ async def search_feedback_endpoint(
     _feedback_cache[dedup_key] = True
     record_search_feedback(req.rating.value)
 
-    # Convert sources to dicts for PostgreSQL JSONB column (capped at 5).
-    # Explicit field whitelist prevents accidental storage of unknown/extra client fields.
-    _SOURCE_FIELDS = {"type", "url", "start", "end", "page", "section", "lesson_id"}
     sources_dicts = [
         s.model_dump(include=_SOURCE_FIELDS)
         for s in req.sources[:5]

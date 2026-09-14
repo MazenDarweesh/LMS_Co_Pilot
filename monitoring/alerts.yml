@@ -1,0 +1,42 @@
+groups:
+  - name: lms_copilot_alerts
+    rules:
+      # 1. High API Error Rate (HTTP 5xx > 5% over 5m window)
+      - alert: HighErrorRate
+        expr: (sum(rate(http_requests_total{status_code=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))) * 100 > 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High HTTP 5xx error rate detected (> 5%)"
+          description: "Current 5xx error rate is {{ $value | printf \"%.2f\" }}% over the last 5 minutes."
+
+      # 2. P95 RAG Search Latency Degradation (> 3.0 seconds)
+      - alert: HighSearchLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(lms_rag_stage_duration_seconds_bucket{stage="total"}[5m])) by (le)) > 3.0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 Search Latency exceeds 3.0s SLA"
+          description: "95th percentile RAG search latency is {{ $value | printf \"%.2f\" }}s over the last 5 minutes."
+
+      # 3. Security Guardrail & Injection Refusal Spike
+      - alert: HighGuardrailRefusalSpike
+        expr: sum(rate(lms_guardrail_refusals_total[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Abnormal surge in Security Guardrail Refusals"
+          description: "Security refusals rate is {{ $value | printf \"%.2f\" }} events/sec over the last 5 minutes."
+
+      # 4. Low Semantic Cache Hit Rate Under Load (< 10%)
+      - alert: LowCacheHitRate
+        expr: ((sum(rate(lms_cache_requests_total{result="hit"}[10m])) / sum(rate(lms_cache_requests_total[10m]))) * 100 < 10) and (sum(rate(lms_cache_requests_total[10m])) > 0.5)
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Low Semantic Cache Hit Rate (< 10%)"
+          description: "Cache hit rate dropped to {{ $value | printf \"%.2f\" }}% despite active traffic."

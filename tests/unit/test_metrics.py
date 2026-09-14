@@ -14,9 +14,15 @@ from src.core.metrics import (
     record_cache_lookup,
     record_stage_duration,
     record_token_usage,
+    record_streaming_ttft,
+    record_streaming_tpot,
+    record_guardrail_refusal,
     CACHE_REQUESTS,
     RAG_STAGE_DURATION,
     LLM_TOKENS,
+    STREAMING_TTFT,
+    STREAMING_TPOT,
+    GUARDRAIL_REFUSALS,
 )
 
 
@@ -48,11 +54,28 @@ def test_custom_metric_recording_helpers():
     assert LLM_TOKENS.labels(type="completion")._value.get() == initial_comp + 45
     assert LLM_TOKENS.labels(type="total")._value.get() == initial_total + 165
 
-    # 4. Exposition text validation
+    # 4. Streaming TTFT & TPOT
+    initial_ttft_sum = STREAMING_TTFT._sum.get()
+    record_streaming_ttft(0.35)
+    assert STREAMING_TTFT._sum.get() >= initial_ttft_sum + 0.35
+
+    initial_tpot_sum = STREAMING_TPOT._sum.get()
+    record_streaming_tpot(0.025)
+    assert STREAMING_TPOT._sum.get() >= initial_tpot_sum + 0.025
+
+    # 5. Guardrail Refusals
+    initial_refusals = GUARDRAIL_REFUSALS.labels(reason="security_violation")._value.get()
+    record_guardrail_refusal("security_violation")
+    assert GUARDRAIL_REFUSALS.labels(reason="security_violation")._value.get() == initial_refusals + 1
+
+    # 6. Exposition text validation
     text = generate_latest().decode("utf-8")
     assert "lms_cache_requests_total" in text
     assert "lms_rag_stage_duration_seconds" in text
     assert "lms_llm_tokens_total" in text
+    assert "lms_ttft_seconds" in text
+    assert "lms_tpot_seconds" in text
+    assert "lms_guardrail_refusals_total" in text
 
 
 @pytest.mark.asyncio

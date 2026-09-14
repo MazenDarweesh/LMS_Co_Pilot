@@ -30,6 +30,9 @@ from src.core.metrics import (
     record_exact_cache_lookup,
     record_stage_duration,
     record_token_usage,
+    record_streaming_ttft,
+    record_streaming_tpot,
+    record_guardrail_refusal,
 )
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
@@ -269,6 +272,7 @@ class SearchService:
                 metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
                 record_stage_duration("total", time.time() - t0)
                 if intent_res.intent == IntentType.SECURITY_VIOLATION:
+                    record_guardrail_refusal("security_violation")
                     logger.warning("Security violation intercepted at Fast Ingress 🛡️", query_snippet=req.query[:50], ms=metrics["total_latency_ms"])
                 else:
                     logger.info("Fast Ingress intercept", intent=intent_res.intent.value, ms=metrics["total_latency_ms"])
@@ -515,6 +519,8 @@ class SearchService:
         if settings.INTENT_ROUTER_ENABLED:
             intent_res = intent_router.classify(req.query)
             if intent_res.intent != IntentType.RAG_QUERY and intent_res.canned_response:
+                if intent_res.intent == IntentType.SECURITY_VIOLATION:
+                    record_guardrail_refusal("security_violation")
                 yield _format_sse("sources", {"sources": []})
                 yield _format_sse("token", {"text": intent_res.canned_response})
                 yield _format_sse("done", {
@@ -656,6 +662,9 @@ class SearchService:
 
         accumulated_answer: list[str] = []
         is_client_disconnected = False
+        first_token_received = False
+        first_token_time: float | None = None
+        token_count = 0
 
         try:
             while True:
@@ -678,11 +687,21 @@ class SearchService:
                     yield _format_sse("error", {"message": "حدث خطأ أثناء معالجة الرد."})
                     break
                 else:
+                    now = time.time()
+                    if not first_token_received:
+                        first_token_received = True
+                        first_token_time = now
+                        record_streaming_ttft(now - t0)
+                    token_count += max(1, len(item) // 4)
                     accumulated_answer.append(item)
                     yield _format_sse("token", {"text": item})
         finally:
             stop_event.set()
             producer_task.cancel()
+            if first_token_time is not None and token_count > 0:
+                stream_duration = time.time() - first_token_time
+                if stream_duration > 0:
+                    record_streaming_tpot(stream_duration / token_count)
 
         # ──────────────────────────────────────────────
         # 4. Cache Accumulation & Terminal Done Event
