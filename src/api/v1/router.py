@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from cachetools import TTLCache
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 import structlog
@@ -28,7 +28,17 @@ from src.models.schemas import (
     SyncFailedRequest,
     SyncFailedResponse,
 )
-from src.models.search_models import SearchRequest, SearchResponse, FeedbackRequest, FeedbackResponse
+from typing import Literal
+from src.models.search_models import (
+    SearchRequest,
+    SearchResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+    FeedbackRating,
+    AdminFeedbackResponse,
+    FeedbackItemResponse,
+    FeedbackAnalyticsResponse,
+)
 from src.models.auth_models import LessonFullContext
 from src.services.auth_service import UserContext, get_current_user, require_role
 from src.services.lesson_content_service import lesson_content_service
@@ -39,6 +49,7 @@ from src.services.qdrant_service import qdrant_service
 from src.services.search_service import search_service
 from src.services.semantic_cache_service import semantic_cache_service
 from src.services.exact_cache_service import exact_cache_service
+from src.services.feedback_service import feedback_service
 
 # Initialize Logger
 logger = structlog.get_logger()
@@ -98,22 +109,28 @@ async def search_stream_endpoint(
 async def search_feedback_endpoint(
     request: Request,
     req: FeedbackRequest,
+    background_tasks: BackgroundTasks,
     user_ctx: UserContext = Depends(get_current_user),
 ) -> FeedbackResponse:
     """
     💬 Student Feedback Endpoint (Thumbs Up / Down).
-    - Deduplicates repeat votes on the same answer via in-memory TTLCache (24 hours).
+    - Deduplicates repeat votes on the exact answer via in-memory TTLCache (24 hours).
+    - Persists feedback to PostgreSQL asynchronously via BackgroundTasks (Zero Latency <15ms).
     - Records Prometheus counter and emits structured audit logs for offline RAG quality optimization.
     """
-    # Deduplicate repeat submissions on the same answer
-    query_hash = req.query_hash or hashlib.sha256(f"{req.query}:{req.lesson_id or ''}".encode("utf-8")).hexdigest()
-    dedup_key = f"{user_ctx.user_id}:{query_hash}"
+    # Deduplicate repeat submissions on the exact same answer.
+    # query_hash is ALWAYS computed server-side — any client-supplied value is ignored
+    # to prevent crafted hashes from bypassing the UPSERT unique constraint.
+    query_hash = hashlib.sha256(f"{req.query}:{req.lesson_id or ''}".encode("utf-8")).hexdigest()
+    answer_hash = hashlib.sha256(req.answer.strip().encode("utf-8")).hexdigest()
+    dedup_key = f"{user_ctx.user_id}:{query_hash}:{answer_hash}"
 
     if dedup_key in _feedback_cache:
         logger.info(
             "Duplicate student feedback ignored",
             user_id=user_ctx.user_id,
             query_hash=query_hash,
+            answer_hash=answer_hash,
         )
         return FeedbackResponse(
             status="duplicate",
@@ -122,6 +139,32 @@ async def search_feedback_endpoint(
 
     _feedback_cache[dedup_key] = True
     record_search_feedback(req.rating.value)
+
+    # Convert sources to dicts for PostgreSQL JSONB column (capped at 5).
+    # Explicit field whitelist prevents accidental storage of unknown/extra client fields.
+    _SOURCE_FIELDS = {"type", "url", "start", "end", "page", "section", "lesson_id"}
+    sources_dicts = [
+        s.model_dump(include=_SOURCE_FIELDS)
+        for s in req.sources[:5]
+    ] if req.sources else []
+
+    # Non-blocking async background persistence
+    background_tasks.add_task(
+        feedback_service.save_feedback,
+        tenant_id=user_ctx.tenant_id,
+        user_id=user_ctx.user_id,
+        user_role=user_ctx.role,
+        query=req.query,
+        answer=req.answer,
+        rating=req.rating.value,
+        query_hash=query_hash,
+        answer_hash=answer_hash,
+        comment=req.comment,
+        lesson_id=req.lesson_id,
+        thread_id=req.thread_id,
+        department_id=user_ctx.claims.department_id,
+        sources=sources_dicts,
+    )
 
     logger.info(
         "Student search feedback recorded 💬",
@@ -134,6 +177,77 @@ async def search_feedback_endpoint(
         has_comment=bool(req.comment),
     )
     return FeedbackResponse()
+
+
+@router.get("/admin/feedback")
+@limiter.limit("60/minute")
+async def get_admin_feedback(
+    request: Request,
+    lesson_id: str | None = None,
+    rating: FeedbackRating | None = None,
+    format: Literal["json", "ragas"] = "json",
+    limit: int = Query(50, ge=1, le=200, description="عدد السجلات لكل صفحة (1-200)"),
+    offset: int = Query(0, ge=0, description="رقم السجل الأول للصفحة الحالية"),
+    admin_ctx: UserContext = Depends(require_role("Admin", "Teacher")),
+):
+    """
+    📊 Admin & Teacher Feedback Analytics Endpoint.
+    - Scoped strictly by the administrator's tenant_id (Company ID).
+    - Supports filtering by lesson_id and rating (UP / DOWN).
+    - If format='ragas', returns an evaluation dataset array ready for Ragas automated tests.
+    """
+    if format == "ragas":
+        return await feedback_service.export_for_ragas(
+            tenant_id=admin_ctx.tenant_id,
+            lesson_id=lesson_id,
+            limit=limit,
+        )
+
+    records = await feedback_service.get_tenant_feedback(
+        tenant_id=admin_ctx.tenant_id,
+        lesson_id=lesson_id,
+        rating=rating.value if rating else None,
+        limit=limit,
+        offset=offset,
+    )
+
+    analytics = await feedback_service.get_feedback_analytics(
+        tenant_id=admin_ctx.tenant_id,
+        lesson_id=lesson_id,
+    )
+
+    formatted_records = [
+        FeedbackItemResponse(
+            id=r["id"],
+            tenant_id=r["tenant_id"],
+            department_id=r.get("department_id"),
+            user_id=r["user_id"],
+            user_role=r.get("user_role", "Student"),
+            lesson_id=r.get("lesson_id"),
+            thread_id=r.get("thread_id"),
+            query_hash=r["query_hash"],
+            answer_hash=r["answer_hash"],
+            query_text=r["query_text"],
+            answer_text=r["answer_text"],
+            rating=FeedbackRating(r["rating"]),
+            comment=r.get("comment"),
+            sources=r.get("sources") or [],
+            created_at=str(r["created_at"]) if r.get("created_at") else None,
+        )
+        for r in records
+    ]
+
+    return AdminFeedbackResponse(
+        records=formatted_records,
+        analytics=FeedbackAnalyticsResponse(
+            total_votes=analytics["total_votes"],
+            up_votes=analytics["up_votes"],
+            down_votes=analytics["down_votes"],
+            satisfaction_rate=analytics["satisfaction_rate"],
+        ),
+        limit=limit,
+        offset=offset,
+    )
 
 
 

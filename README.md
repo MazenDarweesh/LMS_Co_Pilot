@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "77f215b", "last_synced_at": "2026-09-13T16:15:00Z", "documented_endpoints": 14} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "77f215b", "last_synced_at": "2026-09-14T15:00:00Z", "documented_endpoints": 15} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,7 +19,7 @@
 ## ✨ Key Features
 
 - ⚡ **Real-Time Token Streaming Search (SSE)** — `POST /v1/search/stream` delivers sub-300ms Time-to-First-Token (TTFT) via Server-Sent Events with guaranteed citation-first ordering (`sources` -> `token` -> `done`), W3C-compliant keep-alive heartbeats (`: heartbeat\n\n` every 15s), client disconnect detection (`request.is_disconnected()`), and bounded queue backpressure (`maxsize=30`) preventing token waste and memory bloat
-- 💬 **Idempotent Student Feedback Engine** — `POST /v1/search/feedback` captures granular thumbs up/down student ratings with 24-hour in-memory deduplication (`TTLCache`), structured audit logs, and live Prometheus telemetry (`lms_search_feedback_total`) for continuous offline RAG quality optimization
+- 💬 **Idempotent Student Feedback & Quality Analytics Engine** — `POST /v1/search/feedback` captures granular thumbs up/down ratings, raw comments, and citations with 24-hour in-memory deduplication (`TTLCache`), asynchronous non-blocking PostgreSQL persistence via `BackgroundTasks` (<15ms response), live Prometheus telemetry (`lms_search_feedback_total`), and tenant-isolated admin analytics (`GET /v1/admin/feedback`) with instant Ragas evaluation export
 - 🛡️ **Sub-Millisecond Guardrails & Dialect Jailbreak Defense** — Fast Ingress security regex matrix intercepting Egyptian dialect evasion (`سيبك من`, `فكك من`), Franco-Arabic prompts (`sib el kalam`), DAN/Developer mode exploits, and system prompt extraction in `< 0.05ms` before any vector or LLM cost
 - ⚡ **Two-Tier Fast Ingress Caching** — Tier-1 In-Memory LRU Cache (<1ms) with 4D deterministic SHA-256 keys (`company:dept:role:query`) combined with Tier-2 Semantic Qdrant Vector Cache (cosine >= 0.92, 5–25ms); eliminates 100% of LLM and embedding overhead on repetitive traffic with automatic tier promotion
 - 🚦 **Sub-Millisecond Heuristic Intent Router** — Intercepts conversational greetings (Egyptian, Gulf, and Levantine dialects), out-of-scope banter, and invalid input in `< 0.1ms` via compiled regex heuristics before triggering heavy vector pipelines
@@ -108,7 +108,8 @@
 |:------:|:---------|:-----------------:|:------------|
 | `POST` | `/v1/search` | JWT · 30 req/min | Two-tier cached & hybrid RAG search with role-scoped vector filtering |
 | `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, heartbeat keep-alive, and backpressure |
-| `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication and Prometheus metrics |
+| `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async DB write, and Prometheus metrics |
+| `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates per lesson with instant Ragas evaluation export |
 | `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
 | `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
 | `POST` | `/v1/webhooks/lesson-updated` | Service Token · 10 req/min | Re-index or delete vectors on LMS content change with per-lesson lock |
@@ -317,7 +318,7 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 
 | Test Suite / Workflow | Coverage Area | Tests / Scope | Status |
 |:----------------------|:--------------|:-------------:|:------:|
-| `tests/test_search_stream_and_feedback.py` | Real-time SSE streaming, client disconnect abort, feedback deduplication | 7 | ✅ 100% Passed |
+| `tests/test_search_stream_and_feedback.py` | Real-time SSE streaming, client disconnect abort, feedback persistence, admin analytics | 10 | ✅ 100% Passed |
 | `tests/test_fast_ingress.py` | Two-tier caching, intent router, security guardrails, BOLA defense | 29 | ✅ 100% Passed |
 | `tests/integration/test_auth_rbac.py` | JWT authentication & fine-grained permission scopes | 11 | ✅ 100% Passed |
 | `tests/integration/test_search_rag.py` | Hybrid RAG retrieval, LangGraph memory, schema validation | 9 | ✅ 100% Passed |
@@ -340,7 +341,9 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Sub-millisecond heuristic intent router & dialect jailbreak guardrails (<0.05ms)
 - [x] Real-time token streaming search (SSE) with client disconnect abort & backpressure
 - [x] Idempotent student feedback engine with 24h deduplication & Prometheus tracking
+- [x] Asynchronous PostgreSQL feedback persistence & tenant-isolated admin analytics (M07)
 - [x] Architectural Decision Record ADR-14 (Self-RAG deferral for sub-second MVP speed)
+- [x] Architectural Decision Record ADR-15 (Raw authentic feedback fidelity and deferred PII compliance)
 - [x] Production Nginx reverse proxy configuration for unbuffered SSE streaming
 - [x] OWASP BOLA & Cross-Tenant Defense-in-Depth (Fail-Closed 503/403 security)
 - [x] Per-lesson concurrency serialization with TOCTOU-proof bounded lock pruning

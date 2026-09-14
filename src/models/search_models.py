@@ -4,6 +4,7 @@ Search Models — Request/Response schemas for the Hybrid RAG Search endpoint.
 Separated from schemas.py to keep concerns clean (Week 8).
 """
 
+import uuid
 from enum import Enum
 from typing import Literal
 from pydantic import BaseModel, Field
@@ -57,10 +58,47 @@ class FeedbackRequest(BaseModel):
     lesson_id: str | None = Field(None, description="معرف الدرس المرتبط")
     thread_id: str | None = Field(None, description="معرف جلسة المحادثة")
     query_hash: str | None = Field(None, description="بصمة الطلب الفريدة لمنع تكرار التصويت")
+    sources: list[SourceItem] | None = Field(None, description="المصادر والاستشهادات المرتبطة بالإجابة (حد أقصى 5)")
 
 
 class FeedbackResponse(BaseModel):
     """استجابة تسجيل التقييم."""
     status: Literal["success", "duplicate"] = "success"
     message: str = "شكراً لمشاركتك! تم تسجيل ملاحظاتك للمساعدة في تحسين جودة الإجابات. 🎓"
+
+
+class FeedbackItemResponse(BaseModel):
+    """سجل تقييم واحد في الاستعلامات الإدارية."""
+    id: uuid.UUID
+    tenant_id: str
+    department_id: str | None = None
+    user_id: str
+    user_role: str = "Student"
+    lesson_id: str | None = None
+    thread_id: str | None = None
+    query_hash: str
+    answer_hash: str
+    query_text: str
+    answer_text: str
+    rating: FeedbackRating
+    comment: str | None = None
+    sources: list[dict] = Field(default_factory=list)
+    created_at: str | None = None
+
+
+class FeedbackAnalyticsResponse(BaseModel):
+    """إحصائيات الرضا التجميعية للدرس أو الشركة."""
+    total_votes: int
+    up_votes: int
+    down_votes: int
+    satisfaction_rate: float
+
+
+class AdminFeedbackResponse(BaseModel):
+    """استجابة الاستعلام الإداري لتقييمات الطلاب."""
+    records: list[FeedbackItemResponse]
+    analytics: FeedbackAnalyticsResponse
+    limit: int
+    offset: int
+
 

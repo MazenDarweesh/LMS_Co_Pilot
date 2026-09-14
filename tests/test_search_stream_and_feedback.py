@@ -1,6 +1,7 @@
 import asyncio
 import json
 import pytest
+from fastapi import BackgroundTasks
 from unittest.mock import AsyncMock, MagicMock, patch
 from starlette.requests import Request
 
@@ -188,16 +189,203 @@ async def test_student_feedback_submission_and_deduplication(sample_user_context
     res1 = await search_feedback_endpoint(
         request=mock_fastapi_request,
         req=feedback_payload,
+        background_tasks=BackgroundTasks(),
         user_ctx=sample_user_context,
     )
     assert res1.status == "success"
     assert "شكراً لمشاركتك" in res1.message
 
-    # 2. Duplicate submission on the same question -> Duplicate status
+    # 2. Duplicate submission on the exact same question and answer -> Duplicate status
     res2 = await search_feedback_endpoint(
         request=mock_fastapi_request,
         req=feedback_payload,
+        background_tasks=BackgroundTasks(),
         user_ctx=sample_user_context,
     )
     assert res2.status == "duplicate"
     assert "مسبقاً" in res2.message
+
+
+@pytest.fixture
+def admin_user_context():
+    return UserContext(
+        claims=TokenClaims(
+            Id="admin_stream_test",
+            CompanyId="tenant_stream_co",
+            Role="Admin",
+        ),
+        permissions=UserPermissions(
+            userId="admin_stream_test",
+        ),
+        user_entities=["tenant_stream_co"],
+    )
+
+
+@pytest.mark.asyncio
+async def test_feedback_composite_key_allows_new_answer_rating(sample_user_context, mock_fastapi_request):
+    """
+    Verifies that the composite unique key (user_id, query_hash, answer_hash)
+    permits rating a newly generated answer for the same question.
+    """
+    _feedback_cache.clear()
+
+    # Answer A
+    payload_a = FeedbackRequest(
+        query="ما هي ضريبة القيمة المضافة؟",
+        answer="الضريبة هي 14% في مصر.",
+        rating=FeedbackRating.DOWN,
+        lesson_id="lesson_stream_01",
+    )
+    res_a = await search_feedback_endpoint(
+        request=mock_fastapi_request,
+        req=payload_a,
+        background_tasks=BackgroundTasks(),
+        user_ctx=sample_user_context,
+    )
+    assert res_a.status == "success"
+
+    # Answer B (Updated / Retried model output) -> Should be accepted as new rating
+    payload_b = FeedbackRequest(
+        query="ما هي ضريبة القيمة المضافة؟",
+        answer="ضريبة القيمة المضافة هي ضريبة غير مباشرة تفرض على الاستهلاك ومقدارها العام 14%.",
+        rating=FeedbackRating.UP,
+        lesson_id="lesson_stream_01",
+    )
+    res_b = await search_feedback_endpoint(
+        request=mock_fastapi_request,
+        req=payload_b,
+        background_tasks=BackgroundTasks(),
+        user_ctx=sample_user_context,
+    )
+    assert res_b.status == "success"
+
+
+@pytest.mark.asyncio
+async def test_feedback_service_crud_and_ragas_export():
+    """
+    Validates FeedbackService internal logic:
+    - Raw text fidelity preservation (ADR-15: no corruption of accounting codes or comments).
+    - Source bounding at 5 items.
+    - Aggregate analytics calculation.
+    - Formatted Ragas export mapping.
+    """
+    from src.services.feedback_service import FeedbackService
+
+    service = FeedbackService()
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+
+    service.initialize(mock_pool)
+
+    # 1. Test save_feedback with raw accounting payload & 6 sources (should cap to 5)
+    sources = [
+        {"type": "video", "url": f"https://youtu.be/vid_{i}", "start": i * 10}
+        for i in range(6)
+    ]
+    await service.save_feedback(
+        tenant_id="tenant_123",
+        user_id="user_456",
+        user_role="Student",
+        query="حساب مجمع الإهلاك رقم 102030",
+        answer="يتم ترحيل قيد الإهلاك إلى ح/ مجمع الإهلاك",
+        rating="DOWN",
+        query_hash="hash_q1",
+        answer_hash="hash_a1",
+        comment="رقم هاتفي 01012345678 للاستفسار عن القيد",
+        lesson_id="lesson_acc_01",
+        sources=sources,
+    )
+
+    # Verify conn.execute was called and sources capped to 5
+    assert mock_conn.execute.called
+    call_args = mock_conn.execute.call_args[0]
+    # Args: query_sql, tenant_id, department_id, user_id, user_role, lesson_id, thread_id, query_hash, answer_hash, query, answer, rating, comment, sources
+    assert call_args[9] == "حساب مجمع الإهلاك رقم 102030"  # Raw query preserved
+    assert call_args[10] == "يتم ترحيل قيد الإهلاك إلى ح/ مجمع الإهلاك"  # Raw answer preserved
+    assert call_args[12] == "رقم هاتفي 01012345678 للاستفسار عن القيد"  # Raw comment preserved (ADR-15)
+    assert len(call_args[13]) == 5  # Bounded to 5 sources
+
+    # 2. Test get_feedback_analytics
+    mock_conn.fetchrow.return_value = {
+        "total_votes": 10,
+        "up_votes": 8,
+        "down_votes": 2,
+    }
+    analytics = await service.get_feedback_analytics(tenant_id="tenant_123", lesson_id="lesson_acc_01")
+    assert analytics["total_votes"] == 10
+    assert analytics["up_votes"] == 8
+    assert analytics["down_votes"] == 2
+    assert analytics["satisfaction_rate"] == 80.0
+
+    # 3. Test export_for_ragas
+    mock_conn.fetch.return_value = [
+        {
+            "id": "uuid-1",
+            "tenant_id": "tenant_123",
+            "department_id": None,
+            "user_id": "user_456",
+            "user_role": "Student",
+            "lesson_id": "lesson_acc_01",
+            "thread_id": "thread_99",
+            "query_hash": "hash_q1",
+            "answer_hash": "hash_a1",
+            "query_text": "ما هو القيد العكسي؟",
+            "answer_text": "القيد العكسي يلغي قيداً سابقاً.",
+            "rating": "DOWN",
+            "comment": "التعريف غير واضح",
+            "sources": [{"url": "https://youtu.be/acc101", "start": 120}],
+            "created_at": "2026-09-14T10:00:00Z",
+            "updated_at": "2026-09-14T10:00:00Z",
+        }
+    ]
+    ragas_data = await service.export_for_ragas(tenant_id="tenant_123", lesson_id="lesson_acc_01")
+    assert len(ragas_data) == 1
+    item = ragas_data[0]
+    assert item["user_input"] == "ما هو القيد العكسي؟"
+    assert item["response"] == "القيد العكسي يلغي قيداً سابقاً."
+    assert item["rating"] == "DOWN"
+    assert "https://youtu.be/acc101#t=120s" in item["retrieved_contexts"]
+
+
+@pytest.mark.asyncio
+async def test_get_admin_feedback_endpoint(admin_user_context, mock_fastapi_request):
+    """
+    Tests GET /v1/admin/feedback endpoint:
+    - Normal JSON structure with records and analytics.
+    - format='ragas' export format.
+    """
+    from src.api.v1.router import get_admin_feedback
+    from src.services.feedback_service import feedback_service
+
+    mock_pool = MagicMock()
+    mock_conn = AsyncMock()
+    mock_pool.acquire.return_value.__aenter__.return_value = mock_conn
+    feedback_service.initialize(mock_pool)
+
+    mock_conn.fetch.return_value = []
+    mock_conn.fetchrow.return_value = {"total_votes": 0, "up_votes": 0, "down_votes": 0}
+
+    # 1. Standard Admin JSON Query
+    resp_json = await get_admin_feedback(
+        request=mock_fastapi_request,
+        lesson_id="lesson_stream_01",
+        limit=50,
+        offset=0,
+        admin_ctx=admin_user_context,
+    )
+    assert resp_json.records == []
+    assert resp_json.analytics.total_votes == 0
+    assert resp_json.analytics.satisfaction_rate == 0.0
+
+    # 2. Ragas Format Export
+    resp_ragas = await get_admin_feedback(
+        request=mock_fastapi_request,
+        lesson_id="lesson_stream_01",
+        format="ragas",
+        limit=50,
+        offset=0,
+        admin_ctx=admin_user_context,
+    )
+    assert isinstance(resp_ragas, list)
+

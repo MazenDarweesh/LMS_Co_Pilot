@@ -53,6 +53,36 @@ CREATE INDEX IF NOT EXISTS idx_agent_event_log_session_id
     ON agent_event_log(session_id, timestamp DESC);
 """
 
+# جدول تسجيل تقييمات الطلاب للإجابات (M07 Feedback Engine)
+CREATE_FEEDBACK_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS search_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(64) NOT NULL,
+    department_id VARCHAR(64),
+    user_id VARCHAR(64) NOT NULL,
+    user_role VARCHAR(32) NOT NULL DEFAULT 'Student',
+    lesson_id VARCHAR(128),
+    thread_id VARCHAR(128),
+    query_hash VARCHAR(64) NOT NULL,
+    answer_hash VARCHAR(64) NOT NULL,
+    query_text TEXT NOT NULL,
+    answer_text TEXT NOT NULL,
+    rating VARCHAR(10) NOT NULL,
+    comment TEXT,
+    sources JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_user_query_answer_feedback UNIQUE (user_id, query_hash, answer_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_search_feedback_tenant_lesson 
+    ON search_feedback(tenant_id, lesson_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_feedback_tenant_rating 
+    ON search_feedback(tenant_id, rating, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_search_feedback_created_at 
+    ON search_feedback(created_at DESC);
+"""
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -70,6 +100,7 @@ async def lifespan(app: FastAPI):
     )
     async with app.state.db_pool.acquire() as conn:
         await conn.execute(CREATE_EVENTS_TABLE_SQL)
+        await conn.execute(CREATE_FEEDBACK_TABLE_SQL)
     logger.info("Database pool ready ✅")
 
     # ② تحميل نماذج الـ Embedding مرة واحدة عند بدء التشغيل
@@ -137,6 +168,11 @@ async def lifespan(app: FastAPI):
     from src.services.event_logger import event_logger_service
     event_logger_service.initialize(app.state.db_pool)
     app.state.event_logger_service = event_logger_service
+
+    # ⑩ تهيئة Feedback Service (M07 Feedback Engine)
+    from src.services.feedback_service import feedback_service
+    feedback_service.initialize(app.state.db_pool)
+    app.state.feedback_service = feedback_service
 
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
