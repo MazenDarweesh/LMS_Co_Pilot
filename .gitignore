@@ -42,7 +42,9 @@ coverage.xml
 # Model Cache (Local Embeddings/Rerankers)
 .model_cache/
 
-docs/
-
 # Agent Proposals — personal review queue, not for version control
 .agents/proposals/
+
+# Archived & Historical Documentation
+docs/archive/
+

@@ -69,6 +69,17 @@ services:
     networks:
       - copilot_net
 
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: lms_copilot_alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    restart: unless-stopped
+    networks:
+      - copilot_net
+
   grafana:
     image: grafana/grafana:11.2.0
     container_name: lms_copilot_grafana
