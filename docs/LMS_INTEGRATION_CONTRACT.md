@@ -296,19 +296,92 @@ new Claim("DepartmentId", user.DepartmentId?.ToString() ?? "")
 
 ---
 
+---
+
+## 8. الـ Internal APIs التي يوفرها الـ .NET LMS لمحرك بايثون (Service-to-Service)
+
+> [!IMPORTANT]
+> **قاعدة التحصين الأمني (Fail-Closed Token Rule):**  
+> تتطلب مسارات الـ Internal ترويسة `Authorization: Bearer <SERVICE_TOKEN>`. تم تطبيق نظام أمني صارم (Fail-Closed) في .NET يرفض الطلب فوراً بـ `401 Unauthorized` إذا لم يتطابق التوكن تماماً مع القيمة المحددة في المتغير البيئي `AiCoPilot:ServiceToken` (لا توجد أي قيم افتراضية).
+
+### 8.1 استعلام صلاحيات المستخدم لحظياً (User Permissions)
+* **المسار:** `GET http://<DOTNET_HOST>:8080/api/internal/user-permissions/{userId}`
+* **الترويسة:** `Authorization: Bearer <AI_SERVICE_TOKEN>`
+* **الأداء والتخزين المؤقت:** يتم تخزين صلاحيات المشرفين (Admin) مؤقتاً في ذاكرة .NET (`IMemoryCache`) لمدة **5 دقائق** لتسريع الاستجابة وتفادي الضغط على قاعدة البيانات.
+* **جسم الرد المتوقع (200 OK):**
+```json
+{
+  "userId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "accessibleModules": [
+    {
+      "moduleId": "b5e98f01-2a1c-4b56-91e8-7890abcdef12",
+      "levelFilters": ["uuid1", "uuid2"],
+      "typeFilters": ["uuid3"]
+    }
+  ],
+  "accessibleUnitIds": ["c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c"],
+  "accessibleLessonIds": ["e7f8a9b0-c1d2-3e4f-5a6b-7c8d9e0f1a2b"]
+}
+```
+
+### 8.2 جلب ميتاداتا وسياق الدرس الكامل (Lesson Full Context)
+* **المسار:** `GET http://<DOTNET_HOST>:8080/api/internal/lessons/{lessonId}/full-context`
+* **الترويسة:** `Authorization: Bearer <AI_SERVICE_TOKEN>`
+* **جسم الرد المتوقع (200 OK):**
+```json
+{
+  "lessonId": "e7f8a9b0-c1d2-3e4f-5a6b-7c8d9e0f1a2b",
+  "lessonTitle": "مقدمة في نظام نقاط البيع (POS)",
+  "videoUrl": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+  "pdfUrl": "https://example.com/docs/pos.pdf",
+  "externalLink": "https://example.com/pos",
+  "unitId": "c1a2b3c4-d5e6-7f8a-9b0c-1d2e3f4a5b6c",
+  "unitTitle": "الوحدة الأولى: نقاط البيع",
+  "moduleId": "b5e98f01-2a1c-4b56-91e8-7890abcdef12",
+  "moduleTitle": "موديول المبيعات ونقاط البيع",
+  "levelId": "11111111-2222-3333-4444-555555555555",
+  "levelName": "مبتدئ",
+  "typeId": "66666666-7777-8888-9999-000000000000",
+  "typeName": "فيديو توضيحي",
+  "tenantIds": ["company-id-1"],
+  "targetRoles": ["Admin", "Student", "Tester"]
+}
+```
+
+---
+
+## 9. سياسة تقييد الطلبات وحماية الموارد (Rate Limiting)
+
+لحماية نموذج الذكاء الاصطناعي ومحرك بايثون من الاستنزاف أو الإغراق الناتج عن الضغط المتكرر في لوحة التحكم، تم تفعيل سياسة تقييد في .NET:
+* **السياسة:** `AiGenerationLimit` (Fixed Window).
+* **الحد الأقصى:** **10 طلبات في الدقيقة** لكل مستخدم.
+* **المسارات المحمية:**
+  - `POST /api/admin/lessons/{lessonId}/generate-quiz`
+  - `POST /api/admin/lessons/{lessonId}/generate-summary`
+* **السلوك عند التجاوز:** إرجاع `429 Too Many Requests`.
+
+---
+
 ## 📋 الأوامر التنفيذية الصارمة للفرق (Action Checklist)
 
 ### 👨‍💻 فريق .NET Backend (`DynamicProLearn`):
-1. في ملف `PythonAiClient.cs`: عدل المسارات لتكون `/v1/admin/lessons/{id}/generate-quiz` و `/v1/admin/lessons/{id}/generate-summary`.
-2. في ملف `PythonAiDtos.cs`: انسخ كود الـ C# DTOs الموضح في القسم 1.3 والقسم 2.3 كاملاً.
-3. في ملف `LessonAiService.cs`: تأكد من قراءة `generatedSummary.Overview` وحفظها في جدول الدروس.
-4. في ملف `WebhookDispatcher.cs`: أرسل الـ Payload بصيغة `{"lesson_id": "...", "action": "Updated"}` لمسار `/v1/webhooks/lesson-updated`.
+- [x] **تحديث المسارات:** في ملف `PythonAiClient.cs` تم تعديل المسارات لتكون `/v1/admin/lessons/{id}/generate-quiz` و `/v1/admin/lessons/{id}/generate-summary`.
+- [x] **تثبيت الـ DTOs:** في ملف `PythonAiDtos.cs` تم اعتماد الكود الرسمي من القسمين 1.3 و 2.3 بـ `[JsonPropertyName]` الموحدة لـ `snake_case`.
+- [x] **حفظ الـ Overview ومعاينة المشرف:** في ملف `LessonAiService.cs` تم ربط `Overview` وحفظها في SQL Server، وإضافة دوال `GetAdminLessonQuizAsync` و `GetAdminLessonSummaryAsync` وإمكانية الـ Regenerate.
+- [x] **مسارات المشرف الجديدة:** في ملف `AdminController.cs` تم تفعيل `GET /api/admin/lessons/{id}/quiz` و `GET /api/admin/lessons/{id}/summary` للمعاينة والمراجعة.
+- [x] **تنسيق باعث الـ Webhook:** في ملف `WebhookDispatcher.cs` تم ضبط الـ Payload بصيغة `{"lesson_id": "...", "action": "Updated"}`.
+- [x] **تحصين الأمان (Fail-Closed Service Token):** إلغاء أي توكن افتراضي وإلزام وجود `SERVICE_TOKEN` في بيئة الإنتاج للـ Internal APIs.
+- [x] **تسريع الأداء (In-Memory Cache):** كاش لمدة 5 دقائق لصلاحيات المشرفين في `InternalController` لتقليل استعلامات الـ DB.
+- [x] **تقييد المعدل (Rate Limiting):** حماية مسارات توليد الـ AI بحد أقصى 10 طلبات/دقيقة (`429 Too Many Requests`).
+- [x] **حاويات Docker:** تثبيت إصدار SQL Server وعزل الـ Secrets في متغيرات بيئية وإنشاء `deployment/.env.example`.
+- [x] **التحقق والاختبار:** تم عمل `dotnet build` بنجاح كامل بدون أي تحذيرات أو أخطاء (0 Errors, 0 Warnings).
 
 ### 🎨 فريق Angular Frontend (`DynamicProLearn.Client`):
-1. **شاشة الدرس (Student Lesson Detail):** إضافة تبويبين: تبويب "الاختبار (Quiz)" وتبويب "الملخص (Summary)" وعرض المحتوى المحفوظ في SQL Server عبر .NET.
-2. **مكون الشات الذكي (Copilot Chat Widget):** استدعاء `POST /v1/search/stream` وقراءة أحداث الـ SSE (`sources` أولاً، ثم `token`، ثم `done`).
-3. **أزرار التقييم (Feedback):** إضافة زري إبهام (👍 / 👎) بجوار إجابة الذكاء الاصطناعي يستدعيان `POST /v1/search/feedback`.
-4. **أزرار المشرف (Admin Lesson Editor):** وضع زر "توليد اختبار ذكي" وزر "توليد ملخص تلقائي" يستدعيان الـ APIs في دوت نت.
+- [x] **شاشة الدرس (Student Lesson Detail):** تم بناء تبويبي "ملخص الدرس (AI Summary)" و "اختبار تقييم الفهم (AI Quiz)" في `lesson-viewer` مع نظام تفاعلي لحل الأسئلة وجلب المحتوى مباشرة من SQL Server عبر .NET.
+- [x] **مكون الشات الذكي (Copilot Chat Widget):** تم بناء مكون عائم `CopilotChatComponent` وخدمة `CopilotService` لقراءة أحداث الـ SSE اللحظية من `POST /v1/search/stream` وعرض المصادر (Sources) وتدفق النص كلمة بكلمة.
+- [x] **أزرار التقييم (Feedback):** تم تفعيل أزرار التقييم (👍 / 👎) بجوار إجابات المساعد الذكي مع استدعاء `POST /v1/search/feedback` لتغذية نظام Ragas.
+- [x] **استوديو المشرف والمراجعة (Admin AI Studio):** تم إضافة قسم "استوديو الذكاء الاصطناعي" في `lesson-editor` مع أزرار التوليد ونافذة معاينة متكاملة (Review Modal) تتيح مراجعة الأسئلة وإجاباتها النموذجية وإمكانية إعادة التوليد (Regenerate).
+- [x] **التحقق والاختبار:** تم عمل `npm run build` بنجاح كامل بدون أي أخطاء ترجمة (Application bundle generation complete).
 
 ### 🐍 فريق بايثون (`LMS_CO_Pilot`):
 - [x] تم تجهيز واختبار الـ DTOs والـ Schemas وحقل `overview`.

@@ -17,19 +17,19 @@ from src.models.auth_models import TokenClaims
 
 def test_dual_routes_registered_in_fastapi():
     """Verify that endpoints exist under both /v1 and /api prefixes."""
-    routes = [r.path for r in app.routes]
+    paths = app.openapi()["paths"]
     
     # Quiz endpoint
-    assert "/v1/admin/lessons/{lesson_id}/generate-quiz" in routes
-    assert "/api/admin/lessons/{lesson_id}/generate-quiz" in routes
+    assert "/v1/admin/lessons/{lesson_id}/generate-quiz" in paths
+    assert "/api/admin/lessons/{lesson_id}/generate-quiz" in paths
     
     # Summary endpoint
-    assert "/v1/admin/lessons/{lesson_id}/generate-summary" in routes
-    assert "/api/admin/lessons/{lesson_id}/generate-summary" in routes
+    assert "/v1/admin/lessons/{lesson_id}/generate-summary" in paths
+    assert "/api/admin/lessons/{lesson_id}/generate-summary" in paths
     
     # Webhook endpoint
-    assert "/v1/webhooks/lesson-updated" in routes
-    assert "/api/webhooks/lesson-updated" in routes
+    assert "/v1/webhooks/lesson-updated" in paths
+    assert "/api/webhooks/lesson-updated" in paths
 
 
 def test_quiz_dto_compatibility_fields():
@@ -104,3 +104,36 @@ def test_token_claims_resilience():
     assert c2.user_id == "user-2"
     assert c2.role == "Teacher"
     assert c2.company_id == "comp-2"
+
+
+def test_search_request_scope_lesson():
+    """Verify SearchRequest accepts scope='lesson' as required by Angular lesson viewer."""
+    from src.models.search_models import SearchRequest
+    req = SearchRequest(
+        query="كيف أقوم بتعديل صلاحيات الكاشير؟",
+        lesson_id="3fa85f64-5717-4562-b3fc-2c963f66afa6",
+        scope="lesson"
+    )
+    assert req.scope == "lesson"
+    assert req.lesson_id == "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+
+
+def test_feedback_request_case_insensitive_rating():
+    """Verify FeedbackRequest accepts lowercase 'up' and 'down' from Angular clients."""
+    from src.models.search_models import FeedbackRequest, FeedbackRating
+    
+    # lowercase 'up'
+    f1 = FeedbackRequest(
+        query="كيف أسجل قيد؟",
+        answer="من شاشة الحسابات العامة",
+        rating="up"
+    )
+    assert f1.rating == FeedbackRating.UP
+    
+    # lowercase 'down'
+    f2 = FeedbackRequest(
+        query="كيف أسجل قيد؟",
+        answer="من شاشة الحسابات العامة",
+        rating="down"
+    )
+    assert f2.rating == FeedbackRating.DOWN

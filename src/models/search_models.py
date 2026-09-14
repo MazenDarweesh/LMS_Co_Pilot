@@ -7,14 +7,14 @@ Separated from schemas.py to keep concerns clean (Week 8).
 import uuid
 from enum import Enum
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 
 class SearchRequest(BaseModel):
     """طلب البحث الهجين — يدعم تضييق النطاق (scope) وفلترة المعرّفات."""
     query: str = Field(..., min_length=2, description="سؤال الطالب")
-    scope: Literal["all", "course", "standalone", "playlist"] = Field(
+    scope: Literal["all", "course", "standalone", "playlist", "lesson"] = Field(
         "all", description="نطاق البحث"
     )
     module_id: str | None = None
@@ -59,6 +59,13 @@ class FeedbackRequest(BaseModel):
     thread_id: str | None = Field(None, description="معرف جلسة المحادثة")
     # NOTE: query_hash & answer_hash are computed server-side from content — not accepted from client.
     sources: list[SourceItem] | None = Field(None, description="المصادر والاستشهادات المرتبطة بالإجابة (حد أقصى 5)")
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def normalize_rating(cls, v: str | FeedbackRating) -> str | FeedbackRating:
+        if isinstance(v, str):
+            return v.strip().upper()
+        return v
 
 
 class FeedbackResponse(BaseModel):

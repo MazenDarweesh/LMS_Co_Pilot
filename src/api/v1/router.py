@@ -282,7 +282,7 @@ async def start_audio_ingestion(
 
 
 @router.post("/webhooks/lesson-updated", status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit("10/minute")
+@limiter.limit("60/minute")
 async def unified_lesson_webhook(
     request: Request,
     payload: WebhookPayload,
@@ -614,7 +614,7 @@ async def get_lesson_result(
 # ---------------------------------------------------------------------------
 
 @router.post("/admin/lessons/{lesson_id}/generate-quiz", response_model=GeneratedQuiz)
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def generate_lesson_quiz(
     request: Request,
     lesson_id: str,
@@ -640,7 +640,7 @@ async def generate_lesson_quiz(
 
 
 @router.post("/admin/lessons/{lesson_id}/generate-summary", response_model=GeneratedSummary)
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def generate_lesson_summary(
     request: Request,
     lesson_id: str,
