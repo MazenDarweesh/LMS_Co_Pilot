@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "77f215b", "last_synced_at": "2026-09-14T15:00:00Z", "documented_endpoints": 15} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "2acdb2a", "last_synced_at": "2026-09-14T15:30:00Z", "documented_endpoints": 15} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,7 +19,10 @@
 ## ✨ Key Features
 
 - ⚡ **Real-Time Token Streaming Search (SSE)** — `POST /v1/search/stream` delivers sub-300ms Time-to-First-Token (TTFT) via Server-Sent Events with guaranteed citation-first ordering (`sources` -> `token` -> `done`), W3C-compliant keep-alive heartbeats (`: heartbeat\n\n` every 15s), client disconnect detection (`request.is_disconnected()`), and bounded queue backpressure (`maxsize=30`) preventing token waste and memory bloat
+- 🚨 **Prometheus Alerting & SLA Reliability Rules** — Production alerting rules (`monitoring/alerts.yml`) evaluated directly inside the Prometheus container, enforcing strict SLAs: High HTTP 5xx error rate (>5%), P95 search latency degradation (>3.0s), security guardrail & prompt injection spikes (>0.5/sec), and degraded semantic cache hit rates (<10%)
+- ⏱️ **Streaming Latency Telemetry (TTFT & TPOT)** — Custom Prometheus histograms capturing exact Time to First Token (`lms_ttft_seconds`) and Time Per Output Token (`lms_tpot_seconds`) across SSE streams, paired with security refusal counters (`lms_guardrail_refusals_total`)
 - 💬 **Idempotent Student Feedback & Quality Analytics Engine** — `POST /v1/search/feedback` captures granular thumbs up/down ratings, raw comments, and citations with 24-hour in-memory deduplication (`TTLCache`), asynchronous non-blocking PostgreSQL persistence via `BackgroundTasks` (<15ms response), live Prometheus telemetry (`lms_search_feedback_total`), and tenant-isolated admin analytics (`GET /v1/admin/feedback`) with instant Ragas evaluation export
+- 🔬 **Continuous Offline Model & Prompt Drift Strategy (ADR-16)** — Decoupled scheduled evaluation pipeline validating baseline Faithfulness (>0.85) and Answer Relevancy via Ragas using sampled negative feedback queries (`GET /v1/admin/feedback?format=ragas`), avoiding costly real-time LLM judge overhead
 - 🛡️ **Sub-Millisecond Guardrails & Dialect Jailbreak Defense** — Fast Ingress security regex matrix intercepting Egyptian dialect evasion (`سيبك من`, `فكك من`), Franco-Arabic prompts (`sib el kalam`), DAN/Developer mode exploits, and system prompt extraction in `< 0.05ms` before any vector or LLM cost
 - ⚡ **Two-Tier Fast Ingress Caching** — Tier-1 In-Memory LRU Cache (<1ms) with 4D deterministic SHA-256 keys (`company:dept:role:query`) combined with Tier-2 Semantic Qdrant Vector Cache (cosine >= 0.92, 5–25ms); eliminates 100% of LLM and embedding overhead on repetitive traffic with automatic tier promotion
 - 🚦 **Sub-Millisecond Heuristic Intent Router** — Intercepts conversational greetings (Egyptian, Gulf, and Levantine dialects), out-of-scope banter, and invalid input in `< 0.1ms` via compiled regex heuristics before triggering heavy vector pipelines
@@ -108,8 +111,8 @@
 |:------:|:---------|:-----------------:|:------------|
 | `POST` | `/v1/search` | JWT · 30 req/min | Two-tier cached & hybrid RAG search with role-scoped vector filtering |
 | `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, heartbeat keep-alive, and backpressure |
-| `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async DB write, and Prometheus metrics |
-| `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates per lesson with instant Ragas evaluation export |
+| `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async PostgreSQL persistence, and Prometheus metrics |
+| `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates with instant Ragas evaluation dataset export (`?format=ragas&limit=100`) |
 | `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
 | `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
 | `POST` | `/v1/webhooks/lesson-updated` | Service Token · 10 req/min | Re-index or delete vectors on LMS content change with per-lesson lock |
@@ -119,7 +122,7 @@
 | `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 5 req/min | Generate hierarchical pyramid summary of a lesson |
 | `POST` | `/v1/speech/evaluate-quality` | JWT Admin | Calculate WER/CER for AI transcript evaluations |
 | `POST` | `/v1/speech/tafqit` | Rate Limited · 60 req/min | Convert numerical digits to Arabic text words |
-| `GET` | `/metrics` | Prometheus Scraper / Public | Prometheus metrics endpoint (exact/semantic cache hit rates, latency histograms, token counters) |
+| `GET` | `/metrics` | Prometheus Scraper / Public | Prometheus metrics endpoint (exact/semantic cache hit rates, TTFT/TPOT histograms, guardrail refusal counters, stage latencies, token counters) |
 | `GET` | `/health` | Public | System health check and environment status |
 
 ### Search Request / Response Example
@@ -161,6 +164,7 @@
 | **Tier-1 Exact Cache Hit (In-Memory LRU)** | **< 1 ms** | Instant SHA-256 4D lookup (`company:dept:role:query`); 0ms network latency |
 | **Tier-2 Semantic Cache Hit (Vector Lookup)** | **~5–25 ms** | Sub-25ms vector match; 100% LLM token cost reduction |
 | **Streaming TTFT (Time to First Token)** | **< 300 ms** | Real-time SSE token stream start; immediate citation delivery |
+| **Streaming TPOT (Time Per Output Token)** | **~20–35 ms/token** | Inter-token generation turnaround during SSE delivery |
 | **BGE-M3 Embedding** | ~360–440 ms | Dense + Sparse dual concurrent representation |
 | **Qdrant Hybrid Search (RRF)** | ~22–175 ms | 200K+ vectors, role & permission filtered |
 | **FlashRank ONNX Reranker (`miniReranker_arabic_v1`)** | ~180 ms | Quantized CPU cross-encoder (slashed from ~1,200 ms with PyTorch) |
@@ -342,8 +346,12 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Real-time token streaming search (SSE) with client disconnect abort & backpressure
 - [x] Idempotent student feedback engine with 24h deduplication & Prometheus tracking
 - [x] Asynchronous PostgreSQL feedback persistence & tenant-isolated admin analytics (M07)
+- [x] Prometheus alert rules & container volume mount for automated SLA enforcement (M07)
+- [x] Real-time streaming latency telemetry (TTFT & TPOT) and guardrail refusal counters (M07)
 - [x] Architectural Decision Record ADR-14 (Self-RAG deferral for sub-second MVP speed)
 - [x] Architectural Decision Record ADR-15 (Raw authentic feedback fidelity and deferred PII compliance)
+- [x] Architectural Decision Record ADR-16 (Decoupled offline Ragas drift evaluation pipeline)
+- [x] Architectural Decision Record ADR-17 (Prometheus alerting thresholds and SLA violation triggers)
 - [x] Production Nginx reverse proxy configuration for unbuffered SSE streaming
 - [x] OWASP BOLA & Cross-Tenant Defense-in-Depth (Fail-Closed 503/403 security)
 - [x] Per-lesson concurrency serialization with TOCTOU-proof bounded lock pruning
@@ -399,4 +407,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-13*
+*Last updated by `readme-updater` skill — 2026-09-14*

@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "77f215b"
-last_updated: "2026-09-13T16:15:00Z"
-active_milestone: "M06"
-total_milestones: 6
-completed_milestones: 6
+last_synced_commit: "2acdb2a"
+last_updated: "2026-09-14T15:30:00Z"
+active_milestone: "M07"
+total_milestones: 7
+completed_milestones: 7
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -22,27 +22,29 @@ completed_milestones: 6
 | **M04** | Telemetry, CI/CD & Quantitative Eval | ✅ COMPLETED | 2026-09-07 -> 2026-09-09 | Prometheus, Grafana, Locust & Ragas (92%) | [M04 Dossier](milestones/M04_observability_ragas_eval.md) |
 | **M05** | Enterprise ERP Bridge, BOLA & Fast Ingress | ✅ COMPLETED | 2026-09-10 -> 2026-09-13 | JWT Bridge + BOLA Defense + 2-Tier Caching & Locks | [M05 Dossier](milestones/M05_enterprise_lms_agents.md) |
 | **M06** | Real-Time Streaming Search & Feedback | ✅ COMPLETED | 2026-09-13 -> 2026-09-13 | SSE Streaming (<300ms TTFT) + Feedback Engine + ADR-14 | [M06 Dossier](milestones/M06_streaming_feedback_guardrails.md) |
+| **M07** | Production Telemetry & SLA Alerting | ✅ COMPLETED | 2026-09-13 -> 2026-09-14 | TTFT/TPOT, Guardrail Refusals, Prometheus Alerts, Feedback DB | [M07 Dossier](milestones/M07_observability_alerting_feedback_persistence.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
 ┌─────────────────────┬───────┬────────────┬────────────────────────┐
 │ Metric              │ Value │ Target     │ Visual Bar             │
 ├─────────────────────┼───────┼────────────┼────────────────────────┤
-│ Milestones Complete │ 6 / 6 │ 6 (MVP)    │ [████████████████████] │ 100.0%
+│ Milestones Complete │ 7 / 7 │ 7 (MVP)    │ [████████████████████] │ 100.0%
 │ Evaluation Quality  │ 0.92  │ >= 0.80    │ [██████████████████░░] │ Passed
 │ Latency (Exact/Sem) │ <1ms  │ <= 25ms    │ [████████████████████] │ Production
 │ Streaming TTFT      │ <300ms│ <= 500ms   │ [████████████████████] │ Production
+│ SLA Alert Coverage  │ 4/4   │ 4 rules    │ [████████████████████] │ Production
 └─────────────────────┴───────┴────────────┴────────────────────────┘
 ```
 
 ---
 
-## 🎯 Milestone Deliverables (M06 Completed)
+## 🎯 Milestone Deliverables (M07 Completed)
 
-* **Real-Time Token Streaming Search (SSE):** `POST /v1/search/stream` delivering sub-300ms TTFT, citation-first ordering (`sources` -> `token` -> `done`), W3C-compliant 15s keep-alive heartbeats, client disconnect abort (`request.is_disconnected()`), and bounded queue backpressure (`maxsize=30`).
-* **Idempotent Student Feedback Engine:** `POST /v1/search/feedback` with 24-hour in-memory deduplication (`TTLCache`) and Prometheus metrics (`lms_search_feedback_total`).
-* **Ultra-Lean Security Guardrails:** Heuristic regex matrix intercepting Egyptian dialect evasion (`سيبك من`, `فكك من`), Franco-Arabic prompts, and prompt extraction in `< 0.05ms`.
-* **Architectural Decision Record ADR-14 & Nginx Config:** Formalized deferral of the heavy 5-node Self-RAG loop to preserve sub-second student UX, with documented production Nginx reverse proxy configuration.
+* **Asynchronous PostgreSQL Feedback Persistence:** Non-blocking storage via FastAPI `BackgroundTasks` (<15ms response) with composite unique constraint `(user_id, query_hash, answer_hash)` enabling vote updates without collisions.
+* **Granular SSE Streaming Telemetry (TTFT & TPOT):** Live Prometheus histograms tracking Time to First Token (`lms_ttft_seconds`) and Time Per Output Token (`lms_tpot_seconds`) across SSE streams.
+* **Automated SLA Alerting Engine (ADR-17):** Mounted declarative Prometheus alerting rules (`monitoring/alerts.yml`) monitoring 5xx error rates, P95 search latency, guardrail refusal spikes, and cache hit ratios.
+* **Continuous Offline Drift Evaluation Strategy (ADR-16):** Decoupled weekly evaluation pipeline using Ragas on negative feedback extracts (`GET /v1/admin/feedback?format=ragas`), eliminating expensive real-time LLM judging.
 
 ---
 
