@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "2acdb2a", "last_synced_at": "2026-09-14T15:30:00Z", "documented_endpoints": 15} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "1ec6603", "last_synced_at": "2026-09-14T18:15:00Z", "documented_endpoints": 15} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -7,6 +7,7 @@
 [![Qdrant](https://img.shields.io/badge/Qdrant-1.13.2-FF4D5B?style=flat-square&logo=qdrant&logoColor=white)](https://qdrant.tech)
 [![Gemini](https://img.shields.io/badge/Gemini-Flash_Lite_3.5-4285F4?style=flat-square&logo=google&logoColor=white)](https://ai.google.dev)
 [![Prometheus](https://img.shields.io/badge/Prometheus-v2.54.1-E6522C?style=flat-square&logo=prometheus&logoColor=white)](https://prometheus.io)
+[![Alertmanager](https://img.shields.io/badge/Alertmanager-v0.27.0-E6522C?style=flat-square&logo=prometheus&logoColor=white)](https://prometheus.io/docs/alerting/latest/alertmanager/)
 [![Grafana](https://img.shields.io/badge/Grafana-v11.2.0-F46800?style=flat-square&logo=grafana&logoColor=white)](https://grafana.com)
 [![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)](.github/workflows/ci.yml)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docker.com)
@@ -18,6 +19,9 @@
 
 ## ✨ Key Features
 
+- 📜 **LMS Master Integration Contract v3.0.0-FINAL & Dual-Prefix Multiplexing** — Seamless zero-friction interoperability with `.NET 10 Web API` (`LearnDynamicPro`) and Angular 19; exposes dual route prefixes (`/v1` canonical and `/api` compatibility alias), provides hybrid C# DTO serialization (`question_text`, `question_number`, `option_id`), guarantees mandatory summary `overview` grounding, and handles case-insensitive Webhooks (`"Updated"` / `"Deleted"`)
+- 🚨 **Standalone Alertmanager & SLA Incident Dispatch (Port 9093)** — Dedicated Alertmanager container (`prom/alertmanager:v0.27.0`) in `docker-compose.yml` with webhook incident routing, evaluating Prometheus SLA rules across high HTTP 5xx error rates (>5%), P95 search latency degradation (>3.0s), security guardrail & prompt injection spikes (>0.5/sec), and degraded semantic cache hit rates (<10%)
+- 🛡️ **Production-Hardened Audio Pipeline & OWASP Security Headers** — Ingestion pipeline elevated with non-blocking async file I/O (`aiofiles`), dynamic Whisper ERP domain prompt priming (`WHISPER_ERP_DOMAIN_PROMPT`), guaranteed temporary audio cleanup in `finally` blocks preventing disk leaks, and global HTTP security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`)
 - ⚡ **Real-Time Token Streaming Search (SSE)** — `POST /v1/search/stream` delivers sub-300ms Time-to-First-Token (TTFT) via Server-Sent Events with guaranteed citation-first ordering (`sources` -> `token` -> `done`), W3C-compliant keep-alive heartbeats (`: heartbeat\n\n` every 15s), client disconnect detection (`request.is_disconnected()`), and bounded queue backpressure (`maxsize=30`) preventing token waste and memory bloat
 - 🚨 **Prometheus Alerting & SLA Reliability Rules** — Production alerting rules (`monitoring/alerts.yml`) evaluated directly inside the Prometheus container, enforcing strict SLAs: High HTTP 5xx error rate (>5%), P95 search latency degradation (>3.0s), security guardrail & prompt injection spikes (>0.5/sec), and degraded semantic cache hit rates (<10%)
 - ⏱️ **Streaming Latency Telemetry (TTFT & TPOT)** — Custom Prometheus histograms capturing exact Time to First Token (`lms_ttft_seconds`) and Time Per Output Token (`lms_tpot_seconds`) across SSE streams, paired with security refusal counters (`lms_guardrail_refusals_total`)
@@ -125,6 +129,9 @@
 | `GET` | `/metrics` | Prometheus Scraper / Public | Prometheus metrics endpoint (exact/semantic cache hit rates, TTFT/TPOT histograms, guardrail refusal counters, stage latencies, token counters) |
 | `GET` | `/health` | Public | System health check and environment status |
 
+> [!NOTE]
+> **Dual-Prefix Enterprise Support:** All endpoints are canonically registered under `/v1/` and simultaneously multiplexed under `/api/` (e.g. `POST /api/admin/lessons/{id}/generate-quiz`) to guarantee backward-compatibility and zero runtime 404s for .NET HTTP clients.
+
 ### Search Request / Response Example
 
 ```json
@@ -211,6 +218,7 @@ All metrics are scraped in real-time by **Prometheus** (`:9090`) and visualized 
 | **Orchestration** | LangGraph | Stateful agent workflows and memory |
 | **State DB** | PostgreSQL 16 (asyncpg) | LangGraph persistent memory checkpointer |
 | **Observability** | Prometheus v2.54.1 | Native ASGI metrics exporter (`/metrics`) |
+| **Alert Routing** | Alertmanager v0.27.0 | Automated webhook dispatch, grouping, and notification routing |
 | **Telemetry Dashboard** | Grafana 11.2.0 | Auto-provisioned real-time visualization dashboards |
 | **Load Testing** | Locust 2.46+ | Multi-user concurrency & stress benchmarking |
 | **CI/CD** | GitHub Actions | Automated lint, multi-service testing & container build |
@@ -366,6 +374,10 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Automated RAG quality evaluation (Ragas v0.4+ Faithfulness & Answer Relevancy)
 - [x] Production container hardening (non-root execution, Docker Compose health dependencies)
 - [x] Prometheus & Grafana live observability stack & hot-reloadable dashboards
+- [x] Standalone Alertmanager v0.27.0 integration & webhook incident routing (Port 9093)
+- [x] Canonical LMS Integration Contract v3.0.0-FINAL (.NET 10 Web API & Angular 19 alignment)
+- [x] Dual-prefix route multiplexing (/v1 canonical + /api compatibility alias)
+- [x] Production code audit hardening (OWASP security headers, ASR domain prompt, zero disk leaks)
 - [x] Locust concurrent load testing suite & traffic simulator
 - [x] Automated GitHub Actions CI/CD pipeline (PostgreSQL 16, Qdrant 1.13.2, Docker build)
 - [ ] PDF ingestion via Marker / MinerU (Week 9)

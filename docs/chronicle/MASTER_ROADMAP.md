@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "2acdb2a"
-last_updated: "2026-09-14T15:30:00Z"
-active_milestone: "M07"
-total_milestones: 7
-completed_milestones: 7
+last_synced_commit: "1ec6603"
+last_updated: "2026-09-14T18:15:00Z"
+active_milestone: "M08"
+total_milestones: 8
+completed_milestones: 8
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -23,19 +23,30 @@ completed_milestones: 7
 | **M05** | Enterprise ERP Bridge, BOLA & Fast Ingress | ✅ COMPLETED | 2026-09-10 -> 2026-09-13 | JWT Bridge + BOLA Defense + 2-Tier Caching & Locks | [M05 Dossier](milestones/M05_enterprise_lms_agents.md) |
 | **M06** | Real-Time Streaming Search & Feedback | ✅ COMPLETED | 2026-09-13 -> 2026-09-13 | SSE Streaming (<300ms TTFT) + Feedback Engine + ADR-14 | [M06 Dossier](milestones/M06_streaming_feedback_guardrails.md) |
 | **M07** | Production Telemetry & SLA Alerting | ✅ COMPLETED | 2026-09-13 -> 2026-09-14 | TTFT/TPOT, Guardrail Refusals, Prometheus Alerts, Feedback DB | [M07 Dossier](milestones/M07_observability_alerting_feedback_persistence.md) |
+| **M08** | Canonical Integration Contract v3.0.0 & Pre-Production Hardening | ✅ COMPLETED | 2026-09-14 -> 2026-09-14 | Dual-Route Multiplexing (/v1 & /api), DTO Alignment, Alertmanager 9093, OWASP Headers & Finally Disk Cleanup | [M08 Dossier](milestones/M08_canonical_contract_hardening.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
 ┌─────────────────────┬───────┬────────────┬────────────────────────┐
 │ Metric              │ Value │ Target     │ Visual Bar             │
 ├─────────────────────┼───────┼────────────┼────────────────────────┤
-│ Milestones Complete │ 7 / 7 │ 7 (MVP)    │ [████████████████████] │ 100.0%
+│ Milestones Complete │ 8 / 8 │ 8 (Target) │ [████████████████████] │ 100.0%
 │ Evaluation Quality  │ 0.92  │ >= 0.80    │ [██████████████████░░] │ Passed
 │ Latency (Exact/Sem) │ <1ms  │ <= 25ms    │ [████████████████████] │ Production
 │ Streaming TTFT      │ <300ms│ <= 500ms   │ [████████████████████] │ Production
 │ SLA Alert Coverage  │ 4/4   │ 4 rules    │ [████████████████████] │ Production
 └─────────────────────┴───────┴────────────┴────────────────────────┘
 ```
+
+---
+
+## 🎯 Milestone Deliverables (M08 Completed)
+
+* **Canonical LMS Integration Contract v3.0.0:** Frozen contract standard aligning Python AI Co-Pilot with .NET 10 Core backend (`DynamicProLearn`). Full bidirectional schema agreement across 8 endpoints and 2 webhooks.
+* **Dual-Prefix Multiplexing Router:** Seamless zero-downtime routing supporting both `/v1/*` and `/api/*` prefixes via FastAPI multi-include (`src/api/v1/router.py`), preventing routing collisions with .NET client conventions.
+* **Alertmanager SLA Incident Dispatch (Port 9093):** Integrated Prometheus Alertmanager (`docker-compose.yml` + `monitoring/alertmanager.yml`) with automated webhook routing, deduplication, and dead man's switch.
+* **Defensive Resource Management (Finally Cleanup):** Hardened `PipelineOrchestrator` with guaranteed temp audio disk deletion in `finally:` blocks, eliminating container inode/storage exhaustion.
+* **Production Security & OWASP Hardening:** Injected standard security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`) in `CorrelationMiddleware`, and fixed UTC timezone deprecation.
 
 ---
 

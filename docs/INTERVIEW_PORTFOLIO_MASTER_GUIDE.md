@@ -1,8 +1,8 @@
 ---
-last_synced_commit: "2acdb2a"
-last_synced_at: 2026-09-14T15:30:00Z
-guide_version: 1.7
-word_count: 7350
+last_synced_commit: "1ec6603"
+last_synced_at: 2026-09-14T18:15:00Z
+guide_version: 1.8
+word_count: 7850
 max_word_budget: 12000
 ---
 
@@ -390,6 +390,32 @@ max_word_budget: 12000
     * مرحلة `vector_search`: فحص سرعة شبكة واستجابة Qdrant.
     * مرحلة `reranking`: التأكد من عدم تمرير عدد مرشحين أكبر من الحد المحدد (8 مرشحين).
     * مرحلة `gemini_generation`: فحص ما إذا كان التأخير ناتجاً عن ضغط أو بطء في خوادم Google API السحابية."
+
+---
+
+### سيناريو 3: التوافقية العابرة للغات وقانون بوستيل (.NET 10 + Python Interoperability & Postel's Law)
+* **Question [EN]:** "When integrating your Python AI service with a separate .NET 10 enterprise backend, you encountered runtime contract mismatches, route prefix conflicts, and disk exhaustion under failed ingestion. How did you resolve them without breaking existing clients?"
+* **السؤال [AR]:** "عند ربط خدمة الـ Python AI مع منصة .NET 10 مؤسسية، واجهت تناقضات برمجية وقت التشغيل في المسارات والـ DTOs، وتسريباً في مساحة القرص عند فشل المعالجة. كيف قمت بحلها دون كسر التوافق مع الأنظمة العاملة؟"
+
+* **Answer [EN] (STAR Method):**
+  * **Situation:** Pre-production end-to-end integration revealed subtle breaking incompatibilities between our Python FastAPI microservice and the .NET 10 backend (`DynamicProLearn`): .NET HTTP clients queried `/api/admin/...` while Python exposed `/v1/admin/...`; missing `overview` fields failed .NET summary validation; and aborted ingestion pipelines left orphaned audio files in `downloads/`, threatening container disk exhaustion.
+  * **Task:** Establish a canonical integration contract, guarantee zero-downtime routing compatibility, harden resource lifecycles, and deploy active SLA alert routing.
+  * **Action:**
+    1. **Canonical Contract v3.0.0:** Authored and locked `docs/LMS_INTEGRATION_CONTRACT.md` as the frozen bidirectional single source of truth across 8 endpoints and 2 webhooks.
+    2. **Dual-Prefix Multiplexing (Postel's Law):** Obeyed Postel's Robustness Principle (*"Be conservative in what you send, be liberal in what you accept"*) by registering routes under both `/v1` and `/api` simultaneously via FastAPI's router inclusion, ensuring zero disruption regardless of client prefix conventions.
+    3. **Defensive Resource Reclaim:** Refactored `PipelineOrchestrator` to enforce file cleanup in a strict `finally:` block, guaranteeing disk deletion even if Whisper transcription, normalization, or Qdrant vector indexing throws uncaught exceptions.
+    4. **Alertmanager 9093 & OWASP Headers:** Provisioned Alertmanager in `docker-compose.yml` for SLA violation dispatch, and injected defensive OWASP security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`) in `CorrelationMiddleware`.
+  * **Result:** Achieved 100% automated test compliance ([tests/unit/test_dotnet_compatibility.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/tests/unit/test_dotnet_compatibility.py)), zero leaked inodes under simulated failures, and frictionless cross-stack interoperability.
+
+* **الإجابة [AR] (منهجية STAR):**
+  * **الموقف (Situation):** عند فحص التكامل الفعلي مع منصة `.NET 10`، ظهرت تناقضات برمجية قاتلة (Breaking Incompatibilities): منصة دوت نت ترسل طلبات ببادئة `/api/admin/...` بينما بايثون ينتظر `/v1/admin/...`، ونقص حقل `overview` تسبب في فشل التحقق البرمجي لدوت نت، كما تبين أن فشل استيعاب الفيديوهات يترك ملفات صوتية مهملة بالقرص تهدد بامتلاء حاوية الدوكر.
+  * **المهمة (Task):** تثبيت عقد تكامل قياسي موحد، وضمان التوافقية للمسارات دون كسر عملاء دوت نت، وحماية موارد السيرفر، وتفعيل موزع التنبيهات.
+  * **الإجراء (Action):**
+    1. **عقد التكامل القياسي v3.0.0:** تجميد وثيقة `docs/LMS_INTEGRATION_CONTRACT.md` كمرجع موحد ونهائي لـ 8 مسارات واثنين Webhook.
+    2. **التوجيه المزدوج وقانون بوستيل (Postel's Law):** تطبيق مبدأ *"كن متساهلاً فيما تستقبل، صارماً فيما ترسل"* بتسجيل المسارات تحت كل من `/v1` و `/api` في نفس الوقت، ليستجيب بايثون بسلاسة مهما كانت بادئة طلبات دوت نت.
+    3. **الحماية الدفاعية للموارد (Finally Cleanup):** نقل عملية حذف الملفات الصوتية المؤقتة لكتلة `finally:` إلزامية لضمان الحذف التلقائي من القرص حتى لو حدث استثناء مفاجئ أثناء التفريغ أو التضمين.
+    4. **موزع التنبيهات وترويسات OWASP:** دمج خدمة Alertmanager على المنفذ 9093 لتوزيع تنبيهات الـ SLA، وحقن ترويسات الأمان المؤسسية (`nosniff`, `DENY`) في الـ Middleware.
+  * **النتيجة (Result):** اجتياز كامل لاختبارات التوافقية بنسبة 100%، وحماية تامة للقرص من التسريب، وتكامل سلس ومستقر بين بيئتي العمل دون أي تعديل اضطراري لكود .NET.
 
 ---
 
