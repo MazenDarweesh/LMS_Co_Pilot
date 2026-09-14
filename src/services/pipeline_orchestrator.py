@@ -109,6 +109,9 @@ class PipelineOrchestrator:
             async with db_pool.acquire() as db:
                 event_store = EventStoreRepository(db)
                 
+                audio_file_path: str | None = None
+                chunk_paths: list[str] = []
+
                 try:
                     await event_store.insert_event(session_id, "System", "PIPELINE_STARTED", {"url": youtube_url})
 
@@ -202,18 +205,24 @@ class PipelineOrchestrator:
                     await event_store.insert_event(session_id, "System", "PIPELINE_COMPLETE", {"status": "success", "total_chunks": len(results)})
                     log.info("Pipeline completed successfully", total_chunks=len(results))
                     
-                    # Cleanup audio files
-                    if os.path.exists(audio_file_path):
-                        os.remove(audio_file_path)
-                    for chunk_path in chunk_paths:
-                        if os.path.exists(chunk_path):
-                            os.remove(chunk_path)
-                            
                     return results
                     
                 except Exception as e:
                     logger.error("Pipeline failed", error=str(e), session_id=session_id)
                     await event_store.insert_event(session_id, "System", "PIPELINE_FAILED", {"error": str(e)})
                     raise e
+                finally:
+                    # 🧹 تنظيف الملفات الصوتية المؤقتة دائماً حتى لو فشل الـ Pipeline لمنع امتلاء القرص
+                    if audio_file_path and os.path.exists(audio_file_path):
+                        try:
+                            os.remove(audio_file_path)
+                        except OSError:
+                            pass
+                    for chunk_path in chunk_paths:
+                        if os.path.exists(chunk_path):
+                            try:
+                                os.remove(chunk_path)
+                            except OSError:
+                                pass
 
 pipeline_orchestrator = PipelineOrchestrator()

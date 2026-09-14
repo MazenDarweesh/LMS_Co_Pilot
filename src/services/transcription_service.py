@@ -1,5 +1,7 @@
+import aiofiles
 from groq import AsyncGroq
 from src.core.config import settings
+from src.core.prompts import WHISPER_ERP_DOMAIN_PROMPT
 
 class TranscriptionService:
     def __init__(self):
@@ -8,13 +10,16 @@ class TranscriptionService:
         self.model = "whisper-large-v3"
 
     async def transcribe(self, file_path: str) -> list[dict]:
-        """Transcribes audio using Groq Whisper-v3."""
-        with open(file_path, "rb") as file:
-            transcription = await self.client.audio.transcriptions.create(
-                file=(file_path, file.read()),
-                model=self.model,
-                response_format="verbose_json", # For timestamps
-            )
+        """Transcribes audio using Groq Whisper-v3 with ERP domain prompt and non-blocking I/O."""
+        async with aiofiles.open(file_path, "rb") as file:
+            file_bytes = await file.read()
+
+        transcription = await self.client.audio.transcriptions.create(
+            file=(file_path, file_bytes),
+            model=self.model,
+            prompt=WHISPER_ERP_DOMAIN_PROMPT,
+            response_format="verbose_json",  # For timestamps
+        )
         
         structured_text = []
         # Whisper returns segments with timestamps

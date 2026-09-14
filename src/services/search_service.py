@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 import threading
+from datetime import datetime, timezone
 from typing import AsyncIterator
 import structlog
 from fastapi import Request

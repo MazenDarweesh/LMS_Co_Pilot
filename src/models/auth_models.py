@@ -1,14 +1,21 @@
-from pydantic import BaseModel, Field, ConfigDict, AliasChoices
+from pydantic import BaseModel, Field, ConfigDict, AliasChoices, field_validator
 
 # 1. Token Claims (Data extracted directly from the decoded JWT)
-# Using aliases to map .NET PascalCase token claims to Python's snake_case.
+# Using AliasChoices to support standard .NET Identity claims, sub, and PascalCase/camelCase.
 class TokenClaims(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
     
-    user_id: str = Field(alias="Id")
-    role: str = Field(alias="Role")
-    company_id: str = Field(alias="CompanyId")
-    department_id: str | None = Field(default=None, alias="DepartmentId")
+    user_id: str = Field(validation_alias=AliasChoices("Id", "id", "sub", "nameid", "userId"))
+    role: str = Field(validation_alias=AliasChoices("Role", "role", "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"))
+    company_id: str = Field(validation_alias=AliasChoices("CompanyId", "companyId", "company_id", "tenant_id", "TenantId"))
+    department_id: str | None = Field(default=None, validation_alias=AliasChoices("DepartmentId", "departmentId", "department_id"))
+
+    @field_validator("role", mode="before")
+    @classmethod
+    def normalize_role(cls, v: str | list[str]) -> str:
+        if isinstance(v, list):
+            return v[0] if v else "Student"
+        return str(v)
 
 # 2. Nested Module Permissions (Level & Type Filters)
 # Maps to the .NET LMS internal API JSON response

@@ -21,7 +21,10 @@ class LMSClientService:
         """Called from FastAPI lifespan — never in __init__."""
         self._client = httpx.AsyncClient(
             base_url=settings.LMS_BASE_URL,
-            headers={"Authorization": f"Bearer {settings.SERVICE_TOKEN}"},
+            headers={
+                "Authorization": f"Bearer {settings.SERVICE_TOKEN}",
+                "X-Service-Token": settings.SERVICE_TOKEN,
+            },
             timeout=10.0,
         )
         self._perms_cache = TTLCache(maxsize=1000, ttl=300) # 5 minutes TTL

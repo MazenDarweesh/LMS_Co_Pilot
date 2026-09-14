@@ -1,6 +1,6 @@
 import re
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, computed_field, AliasChoices, ConfigDict
 from typing import Self
 
 from src.models.entities import ContentType, SourceType
@@ -125,12 +125,36 @@ class QuizOption(BaseModel):
     id: str = Field(..., description="معرف الخيار (a, b, c, d)")
     text: str = Field(..., description="نص الخيار")
 
+    @computed_field
+    @property
+    def option_id(self) -> str:
+        """حقل توافقي لـ .NET C# DTO (OptionId)."""
+        return self.id
+
+    @computed_field
+    @property
+    def option_text(self) -> str:
+        """حقل توافقي لـ .NET C# DTO."""
+        return self.text
+
 class QuizQuestion(BaseModel):
     id: int = Field(..., description="رقم السؤال في التسلسل")
     question: str = Field(..., description="نص السؤال")
     options: list[QuizOption] = Field(..., description="قائمة من 4 خيارات")
     correct_answer_id: str = Field(..., description="الإجابة الصحيحة (a, b, c, d)")
     explanation: str = Field(..., description="تفسير سبب صحة الإجابة (للتصحيح)")
+
+    @computed_field
+    @property
+    def question_text(self) -> str:
+        """حقل توافقي لـ .NET C# DTO (QuestionText)."""
+        return self.question
+
+    @computed_field
+    @property
+    def question_number(self) -> int:
+        """حقل توافقي لـ .NET C# DTO (QuestionNumber)."""
+        return self.id
 
 class GeneratedQuiz(BaseModel):
     lesson_id: str = Field(..., description="معرف الدرس المرتبط بالاختبار")
@@ -143,6 +167,7 @@ class SummaryTopic(BaseModel):
 
 class GeneratedSummary(BaseModel):
     lesson_id: str = Field(..., description="معرف الدرس المرتبط بالملخص")
+    overview: str = Field(default="", description="نظرة عامة وشاملة تلخص الفكرة الأساسية للدرس")
     topics: list[SummaryTopic] = Field(..., description="المواضيع المستخرجة من الدرس")
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -152,8 +177,13 @@ class AudioIngestRequestV2(BaseModel):
     lesson_metadata: LessonMetadata | None = Field(None, description="بيانات الدرس الوصفية (اختياري)")
 
 class WebhookPayload(BaseModel):
-    lessonId: str = Field(..., description="معرف الدرس المرتبط بالحدث")
+    model_config = ConfigDict(populate_by_name=True)
+    lesson_id: str = Field(..., validation_alias=AliasChoices("lessonId", "lesson_id", "LessonId"), serialization_alias="lessonId", description="معرف الدرس المرتبط بالحدث")
     action: str = Field(..., description="نوع الإجراء (Updated / Deleted)")
+
+    @property
+    def lessonId(self) -> str:
+        return self.lesson_id
 
 
 class SyncFailedRequest(BaseModel):

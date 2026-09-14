@@ -1,10 +1,8 @@
 import os
 import asyncio
 import structlog
-from typing import List, Any
-import yt_dlp
 import glob
-from pydub import AudioSegment
+import yt_dlp
 
 logger = structlog.get_logger()
 
@@ -46,7 +44,7 @@ class AudioDownloaderService:
             file_path = ydl.prepare_filename(info)
             return file_path
 
-    def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 120 * 1000) -> List[str]:
+    def _chunk_audio_file_sync(self, file_path: str, chunk_duration_ms: int = 120 * 1000) -> list[str]:
         """يقوم بتقطيع ملف الصوت الكبير إلى أجزاء لتجنب قيود حجم ملفات الـ API (25MB)."""
         import subprocess
         
@@ -91,7 +89,7 @@ class AudioDownloaderService:
         logger.info("Audio downloaded successfully", file_path=file_path)
         return file_path
 
-    async def chunk_audio(self, file_path: str) -> List[str]:
+    async def chunk_audio(self, file_path: str) -> list[str]:
         """واجهة غير متزامنة لتقطيع الصوت."""
         logger.info("Starting audio chunking", file_path=file_path)
         chunks = await asyncio.to_thread(self._chunk_audio_file_sync, file_path)

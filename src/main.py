@@ -14,7 +14,7 @@ from slowapi.errors import RateLimitExceeded
 
 from src.core.config import settings
 from src.core.logging import setup_logging
-from src.api.v1.router import router as api_router
+from src.api.v1.router import router as api_router, api_compat_router
 from src.db.session import lifespan
 from src.core.middleware import limiter, PerformanceMetricsMiddleware
 
@@ -63,8 +63,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 5. تسجيل مسارات الـ API
+# 5. تسجيل مسارات الـ API (دعم بادئة /v1 والبادئة التوافقية /api لضمان التوافق التام مع .NET)
 app.include_router(api_router)
+app.include_router(api_compat_router)
 
 from src.api.v1.speech import router as speech_router
 app.include_router(speech_router)

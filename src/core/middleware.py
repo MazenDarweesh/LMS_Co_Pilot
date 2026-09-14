@@ -41,9 +41,12 @@ class PerformanceMetricsMiddleware:
                 duration = time.perf_counter() - start_time
                 headers = list(message.get("headers", []))
                 
-                # إضافة Headers لوقت المعالجة والـ Request ID
+                # إضافة Headers لوقت المعالجة والـ Request ID وترويسات الأمان القياسية (OWASP)
                 headers.append((b"x-process-time", str(duration).encode("utf-8")))
                 headers.append((b"x-request-id", request_id.encode("utf-8")))
+                headers.append((b"x-content-type-options", b"nosniff"))
+                headers.append((b"x-frame-options", b"DENY"))
+                headers.append((b"x-xss-protection", b"1; mode=block"))
                 
                 message["headers"] = headers
             await send(message)

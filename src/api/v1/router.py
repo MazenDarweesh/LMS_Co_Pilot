@@ -54,8 +54,9 @@ from src.services.feedback_service import feedback_service
 # Initialize Logger
 logger = structlog.get_logger()
 
-# Initialize Router
-router = APIRouter(prefix="/v1", tags=["V1 API"])
+# Initialize Base Router (endpoints decorated on base_router)
+base_router = APIRouter()
+router = base_router
 
 # Constants
 CHECKPOINT_DIR = Path("downloads/checkpoints")
@@ -295,25 +296,28 @@ async def unified_lesson_webhook(
     if not secrets.compare_digest(x_service_token, settings.SERVICE_TOKEN):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
 
-    if payload.action == "Deleted":
+    action_norm = payload.action.strip().lower()
+    lesson_id = payload.lesson_id
+
+    if action_norm == "deleted":
         # 🗑️ مسح المتجهات والكاش من قاعدة البيانات فوراً
-        lms_client_service.invalidate_lesson_context(payload.lessonId)
-        background_tasks.add_task(qdrant_service.delete_by_lesson_id, payload.lessonId)
-        background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, payload.lessonId)
-        background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, payload.lessonId)
+        lms_client_service.invalidate_lesson_context(lesson_id)
+        background_tasks.add_task(qdrant_service.delete_by_lesson_id, lesson_id)
+        background_tasks.add_task(semantic_cache_service.invalidate_by_lesson_id, lesson_id)
+        background_tasks.add_task(exact_cache_service.invalidate_by_lesson_id, lesson_id)
         return {"status": "accepted", "message": "Deletion triggered"}
         
-    elif payload.action == "Updated":
+    elif action_norm == "updated":
         # 🔄 الترتيب الصارم: 1. إبطال الكاش الدلالي -> 2. إبطال الكاش الفوري -> 3. مسح Qdrant -> 4. إعادة الـ Ingestion
-        lms_client_service.invalidate_lesson_context(payload.lessonId)
+        lms_client_service.invalidate_lesson_context(lesson_id)
         background_tasks.add_task(
             sync_and_reingest_lesson,
-            payload.lessonId,
+            lesson_id,
             request.app.state.db_pool,
         )
         return {"status": "accepted", "message": "Update and Ingestion triggered"}
 
-    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid action")
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid action: '{payload.action}'")
 
 
 # ⚠️ ARCHITECTURAL CONSTRAINT:
@@ -658,3 +662,18 @@ async def generate_lesson_summary(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="فشل توليد الملخص بسبب خطأ داخلي.")
+
+
+# ---------------------------------------------------------------------------
+# Route Prefix Multiplexing (Dual-Prefix Support for Postel's Law / .NET Compat)
+# ---------------------------------------------------------------------------
+# 1. Primary V1 Router (/v1/...)
+v1_router = APIRouter(prefix="/v1", tags=["V1 API"])
+v1_router.include_router(base_router)
+
+# 2. .NET Compatibility Router (/api/...) — guarantees zero 404s when .NET calls /api/...
+api_compat_router = APIRouter(prefix="/api", tags=["API Compat (.NET)"])
+api_compat_router.include_router(base_router)
+
+# Default export for backwards compatibility with existing imports:
+router = v1_router
