@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 
 from src.core.config import settings
-from src.core.prompts import RAG_SYSTEM_PROMPT
+from src.core.prompts import RAG_SYSTEM_PROMPT, get_rag_system_prompt
 from src.agents.base_agent import AgentState, agent_service
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.models.auth_models import UserContext
@@ -80,6 +80,50 @@ def _build_rag_context_str(chunks: list[dict]) -> str:
         context_blocks.append(source_info)
 
     return "\n\n".join(context_blocks)
+
+
+def _build_source_items(chunks: list[dict]) -> list[SourceItem]:
+    """
+    ينشئ كائنات SourceItem مهيكلة مع عناوين واضحة للمستخدم ورقم المصدر المطابق للاستشهاد.
+    يضمن توفير حقل 'title' لعرضه مباشرة في بطاقات المصادر بالواجهة.
+    """
+    sources: list[SourceItem] = []
+    for i, chunk in enumerate(chunks, 1):
+        c_type = chunk.get("content_type")
+        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"] and chunk.get("source_url"):
+            start_s = chunk.get("start_time")
+            end_s = chunk.get("end_time")
+            if start_s is not None and end_s is not None:
+                s_min, s_sec = divmod(int(start_s), 60)
+                e_min, e_sec = divmod(int(end_s), 60)
+                title = f"المصدر [{i}] — مقطع فيديو ({s_min:02d}:{s_sec:02d} - {e_min:02d}:{e_sec:02d})"
+            else:
+                title = f"المصدر [{i}] — مقطع فيديو"
+            sources.append(SourceItem(
+                type="video",
+                url=chunk["source_url"],
+                title=title,
+                start=start_s,
+                end=end_s,
+                lesson_id=chunk.get("lesson_id"),
+            ))
+        elif c_type == "pdf_chunk":
+            section = chunk.get("section_title")
+            page = chunk.get("page_number")
+            if section:
+                title = f"المصدر [{i}] — {section}"
+            elif page:
+                title = f"المصدر [{i}] — صفحة {page}"
+            else:
+                title = f"المصدر [{i}] — مستند PDF"
+            sources.append(SourceItem(
+                type="pdf",
+                title=title,
+                page=page,
+                section=section,
+                lesson_id=chunk.get("lesson_id"),
+            ))
+    return sources
 
 def _trim_messages(
     messages: list,
@@ -214,7 +258,8 @@ class SearchService:
             role = "user" if isinstance(msg, HumanMessage) else "model"
             gemini_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
             
-        system_instruction = RAG_SYSTEM_PROMPT.format(context_str=context_str)
+        num_sources = state["context"].get("num_sources", 1) if state.get("context") else 1
+        system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
 
         t0 = time.time()
         response = await asyncio.to_thread(
@@ -416,10 +461,14 @@ class SearchService:
         
         thread_id = req.thread_id or str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
+        num_sources = len(top_chunks) if top_chunks else 1
         
         t3 = time.time()
         final_state = await self.app_graph.ainvoke(
-            {"messages": [HumanMessage(content=req.query)], "context": {"context_str": context_str}},
+            {
+                "messages": [HumanMessage(content=req.query)],
+                "context": {"context_str": context_str, "num_sources": num_sources},
+            },
             config=config
         )
         graph_latency_ms = round((time.time() - t3) * 1000, 2)
@@ -454,24 +503,7 @@ class SearchService:
                 token_usage=token_usage
             )
 
-        sources = []
-        for chunk in top_chunks:
-            c_type = chunk.get("content_type")
-            if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"] and chunk.get("source_url"):
-                sources.append(SourceItem(
-                    type="video",
-                    url=chunk["source_url"],
-                    start=chunk.get("start_time"),
-                    end=chunk.get("end_time"),
-                    lesson_id=chunk.get("lesson_id"),
-                ))
-            elif c_type == "pdf_chunk":
-                sources.append(SourceItem(
-                    type="pdf",
-                    page=chunk.get("page_number"),
-                    section=chunk.get("section_title"),
-                    lesson_id=chunk.get("lesson_id"),
-                ))
+        sources = _build_source_items(top_chunks)
 
         final_response = SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
 
@@ -599,24 +631,7 @@ class SearchService:
             text_field="text_msa",
         )
 
-        sources = []
-        for chunk in top_chunks:
-            c_type = chunk.get("content_type")
-            if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"] and chunk.get("source_url"):
-                sources.append(SourceItem(
-                    type="video",
-                    url=chunk["source_url"],
-                    start=chunk.get("start_time"),
-                    end=chunk.get("end_time"),
-                    lesson_id=chunk.get("lesson_id"),
-                ))
-            elif c_type == "pdf_chunk":
-                sources.append(SourceItem(
-                    type="pdf",
-                    page=chunk.get("page_number"),
-                    section=chunk.get("section_title"),
-                    lesson_id=chunk.get("lesson_id"),
-                ))
+        sources = _build_source_items(top_chunks)
 
         # Yield sources event first for immediate citation rendering in frontend
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
@@ -625,7 +640,8 @@ class SearchService:
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
         # ──────────────────────────────────────────────
         context_str = _build_rag_context_str(top_chunks)
-        system_instruction = RAG_SYSTEM_PROMPT.format(context_str=context_str)
+        num_sources = len(top_chunks) if top_chunks else 1
+        system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
         thread_id = req.thread_id or str(uuid.uuid4())
 
         gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=req.query)])]

@@ -1,0 +1,88 @@
+# tests/unit/test_citations_and_sources.py
+"""
+Unit tests for citation boundaries and source title formatting.
+Ensures LLM prompt strictly bounds citations to retrieved chunks [1]..[N],
+and SourceItem objects contain human-friendly, readable titles for the frontend.
+"""
+from src.core.prompts import RAG_SYSTEM_PROMPT, get_rag_system_prompt
+from src.models.search_models import SourceItem
+from src.services.search_service import _build_source_items
+from src.api.v1.router import _SOURCE_FIELDS
+
+
+def test_rag_prompt_dynamic_boundaries():
+    """Verify system prompt explicitly bounds citations to the number of retrieved sources."""
+    prompt = get_rag_system_prompt(context_str="[1] محتوى اختباري", num_sources=3)
+    assert "3 مصدر/مصادر مسترجعة" in prompt
+    assert "مرقّمة من [1] إلى [3]" in prompt
+    assert "يُحظر تماماً كتابة أو ذكر أي رقم استشهاد أكبر من [3]" in prompt
+    assert "يمنع منعاً باتاً كتابة [4] أو أي رقم أعلى" in prompt
+
+
+def test_safe_rag_prompt_backwards_compatibility():
+    """Verify legacy .format(context_str=...) calls do not crash and supply defaults."""
+    formatted = RAG_SYSTEM_PROMPT.format(context_str="محتوى قديم")
+    assert "1 مصدر/مصادر مسترجعة" in formatted
+    assert "[1]" in formatted
+    assert "[2]" in formatted
+
+
+def test_build_source_items_video_formatting():
+    """Verify video chunks produce friendly titles with minute:second timestamps."""
+    chunks = [
+        {
+            "content_type": "video_chunk",
+            "source_url": "https://youtu.be/test?t=75s",
+            "start_time": 75,
+            "end_time": 150,
+            "lesson_id": "lesson-1",
+        },
+        {
+            "content_type": "video_chunk",
+            "source_url": "https://youtu.be/test2",
+            "start_time": None,
+            "end_time": None,
+            "lesson_id": "lesson-2",
+        },
+    ]
+    items = _build_source_items(chunks)
+    assert len(items) == 2
+    assert items[0].title == "المصدر [1] — مقطع فيديو (01:15 - 02:30)"
+    assert items[0].start == 75
+    assert items[0].end == 150
+    assert items[1].title == "المصدر [2] — مقطع فيديو"
+
+
+def test_build_source_items_pdf_formatting():
+    """Verify PDF chunks produce friendly titles with section or page numbers."""
+    chunks = [
+        {
+            "content_type": "pdf_chunk",
+            "section_title": "مقدمة عن المحاسبة المالية",
+            "page_number": 3,
+            "lesson_id": "lesson-3",
+        },
+        {
+            "content_type": "pdf_chunk",
+            "section_title": None,
+            "page_number": 12,
+            "lesson_id": "lesson-4",
+        },
+    ]
+    items = _build_source_items(chunks)
+    assert len(items) == 2
+    assert items[0].title == "المصدر [1] — مقدمة عن المحاسبة المالية"
+    assert items[1].title == "المصدر [2] — صفحة 12"
+
+
+def test_source_item_serialization_and_router_whitelist():
+    """Verify SourceItem title serializes correctly and is accepted in router whitelist."""
+    item = SourceItem(
+        type="video",
+        url="https://youtu.be/test",
+        title="المصدر [1] — مقطع فيديو",
+        lesson_id="lesson-01",
+    )
+    dumped = item.model_dump()
+    assert dumped["title"] == "المصدر [1] — مقطع فيديو"
+    assert "title" in _SOURCE_FIELDS

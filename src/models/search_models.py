@@ -60,6 +60,7 @@ class SourceItem(BaseModel):
     """مصدر واحد في الإجابة — فيديو أو PDF."""
     type: Literal["video", "pdf"]
     url: str | None = None          # يوتيوب مع timestamp
+    title: str | None = None        # عنوان توضيحي للمصدر (للعرض المباشر في الواجهة)
     start: int | None = None        # بالثواني
     end: int | None = None
     page: int | None = None         # للـ PDF فقط

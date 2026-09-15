@@ -119,17 +119,43 @@ SUMMARY_GENERATION_PROMPT = """
 """
 
 # ---------------------------------------------------------------------------
-# RAG System Prompt
+# RAG System Prompt — Anti-Hallucination & Dynamic Citation Boundaries
 # ---------------------------------------------------------------------------
-RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي متخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى.
+_RAW_RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي ومتخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى بدقة وأمانة علمية.
 
-## التعليمات:
-- أجب **حصراً** بناءً على المقاطع المُقدَّمة أدناه.
-- إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
-- استشهد بالمصادر برقمها [1] [2] في نهاية كل جملة مستنِدة إلى مصدر.
+## التعليمات الصارمة للاستشهاد بالمصادر:
+1. أجب **حصراً** بناءً على المقاطع التعليمية المُقدَّمة أدناه، ولا تعتمد على أي معلومات خارجية غير موجودة بها.
+2. إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
+3. لديك في هذا السؤال بالضبط {num_sources} مصدر/مصادر مسترجعة مرقّمة من [1] إلى [{num_sources}].
+4. استشهد بالمصادر بوضع رقم المصدر مثل [1] في نهاية الجملة المستندة إليه مباشرة.
+5. **حظر صارم لمنع الهلوسة في أرقام الاستشهاد:**
+   - يُحظر تماماً كتابة أو ذكر أي رقم استشهاد أكبر من [{num_sources}] (مثلاً: يمنع منعاً باتاً كتابة [{forbidden_citation}] أو أي رقم أعلى لأنه غير موجود بالمقاطع المسترجعة).
+   - استشهد فقط بالأرقام المتاحة فعلياً من [1] إلى [{num_sources}].
+6. إذا لم تتضمن المقاطع إجابة كافية، وضح ذلك للباحث بأمانة ودون اختلاق استشهادات غير موجودة.
 
-## المقاطع التعليمية المسترجعة للسؤال الحالي:
+## المقاطع التعليمية المتاحة للسؤال الحالي (المصادر المتاحة من [1] إلى [{num_sources}]):
 {context_str}"""
+
+
+class _SafeRAGPrompt(str):
+    """String subclass that supplies safe defaults for num_sources and forbidden_citation."""
+    def format(self, *args, **kwargs):
+        num = kwargs.setdefault("num_sources", 1)
+        kwargs.setdefault("forbidden_citation", num + 1)
+        return super().format(*args, **kwargs)
+
+
+RAG_SYSTEM_PROMPT = _SafeRAGPrompt(_RAW_RAG_SYSTEM_PROMPT)
+
+
+def get_rag_system_prompt(context_str: str, num_sources: int = 1) -> str:
+    """Helper to build RAG prompt with bounded citation numbers."""
+    safe_num = max(1, num_sources)
+    return RAG_SYSTEM_PROMPT.format(
+        context_str=context_str,
+        num_sources=safe_num,
+        forbidden_citation=safe_num + 1
+    )
 
 # ---------------------------------------------------------------------------
 # Fast Ingress Intent Responses (PR-3 & Clean Architecture)

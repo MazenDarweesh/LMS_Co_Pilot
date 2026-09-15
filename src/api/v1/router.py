@@ -61,7 +61,7 @@ router = base_router
 # Constants
 CHECKPOINT_DIR = Path("downloads/checkpoints")
 # Whitelist of SourceItem fields safe for JSONB storage (prevents leaking unknown client fields)
-_SOURCE_FIELDS: frozenset[str] = frozenset({"type", "url", "start", "end", "page", "section", "lesson_id"})
+_SOURCE_FIELDS: frozenset[str] = frozenset({"type", "url", "title", "start", "end", "page", "section", "lesson_id"})
 
 
 @router.post("/search", response_model=SearchResponse)
