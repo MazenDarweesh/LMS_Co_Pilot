@@ -29,6 +29,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+from fastapi.exceptions import RequestValidationError
+
 # 3. إعداد الـ Rate Limiter ومعالجة تجاوز الحد
 app.state.limiter = limiter
 
@@ -40,6 +42,20 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
         content={"detail": f"Rate limit exceeded. Please try again later. ({exc.detail})"}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    import structlog
+    structlog.get_logger().error(
+        "Request validation failed ❌",
+        path=request.url.path,
+        errors=exc.errors(),
+        body=exc.body,
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
     )
 
 # 4. تفعيل الـ Middlewares

@@ -7,23 +7,53 @@ Separated from schemas.py to keep concerns clean (Week 8).
 import uuid
 from enum import Enum
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict, AliasChoices
 
 
 
 class SearchRequest(BaseModel):
-    """طلب البحث الهجين — يدعم تضييق النطاق (scope) وفلترة المعرّفات."""
-    query: str = Field(..., min_length=2, description="سؤال الطالب")
-    scope: Literal["all", "course", "standalone", "playlist", "lesson"] = Field(
-        "all", description="نطاق البحث"
+    """طلب البحث الهجين — يدعم تضييق النطاق (scope) وفلترة المعرّفات متوافقاً مع .NET و Angular."""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    query: str = Field(
+        ...,
+        min_length=1,
+        validation_alias=AliasChoices("query", "message", "question", "prompt", "text"),
+        description="سؤال الطالب"
     )
-    module_id: str | None = None
-    unit_id: str | None = None
-    lesson_id: str | None = None
-    playlist_id: str | None = None
-    video_id: str | None = None
-    limit: int = Field(5, ge=1, le=10, description="عدد المصادر المطلوبة")
-    thread_id: str | None = Field(None, description="معرف جلسة المحادثة (لحفظ السياق)")
+    scope: str = Field(
+        default="all",
+        validation_alias=AliasChoices("scope", "Scope"),
+        description="نطاق البحث"
+    )
+    module_id: str | None = Field(default=None, validation_alias=AliasChoices("module_id", "moduleId", "ModuleId"))
+    unit_id: str | None = Field(default=None, validation_alias=AliasChoices("unit_id", "unitId", "UnitId"))
+    lesson_id: str | None = Field(default=None, validation_alias=AliasChoices("lesson_id", "lessonId", "LessonId"))
+    playlist_id: str | None = Field(default=None, validation_alias=AliasChoices("playlist_id", "playlistId", "PlaylistId"))
+    video_id: str | None = Field(default=None, validation_alias=AliasChoices("video_id", "videoId", "VideoId"))
+    limit: int = Field(default=5, ge=1, le=20, validation_alias=AliasChoices("limit", "Limit"))
+    thread_id: str | None = Field(default=None, validation_alias=AliasChoices("thread_id", "threadId", "ThreadId"))
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def normalize_scope(cls, v: str | None) -> str:
+        if not v:
+            return "all"
+        v_norm = str(v).strip().lower()
+        if v_norm in {"all", "course", "standalone", "playlist", "lesson"}:
+            return v_norm
+        return "all"
+
+    @field_validator("limit", mode="before")
+    @classmethod
+    def normalize_limit(cls, v: int | str | None) -> int:
+        if v is None or v == "":
+            return 5
+        try:
+            val = int(v)
+            return max(1, min(20, val))
+        except (ValueError, TypeError):
+            return 5
 
 
 class SourceItem(BaseModel):
