@@ -250,6 +250,28 @@ async def get_admin_feedback(
     )
 
 
+@router.post("/admin/cache/clear")
+@limiter.limit("10/minute")
+async def clear_all_caches(
+    request: Request,
+    admin_ctx: UserContext = Depends(require_role("Admin"))
+):
+    """
+    🧹 Purges both Tier-1 Exact Cache (In-Memory) and Tier-2 Semantic Cache (Qdrant Vector Cache).
+    Allows Admins and Developers to flush stale or incorrect cached responses.
+    """
+    from src.services.exact_cache_service import exact_cache_service
+    from src.services.semantic_cache_service import semantic_cache_service
+
+    exact_cache_service.clear()
+    await semantic_cache_service.clear()
+
+    logger.info("All caches purged by admin", admin_user_id=admin_ctx.user_id)
+    return {
+        "status": "success",
+        "message": "تم تفريغ كافة مستويات الكاش (Exact Cache + Semantic Cache) بنجاح ✅",
+    }
+
 
 @router.post("/ingest/audio")
 @limiter.limit("5/minute")

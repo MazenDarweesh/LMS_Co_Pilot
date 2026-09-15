@@ -342,6 +342,24 @@ class SemanticCacheService:
             logger.warning("Semantic cache TTL eviction failed", error=str(e))
             return 0
 
+    async def clear(self) -> None:
+        """
+        Purges all entries from the semantic cache collection in Qdrant.
+        Deletes and recreates the collection and its indexes.
+        """
+        if not self.enabled:
+            return
+        try:
+            client = qdrant_service.client
+            exists = await client.collection_exists(self.collection_name)
+            if exists:
+                await client.delete_collection(self.collection_name)
+                logger.info("Semantic cache collection deleted", collection=self.collection_name)
+            await self.initialize()
+            logger.info("Semantic cache completely cleared and reinitialized ✅")
+        except Exception as e:
+            logger.error("Failed to clear semantic cache collection", error=str(e))
+
 
 # Module-level singleton instance — initialized in lifespan
 semantic_cache_service = SemanticCacheService()

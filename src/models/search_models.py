@@ -33,6 +33,11 @@ class SearchRequest(BaseModel):
     video_id: str | None = Field(default=None, validation_alias=AliasChoices("video_id", "videoId", "VideoId"))
     limit: int = Field(default=5, ge=1, le=20, validation_alias=AliasChoices("limit", "Limit"))
     thread_id: str | None = Field(default=None, validation_alias=AliasChoices("thread_id", "threadId", "ThreadId"))
+    skip_cache: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("skip_cache", "skipCache", "bypass_cache", "bypassCache", "retry", "is_retry"),
+        description="تجاوز الكاش لإعادة المحاولة وتوليد إجابة جديدة طازجة"
+    )
 
     @field_validator("scope", mode="before")
     @classmethod

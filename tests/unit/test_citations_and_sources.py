@@ -116,3 +116,28 @@ def test_valid_chunks_filtering_and_sequential_reindexing():
     assert items[0].title == "المصدر [1] — مقطع فيديو"
     assert items[1].title == "المصدر [2] — مقطع فيديو"
     assert items[2].title == "المصدر [3] — القسم 4"
+
+
+def test_search_request_skip_cache_aliases():
+    """Verify SearchRequest accepts skip_cache via various aliases (skipCache, bypass_cache, retry)."""
+    from src.models.search_models import SearchRequest
+
+    req1 = SearchRequest.model_validate({"query": "سؤال", "skip_cache": True})
+    assert req1.skip_cache is True
+
+    req2 = SearchRequest.model_validate({"query": "سؤال", "skipCache": True})
+    assert req2.skip_cache is True
+
+    req3 = SearchRequest.model_validate({"query": "سؤال", "retry": True})
+    assert req3.skip_cache is True
+
+    req4 = SearchRequest.model_validate({"query": "سؤال"})
+    assert req4.skip_cache is False
+
+
+def test_admin_cache_clear_dual_routes_registered():
+    """Verify /admin/cache/clear is registered under both /v1 and /api."""
+    from src.main import app
+    paths = app.openapi()["paths"]
+    assert "/v1/admin/cache/clear" in paths
+    assert "/api/admin/cache/clear" in paths

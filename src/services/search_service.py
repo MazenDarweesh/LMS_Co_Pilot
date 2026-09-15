@@ -355,7 +355,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 1.1 Fast Ingress: Tier-1 Exact In-Memory Cache (< 2ms)
         # ──────────────────────────────────────────────
-        if settings.EXACT_CACHE_ENABLED:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
             t_exact = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
             exact_duration = time.time() - t_exact
@@ -393,7 +393,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 2.1 Tier-2 Semantic Cache (Qdrant Vector Cache)
         # ──────────────────────────────────────────────
-        if settings.SEMANTIC_CACHE_ENABLED:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
             t_cache = time.time()
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
@@ -585,7 +585,7 @@ class SearchService:
         normalized_query = normalize_arabic_text_leaderboard(req.query)
 
         # 1.1 Exact In-Memory Cache
-        if settings.EXACT_CACHE_ENABLED:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
             if exact_hit is not None:
                 record_exact_cache_lookup(hit=True)
@@ -603,7 +603,7 @@ class SearchService:
         # 1.2 Embedding & Semantic Cache
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
 
-        if settings.SEMANTIC_CACHE_ENABLED:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
             cached_resp = await semantic_cache_service.lookup(query_vector=dense_vec, user_ctx=user_ctx)
             if cached_resp is not None:
                 record_cache_lookup(hit=True)
