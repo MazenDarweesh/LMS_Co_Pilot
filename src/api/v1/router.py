@@ -128,7 +128,7 @@ async def search_feedback_endpoint(
     answer_hash = hashlib.sha256(req.answer.strip().encode("utf-8")).hexdigest()
     dedup_key = f"{user_ctx.user_id}:{query_hash}:{answer_hash}"
 
-    if dedup_key in _feedback_cache:
+    if _feedback_cache.get(dedup_key) == req.rating.value:
         logger.info(
             "Duplicate student feedback ignored",
             user_id=user_ctx.user_id,
@@ -137,10 +137,10 @@ async def search_feedback_endpoint(
         )
         return FeedbackResponse(
             status="duplicate",
-            message="تم تسجيل تقييمك مسبقاً لهذا السؤال. شكراً لمشاركتك! 🎓",
+            message="تم تسجيل تقييمك مسبقاً بهذا الخيار لهذا السؤال. شكراً لمشاركتك! 🎓",
         )
 
-    _feedback_cache[dedup_key] = True
+    _feedback_cache[dedup_key] = req.rating.value
     record_search_feedback(req.rating.value)
 
     sources_dicts = [
