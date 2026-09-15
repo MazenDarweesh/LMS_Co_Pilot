@@ -86,3 +86,33 @@ def test_source_item_serialization_and_router_whitelist():
     dumped = item.model_dump()
     assert dumped["title"] == "المصدر [1] — مقطع فيديو"
     assert "title" in _SOURCE_FIELDS
+
+
+def test_valid_chunks_filtering_and_sequential_reindexing():
+    """
+    Verify that _filter_valid_chunks discards incomplete chunks (e.g. video without source_url)
+    and _build_source_items + _build_rag_context_str re-index valid chunks sequentially 1..N.
+    """
+    from src.services.search_service import _filter_valid_chunks, _build_rag_context_str
+
+    raw_chunks = [
+        {"content_type": "video_chunk", "source_url": "http://v1", "text_msa": "chunk 1"},
+        {"content_type": "video_chunk", "source_url": None, "text_msa": "chunk 2 missing url"},
+        {"content_type": "video_chunk", "source_url": "http://v3", "text_msa": "chunk 3"},
+        {"content_type": "pdf_chunk", "section_title": "القسم 4", "text_msa": "chunk 4 pdf"},
+    ]
+
+    valid = _filter_valid_chunks(raw_chunks)
+    assert len(valid) == 3
+
+    context_str = _build_rag_context_str(valid)
+    assert "[1] chunk 1" in context_str
+    assert "[2] chunk 3" in context_str
+    assert "[3] chunk 4 pdf" in context_str
+    assert "[4]" not in context_str
+
+    items = _build_source_items(valid)
+    assert len(items) == 3
+    assert items[0].title == "المصدر [1] — مقطع فيديو"
+    assert items[1].title == "المصدر [2] — مقطع فيديو"
+    assert items[2].title == "المصدر [3] — القسم 4"

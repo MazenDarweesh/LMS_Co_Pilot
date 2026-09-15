@@ -65,6 +65,23 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
         
     return Filter(must=must) if must else None
 
+def _filter_valid_chunks(chunks: list[dict]) -> list[dict]:
+    """
+    تصفية المقاطع لاستبعاد أي مقطع غير مكتمل التوصيف قبل بناء السياق والمصادر.
+    تضمن هذه الخطوة المطابقة الكاملة بين عدد وأرقام المقاطع المرسلة إلى Gemini
+    وبين المصفوفة النهائية للمصادر المرجعة للواجهة الأمامية.
+    """
+    valid = []
+    for chunk in chunks:
+        c_type = chunk.get("content_type")
+        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"]:
+            if chunk.get("source_url"):
+                valid.append(chunk)
+        elif c_type == "pdf_chunk":
+            valid.append(chunk)
+    return valid
+
+
 def _build_rag_context_str(chunks: list[dict]) -> str:
     context_blocks = []
     for i, chunk in enumerate(chunks, 1):
@@ -84,13 +101,13 @@ def _build_rag_context_str(chunks: list[dict]) -> str:
 
 def _build_source_items(chunks: list[dict]) -> list[SourceItem]:
     """
-    ينشئ كائنات SourceItem مهيكلة مع عناوين واضحة للمستخدم ورقم المصدر المطابق للاستشهاد.
+    ينشئ كائنات SourceItem مهيكلة مرتبة متسلسلاً من 1 إلى N بناءً على المقاطع المصفاة.
     يضمن توفير حقل 'title' لعرضه مباشرة في بطاقات المصادر بالواجهة.
     """
     sources: list[SourceItem] = []
     for i, chunk in enumerate(chunks, 1):
         c_type = chunk.get("content_type")
-        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"] and chunk.get("source_url"):
+        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"]:
             start_s = chunk.get("start_time")
             end_s = chunk.get("end_time")
             if start_s is not None and end_s is not None:
@@ -101,7 +118,7 @@ def _build_source_items(chunks: list[dict]) -> list[SourceItem]:
                 title = f"المصدر [{i}] — مقطع فيديو"
             sources.append(SourceItem(
                 type="video",
-                url=chunk["source_url"],
+                url=chunk.get("source_url"),
                 title=title,
                 start=start_s,
                 end=end_s,
@@ -457,11 +474,13 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 5. Build context & Invoke LangGraph
         # ──────────────────────────────────────────────
-        context_str = _build_rag_context_str(top_chunks)
+        valid_chunks = _filter_valid_chunks(top_chunks)
+        context_str = _build_rag_context_str(valid_chunks)
+        sources = _build_source_items(valid_chunks)
+        num_sources = len(valid_chunks) if valid_chunks else 1
         
         thread_id = req.thread_id or str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
-        num_sources = len(top_chunks) if top_chunks else 1
         
         t3 = time.time()
         final_state = await self.app_graph.ainvoke(
@@ -496,14 +515,12 @@ class SearchService:
                 _write_search_debug_file,
                 query=req.query,
                 candidates=candidates,
-                reranked=top_chunks,
+                reranked=valid_chunks,
                 prompt=returned_context.get("system_prompt_used", ""),
                 answer=answer_text,
                 metrics=metrics,
                 token_usage=token_usage
             )
-
-        sources = _build_source_items(top_chunks)
 
         final_response = SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
 
@@ -631,7 +648,8 @@ class SearchService:
             text_field="text_msa",
         )
 
-        sources = _build_source_items(top_chunks)
+        valid_chunks = _filter_valid_chunks(top_chunks)
+        sources = _build_source_items(valid_chunks)
 
         # Yield sources event first for immediate citation rendering in frontend
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
@@ -639,8 +657,8 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
         # ──────────────────────────────────────────────
-        context_str = _build_rag_context_str(top_chunks)
-        num_sources = len(top_chunks) if top_chunks else 1
+        context_str = _build_rag_context_str(valid_chunks)
+        num_sources = len(valid_chunks) if valid_chunks else 1
         system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
         thread_id = req.thread_id or str(uuid.uuid4())
 
