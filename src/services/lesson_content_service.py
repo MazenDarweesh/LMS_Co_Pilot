@@ -10,7 +10,7 @@ from src.core.config import settings
 from src.core.prompts import QUIZ_GENERATION_PROMPT, SUMMARY_GENERATION_PROMPT
 from src.models.schemas import GeneratedQuiz, GeneratedSummary
 from src.services.qdrant_service import qdrant_service
-from src.core.metrics import record_content_generation_duration
+from src.core.metrics import record_content_generation_duration, record_token_usage
 
 logger = structlog.get_logger()
 
@@ -83,6 +83,12 @@ class LessonContentService:
             quiz_data["lesson_id"] = lesson_id
             duration = round(time.time() - t0, 3)
             record_content_generation_duration("quiz", "generate", duration)
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                record_token_usage(
+                    prompt_tokens=getattr(response.usage_metadata, "prompt_token_count", 0) or 0,
+                    completion_tokens=getattr(response.usage_metadata, "candidates_token_count", 0) or 0,
+                    total_tokens=getattr(response.usage_metadata, "total_token_count", 0) or 0,
+                )
             logger.info("Quiz generated successfully 🎯", lesson_id=lesson_id, duration_seconds=duration, questions_count=len(quiz_data.get("questions", [])))
             return GeneratedQuiz(**quiz_data)
         except Exception as e:
@@ -143,6 +149,12 @@ class LessonContentService:
             summary_data["lesson_id"] = lesson_id
             duration = round(time.time() - t0, 3)
             record_content_generation_duration("summary", "generate", duration)
+            if hasattr(response, "usage_metadata") and response.usage_metadata:
+                record_token_usage(
+                    prompt_tokens=getattr(response.usage_metadata, "prompt_token_count", 0) or 0,
+                    completion_tokens=getattr(response.usage_metadata, "candidates_token_count", 0) or 0,
+                    total_tokens=getattr(response.usage_metadata, "total_token_count", 0) or 0,
+                )
             logger.info("Summary generated successfully 📝", lesson_id=lesson_id, duration_seconds=duration, topics_count=len(summary_data.get("topics", [])))
             return GeneratedSummary(**summary_data)
         except Exception as e:

@@ -427,13 +427,13 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(lms_rag_stage_duration_seconds_sum[5m])) by (stage) / (sum(rate(lms_rag_stage_duration_seconds_count[5m])) by (stage) > 0)) or (sum(lms_rag_stage_duration_seconds_sum) by (stage) / (sum(lms_rag_stage_duration_seconds_count) by (stage) > 0))",
+          "expr": "(sum(rate(lms_rag_stage_duration_seconds_sum[5m])) by (stage) / (sum(rate(lms_rag_stage_duration_seconds_count[5m])) by (stage) > 0)) or (sum(lms_rag_stage_duration_seconds_sum) by (stage) / clamp_min(sum(lms_rag_stage_duration_seconds_count) by (stage), 1))",
           "legendFormat": "{{stage}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "⏱️ RAG Stage Latency Breakdown (Seconds)",
+      "title": "⏱️ RAG Stage Latency Breakdown (Seconds / ms)",
       "type": "timeseries"
     },
     {
@@ -489,7 +489,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(lms_content_generation_duration_seconds_sum[15m])) by (type, action) / (sum(rate(lms_content_generation_duration_seconds_count[15m])) by (type, action) > 0)) or (sum(lms_content_generation_duration_seconds_sum) by (type, action) / (sum(lms_content_generation_duration_seconds_count) by (type, action) > 0))",
+          "expr": "(sum(rate(lms_content_generation_duration_seconds_sum[15m])) by (type, action) / (sum(rate(lms_content_generation_duration_seconds_count[15m])) by (type, action) > 0)) or (sum(lms_content_generation_duration_seconds_sum) by (type, action) / clamp_min(sum(lms_content_generation_duration_seconds_count) by (type, action), 1))",
           "legendFormat": "{{type}} ({{action}})",
           "range": true,
           "refId": "A"
@@ -875,7 +875,8 @@
             "fillOpacity": 15,
             "lineInterpolation": "smooth",
             "lineWidth": 2,
-            "showPoints": "auto"
+            "showPoints": "auto",
+            "spanNulls": true
           },
           "mappings": [],
           "unit": "short"
@@ -923,7 +924,7 @@
             "uid": "Prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(increase(lms_llm_tokens_total[5m])) by (type)",
+          "expr": "sum(increase(lms_llm_tokens_total[5m])) by (type) or (sum(lms_llm_tokens_total) by (type) * 0)",
           "legendFormat": "{{type}} (Last 5m)",
           "range": true,
           "refId": "B"

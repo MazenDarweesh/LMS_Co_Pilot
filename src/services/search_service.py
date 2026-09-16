@@ -586,10 +586,13 @@ class SearchService:
         # 0. Fast Ingress: Intent Router (< 1ms bypass)
         # ──────────────────────────────────────────────
         if settings.INTENT_ROUTER_ENABLED:
+            t_stage = time.time()
             intent_res = intent_router.classify(req.query)
+            record_stage_duration("intent_router", time.time() - t_stage)
             if intent_res.intent != IntentType.RAG_QUERY and intent_res.canned_response:
                 if intent_res.intent == IntentType.SECURITY_VIOLATION:
                     record_guardrail_refusal("security_violation")
+                record_stage_duration("total", time.time() - t0)
                 yield _format_sse("sources", {"sources": []})
                 yield _format_sse("token", {"text": intent_res.canned_response})
                 yield _format_sse("done", {
@@ -607,9 +610,12 @@ class SearchService:
 
         # 1.1 Exact In-Memory Cache
         if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
+            t_stage = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
+            record_stage_duration("exact_cache", time.time() - t_stage)
             if exact_hit is not None:
                 record_exact_cache_lookup(hit=True)
+                record_stage_duration("total", time.time() - t0)
                 yield _format_sse("sources", {"sources": [s.model_dump() for s in exact_hit.sources]})
                 yield _format_sse("token", {"text": exact_hit.answer})
                 yield _format_sse("done", {
@@ -623,12 +629,17 @@ class SearchService:
                 record_exact_cache_lookup(hit=False)
 
         # 1.2 Embedding & Semantic Cache
+        t_emb = time.time()
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
+        record_stage_duration("embedding", time.time() - t_emb)
 
         if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
+            t_sem = time.time()
             cached_resp = await semantic_cache_service.lookup(query_vector=dense_vec, user_ctx=user_ctx)
+            record_stage_duration("cache_lookup", time.time() - t_sem)
             if cached_resp is not None:
                 record_cache_lookup(hit=True)
+                record_stage_duration("total", time.time() - t0)
                 if settings.EXACT_CACHE_ENABLED:
                     exact_cache_service.store(normalized_query, cached_resp, user_ctx)
                 yield _format_sse("sources", {"sources": [s.model_dump() for s in cached_resp.sources]})
@@ -646,6 +657,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 2. Qdrant Hybrid Search & FlashRank Reranker
         # ──────────────────────────────────────────────
+        t_vec = time.time()
         scope_filter = _build_scope_filter(req)
         candidates = await qdrant_service.hybrid_search(
             dense_vector=dense_vec,
@@ -654,8 +666,10 @@ class SearchService:
             limit=settings.QDRANT_SEARCH_CANDIDATES_LIMIT,
             extra_filter=scope_filter,
         )
+        record_stage_duration("vector_search", time.time() - t_vec)
 
         if not candidates:
+            record_stage_duration("total", time.time() - t0)
             yield _format_sse("sources", {"sources": []})
             yield _format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
             yield _format_sse("done", {
@@ -666,12 +680,14 @@ class SearchService:
             })
             return
 
+        t_rerank = time.time()
         top_chunks = await reranker_service.rerank(
             query=req.query,
             passages=candidates,
             top_n=min(req.limit, settings.QDRANT_SEARCH_CANDIDATES_LIMIT),
             text_field="text_msa",
         )
+        record_stage_duration("reranking", time.time() - t_rerank)
 
         valid_chunks = _filter_valid_chunks(top_chunks)
         sources = _build_source_items(valid_chunks)
@@ -682,6 +698,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
         # ──────────────────────────────────────────────
+        t_gen = time.time()
         context_str = _build_rag_context_str(valid_chunks)
         num_sources = len(valid_chunks) if valid_chunks else 1
         system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
@@ -693,6 +710,7 @@ class SearchService:
         stop_event = threading.Event()
         # Bounded queue (maxsize=30) enforces Backpressure on slow clients and prevents memory bloat
         queue: asyncio.Queue[str | Exception | None] = asyncio.Queue(maxsize=30)
+        recorded_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         def _produce_tokens():
             try:
@@ -708,6 +726,11 @@ class SearchService:
                 for chunk in stream_res:
                     if stop_event.is_set():
                         break
+                    if getattr(chunk, "usage_metadata", None):
+                        meta = chunk.usage_metadata
+                        recorded_usage["prompt_tokens"] = getattr(meta, "prompt_token_count", 0) or 0
+                        recorded_usage["completion_tokens"] = getattr(meta, "candidates_token_count", 0) or 0
+                        recorded_usage["total_tokens"] = getattr(meta, "total_token_count", 0) or 0
                     if chunk.text:
                         # Thread-safe put with backpressure: blocks worker thread if queue reaches maxsize
                         future = asyncio.run_coroutine_threadsafe(queue.put(chunk.text), loop)
@@ -762,6 +785,17 @@ class SearchService:
                 stream_duration = time.time() - first_token_time
                 if stream_duration > 0:
                     record_streaming_tpot(stream_duration / token_count)
+            record_stage_duration("gemini_generation", time.time() - t_gen)
+            record_stage_duration("total", time.time() - t0)
+
+            pt = recorded_usage["prompt_tokens"]
+            ct = recorded_usage["completion_tokens"]
+            tt = recorded_usage["total_tokens"]
+            if tt == 0:
+                ct = max(1, token_count)
+                pt = max(1, (len(context_str) + len(req.query)) // 4)
+                tt = pt + ct
+            record_token_usage(prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)
 
         # ──────────────────────────────────────────────
         # 4. Cache Accumulation & Terminal Done Event
