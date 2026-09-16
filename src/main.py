@@ -90,6 +90,32 @@ app.include_router(speech_router)
 async def health_check():
     return {"status": "ok", "environment": settings.ENVIRONMENT}
 
+@app.get("/ready", tags=["System"])
+@app.get("/v1/ready", tags=["System"])
+@app.get("/api/ready", tags=["System"])
+async def readiness_check():
+    """
+    Readiness Probe:
+    Returns 200 OK only after Lifespan completes model warm-up, DB pooling, and Qdrant readiness.
+    Returns 503 Service Unavailable if the engine is still starting up.
+    """
+    if not getattr(app.state, "is_ready", False):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "warming_up",
+                "ready": False,
+                "message": "AI Engine is warming up, loading models and connecting to vector database...",
+            }
+        )
+    return {
+        "status": "ready",
+        "ready": True,
+        "startup_duration_seconds": getattr(app.state, "startup_duration", 0),
+        "gemini_model": settings.GEMINI_MODEL,
+        "environment": settings.ENVIRONMENT,
+    }
+
 # 6. إعداد مقاييس المراقبة الحية (Prometheus Metrics)
 from src.core.metrics import init_metrics
 init_metrics(app)

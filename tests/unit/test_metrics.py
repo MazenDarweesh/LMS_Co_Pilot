@@ -17,12 +17,16 @@ from src.core.metrics import (
     record_streaming_ttft,
     record_streaming_tpot,
     record_guardrail_refusal,
+    record_startup_duration,
+    record_content_generation_duration,
     CACHE_REQUESTS,
     RAG_STAGE_DURATION,
     LLM_TOKENS,
     STREAMING_TTFT,
     STREAMING_TPOT,
     GUARDRAIL_REFUSALS,
+    LMS_STARTUP_DURATION,
+    LMS_CONTENT_GENERATION_DURATION,
 )
 
 
@@ -97,3 +101,39 @@ async def test_metrics_endpoint_exposition():
     assert "lms_rag_stage_duration_seconds" in body
     assert "lms_llm_tokens_total" in body
     assert "lms_active_requests" in body
+
+
+def test_startup_and_content_metrics():
+    """Verify startup gauge and content generation histogram recording helpers."""
+    record_startup_duration(4.25)
+    assert LMS_STARTUP_DURATION._value.get() == 4.25
+
+    init_sum = LMS_CONTENT_GENERATION_DURATION.labels(type="quiz", action="generate")._sum.get()
+    record_content_generation_duration("quiz", "generate", 1.85)
+    assert LMS_CONTENT_GENERATION_DURATION.labels(type="quiz", action="generate")._sum.get() >= init_sum + 1.85
+
+
+@pytest.mark.asyncio
+async def test_readiness_probe_endpoints():
+    """Verify /ready, /v1/ready, /api/ready return 503 when not ready, and 200 when ready."""
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://localhost",
+    ) as client:
+        # 1. Test unready state
+        app.state.is_ready = False
+        res_unready = await client.get("/ready")
+        assert res_unready.status_code == 503
+        assert res_unready.json()["ready"] is False
+
+        # 2. Test ready state
+        app.state.is_ready = True
+        app.state.startup_duration = 3.5
+        for endpoint in ["/ready", "/v1/ready", "/api/ready"]:
+            res_ready = await client.get(endpoint)
+            assert res_ready.status_code == 200
+            data = res_ready.json()
+            assert data["ready"] is True
+            assert data["status"] == "ready"
+            assert data["startup_duration_seconds"] == 3.5
+

@@ -1,6 +1,7 @@
 # src/db/session.py
 import asyncio
 import json
+import time
 from contextlib import asynccontextmanager
 import asyncpg
 from fastapi import FastAPI
@@ -89,6 +90,9 @@ async def lifespan(app: FastAPI):
     استخدام Lifespan Context Manager بدلاً من @app.on_event القديم.
     يضمن تهيئة الـ Pool مرة واحدة وإغلاقه بأمان حتى لو حدث Crash.
     """
+    app.state.is_ready = False
+    t_startup = time.time()
+
     # ① تهيئة قاعدة البيانات
     logger.info("Database pool initializing...")
     app.state.db_pool = await asyncpg.create_pool(
@@ -173,6 +177,14 @@ async def lifespan(app: FastAPI):
     from src.services.feedback_service import feedback_service
     feedback_service.initialize(app.state.db_pool)
     app.state.feedback_service = feedback_service
+
+    # تم اكتمال كافة النماذج والخدمات وجاهزية النظام للاستقبال
+    startup_duration = round(time.time() - t_startup, 3)
+    app.state.startup_duration = startup_duration
+    app.state.is_ready = True
+    from src.core.metrics import record_startup_duration
+    record_startup_duration(startup_duration)
+    logger.info("All AI Engine services initialized & ready 🚀", startup_duration_seconds=startup_duration)
 
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 

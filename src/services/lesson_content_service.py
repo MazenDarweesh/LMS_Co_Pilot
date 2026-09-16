@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import structlog
 from google import genai
 from google.genai import types
@@ -9,6 +10,7 @@ from src.core.config import settings
 from src.core.prompts import QUIZ_GENERATION_PROMPT, SUMMARY_GENERATION_PROMPT
 from src.models.schemas import GeneratedQuiz, GeneratedSummary
 from src.services.qdrant_service import qdrant_service
+from src.core.metrics import record_content_generation_duration
 
 logger = structlog.get_logger()
 
@@ -21,6 +23,7 @@ class LessonContentService:
         """
         توليد اختبار (Quiz) مقسم زمنياً لضمان تغطية الدرس بالكامل (Anti-Clustering).
         """
+        t0 = time.time()
         logger.info("Generating Quiz", lesson_id=lesson_id, num_questions=num_questions)
         
         lesson_filter = Filter(
@@ -78,6 +81,9 @@ class LessonContentService:
             quiz_data = json.loads(response.text)
             # دمج lesson_id مع النتيجة
             quiz_data["lesson_id"] = lesson_id
+            duration = round(time.time() - t0, 3)
+            record_content_generation_duration("quiz", "generate", duration)
+            logger.info("Quiz generated successfully 🎯", lesson_id=lesson_id, duration_seconds=duration, questions_count=len(quiz_data.get("questions", [])))
             return GeneratedQuiz(**quiz_data)
         except Exception as e:
             logger.error("Failed to parse Quiz JSON", error=str(e), response_text=response.text)
@@ -87,6 +93,7 @@ class LessonContentService:
         """
         توليد ملخص باستخدام تقنية Pyramid Summarization لمنع تركيز النماذج على الأطراف فقط.
         """
+        t0 = time.time()
         logger.info("Generating Summary", lesson_id=lesson_id)
         
         lesson_filter = Filter(
@@ -134,6 +141,9 @@ class LessonContentService:
         try:
             summary_data = json.loads(response.text)
             summary_data["lesson_id"] = lesson_id
+            duration = round(time.time() - t0, 3)
+            record_content_generation_duration("summary", "generate", duration)
+            logger.info("Summary generated successfully 📝", lesson_id=lesson_id, duration_seconds=duration, topics_count=len(summary_data.get("topics", [])))
             return GeneratedSummary(**summary_data)
         except Exception as e:
             logger.error("Failed to parse Summary JSON", error=str(e), response_text=response.text)

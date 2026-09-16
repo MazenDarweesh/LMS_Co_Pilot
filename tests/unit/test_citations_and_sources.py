@@ -141,3 +141,22 @@ def test_admin_cache_clear_dual_routes_registered():
     paths = app.openapi()["paths"]
     assert "/v1/admin/cache/clear" in paths
     assert "/api/admin/cache/clear" in paths
+
+
+def test_search_response_provenance_and_latency():
+    """Verify SearchResponse includes provenance, cache_hit, and latency_ms with correct serialization."""
+    from src.models.search_models import SearchResponse
+
+    resp = SearchResponse(
+        answer="إجابة تجريبية",
+        sources=[],
+        query_used="سؤال تجريبي",
+        provenance="SEMANTIC_CACHE",
+        cache_hit=True,
+        latency_ms=12.4,
+    )
+    dump = resp.model_dump()
+    assert dump["provenance"] == "SEMANTIC_CACHE"
+    assert dump["cache_hit"] is True
+    assert dump["latency_ms"] == 12.4
+

@@ -93,65 +93,76 @@ GUARDRAIL_REFUSALS = Counter(
     labelnames=["reason"],  # "security_violation" | "prompt_injection" | "out_of_scope"
 )
 
+# 8. Lifespan Startup & Warmup Latency
+LMS_STARTUP_DURATION = Gauge(
+    "lms_startup_duration_seconds",
+    "Total startup and model warmup duration in seconds",
+)
+
+# 9. AI Content Generation Latency (Quiz & Summary)
+LMS_CONTENT_GENERATION_DURATION = Histogram(
+    "lms_content_generation_duration_seconds",
+    "Latency of AI content generation (quiz, summary) in seconds",
+    labelnames=["type", "action"],  # type: "quiz" | "summary", action: "generate" | "regenerate"
+    buckets=(0.5, 1.0, 2.0, 3.5, 5.0, 8.0, 12.0, 20.0, 30.0),
+)
 
 
 # ─── Recording Helpers ────────────────────────────────────────────────────────
 
 def record_cache_lookup(hit: bool) -> None:
     """Records a Semantic Cache hit or miss."""
-    result = "hit" if hit else "miss"
-    CACHE_REQUESTS.labels(result=result).inc()
+    CACHE_REQUESTS.labels(result="hit" if hit else "miss").inc()
 
 
 def record_exact_cache_lookup(hit: bool) -> None:
-    """Records an Exact In-Memory Cache hit or miss."""
-    result = "hit" if hit else "miss"
-    EXACT_CACHE_REQUESTS.labels(result=result).inc()
+    """Records an Exact Cache hit or miss."""
+    EXACT_CACHE_REQUESTS.labels(result="hit" if hit else "miss").inc()
 
 
-def record_intent_classified(intent: str) -> None:
-    """Records an intent classification event."""
+def record_intent_routing(intent: str) -> None:
+    """Records an intent classification result from Fast Ingress."""
     INTENT_REQUESTS.labels(intent=intent.lower()).inc()
 
 
-def record_cache_rbac_rejection(tier: str) -> None:
-    """Records a cache lookup rejection caused by RBAC entitlement checks."""
+record_intent_classified = record_intent_routing
+
+
+def record_cache_rbac_rejection(tier: str = "semantic") -> None:
+    """Records a cache lookup rejected due to lack of course/lesson RBAC permissions."""
     CACHE_RBAC_REJECTIONS.labels(tier=tier.lower()).inc()
 
 
 def record_stage_duration(stage: str, duration_seconds: float) -> None:
-    """Records execution duration for a specific RAG pipeline stage."""
-    if duration_seconds >= 0:
-        RAG_STAGE_DURATION.labels(stage=stage).observe(duration_seconds)
+    """Records duration of a specific RAG pipeline stage in seconds."""
+    RAG_STAGE_DURATION.labels(stage=stage).observe(duration_seconds)
 
 
 def record_token_usage(prompt_tokens: int = 0, completion_tokens: int = 0, total_tokens: int = 0) -> None:
-    """Records LLM token consumption."""
+    """Records LLM token consumption by type."""
     if prompt_tokens > 0:
         LLM_TOKENS.labels(type="prompt").inc(prompt_tokens)
     if completion_tokens > 0:
         LLM_TOKENS.labels(type="completion").inc(completion_tokens)
     if total_tokens > 0:
         LLM_TOKENS.labels(type="total").inc(total_tokens)
-    elif prompt_tokens > 0 or completion_tokens > 0:
-        LLM_TOKENS.labels(type="total").inc(prompt_tokens + completion_tokens)
 
 
 def record_search_feedback(rating: str) -> None:
-    """Records a student feedback rating event (UP or DOWN)."""
+    """Records student feedback for search answer (up or down)."""
     SEARCH_FEEDBACK_TOTAL.labels(rating=rating.lower()).inc()
 
 
-def record_streaming_ttft(duration_seconds: float) -> None:
-    """Records Time to First Token (TTFT) in seconds for SSE search stream."""
-    if duration_seconds >= 0:
-        STREAMING_TTFT.observe(duration_seconds)
+def record_streaming_ttft(ttft_seconds: float) -> None:
+    """Records Time to First Token (TTFT) in seconds."""
+    if ttft_seconds >= 0:
+        STREAMING_TTFT.observe(ttft_seconds)
 
 
-def record_streaming_tpot(seconds_per_token: float) -> None:
-    """Records Time Per Output Token (TPOT) in seconds for SSE search stream."""
-    if seconds_per_token >= 0:
-        STREAMING_TPOT.observe(seconds_per_token)
+def record_streaming_tpot(tpot_seconds: float) -> None:
+    """Records Time Per Output Token (TPOT) in seconds."""
+    if tpot_seconds >= 0:
+        STREAMING_TPOT.observe(tpot_seconds)
 
 
 def record_guardrail_refusal(reason: str = "security_violation") -> None:
@@ -159,8 +170,19 @@ def record_guardrail_refusal(reason: str = "security_violation") -> None:
     GUARDRAIL_REFUSALS.labels(reason=reason.lower()).inc()
 
 
-# ─── Instrumentator Initialization ────────────────────────────────────────────
+def record_startup_duration(duration_seconds: float) -> None:
+    """Records total startup and model warmup duration in seconds."""
+    if duration_seconds >= 0:
+        LMS_STARTUP_DURATION.set(duration_seconds)
 
+
+def record_content_generation_duration(content_type: str, action: str, duration_seconds: float) -> None:
+    """Records execution duration for AI content generation (quiz or summary)."""
+    if duration_seconds >= 0:
+        LMS_CONTENT_GENERATION_DURATION.labels(type=content_type.lower(), action=action.lower()).observe(duration_seconds)
+
+
+# ─── Instrumentator Initialization ────────────────────────────────────────────
 
 def init_metrics(app: FastAPI) -> Instrumentator | None:
     """
@@ -194,5 +216,27 @@ def init_metrics(app: FastAPI) -> Instrumentator | None:
         tags=["Monitoring"],
     )
 
-    logger.info("Prometheus metrics initialized ✅", endpoint=settings.METRICS_PATH)
+    # Pre-initialize baseline label sets and Gauge so Prometheus and Grafana display baseline series immediately
+    ACTIVE_REQUESTS.set(0)
+
+    for res in ["hit", "miss"]:
+        CACHE_REQUESTS.labels(result=res)
+        EXACT_CACHE_REQUESTS.labels(result=res)
+    for intent in ["greeting", "out_of_scope", "rag_query", "invalid_query"]:
+        INTENT_REQUESTS.labels(intent=intent)
+    for tier in ["exact", "semantic"]:
+        CACHE_RBAC_REJECTIONS.labels(tier=tier)
+    for reason in ["security_violation", "prompt_injection", "out_of_scope"]:
+        GUARDRAIL_REFUSALS.labels(reason=reason)
+    for rating in ["up", "down"]:
+        SEARCH_FEEDBACK_TOTAL.labels(rating=rating)
+    for token_t in ["prompt", "completion", "total"]:
+        LLM_TOKENS.labels(type=token_t)
+    for content_t in ["quiz", "summary"]:
+        for act in ["generate", "regenerate"]:
+            LMS_CONTENT_GENERATION_DURATION.labels(type=content_t, action=act)
+    for stage in ["exact_cache", "intent_router", "cache_lookup", "embedding", "vector_search", "reranking", "gemini_generation", "total"]:
+        RAG_STAGE_DURATION.labels(stage=stage)
+
+    logger.info("Prometheus metrics initialized with baseline series ✅", endpoint=settings.METRICS_PATH)
     return instrumentator

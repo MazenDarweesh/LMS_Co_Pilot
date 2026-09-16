@@ -74,10 +74,13 @@ class SourceItem(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    """الاستجابة النهائية — إجابة مع مصادر واستشهادات."""
+    """الاستجابة النهائية — إجابة مع مصادر واستشهادات ومصدر الرد."""
     answer: str
     sources: list[SourceItem]
     query_used: str
+    provenance: str = Field(default="RAG_GENERATION", description="مصدر الإجابة: EXACT_CACHE | SEMANTIC_CACHE | INTENT_ROUTER | RAG_GENERATION")
+    cache_hit: bool = Field(default=False, description="هل تم الرد من الكاش؟")
+    latency_ms: float | None = Field(default=None, description="زمن الاستجابة بالمللي ثانية")
 
 
 class FeedbackRating(str, Enum):

@@ -343,6 +343,9 @@ class SearchService:
                     answer=intent_res.canned_response,
                     sources=[],
                     query_used=req.query,
+                    provenance="INTENT_ROUTER",
+                    cache_hit=False,
+                    latency_ms=round((time.time() - t0) * 1000, 2),
                 )
 
 
@@ -377,6 +380,9 @@ class SearchService:
                         answer=exact_hit.answer,
                         metrics=metrics,
                     )
+                exact_hit.provenance = "EXACT_CACHE"
+                exact_hit.cache_hit = True
+                exact_hit.latency_ms = metrics["total_latency_ms"]
                 return exact_hit
             else:
                 record_exact_cache_lookup(hit=False)
@@ -422,6 +428,9 @@ class SearchService:
                         answer=cached_resp.answer,
                         metrics=metrics,
                     )
+                cached_resp.provenance = "SEMANTIC_CACHE"
+                cached_resp.cache_hit = True
+                cached_resp.latency_ms = metrics["total_latency_ms"]
                 return cached_resp
             else:
                 record_cache_lookup(hit=False)
@@ -455,6 +464,9 @@ class SearchService:
                 answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
                 sources=[],
                 query_used=req.query,
+                provenance="NO_CANDIDATES",
+                cache_hit=False,
+                latency_ms=round((time.time() - t0) * 1000, 2),
             )
 
         logger.info("Qdrant candidates returned", count=len(candidates), ms=metrics["qdrant_latency_ms"])
@@ -522,7 +534,14 @@ class SearchService:
                 token_usage=token_usage
             )
 
-        final_response = SearchResponse(answer=answer_text, sources=sources, query_used=req.query)
+        final_response = SearchResponse(
+            answer=answer_text,
+            sources=sources,
+            query_used=req.query,
+            provenance="RAG_GENERATION",
+            cache_hit=False,
+            latency_ms=metrics["total_latency_ms"],
+        )
 
         # ──────────────────────────────────────────────
         # 6. Save in Exact Cache & Semantic Cache
@@ -575,6 +594,8 @@ class SearchService:
                 yield _format_sse("token", {"text": intent_res.canned_response})
                 yield _format_sse("done", {
                     "intent": intent_res.intent.value,
+                    "provenance": "INTENT_ROUTER",
+                    "cache_hit": False,
                     "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
                 })
                 return
@@ -594,6 +615,7 @@ class SearchService:
                 yield _format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "exact",
+                    "provenance": "EXACT_CACHE",
                     "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
                 })
                 return
@@ -614,6 +636,7 @@ class SearchService:
                 yield _format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "semantic",
+                    "provenance": "SEMANTIC_CACHE",
                     "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
                 })
                 return
@@ -637,6 +660,8 @@ class SearchService:
             yield _format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
             yield _format_sse("done", {
                 "status": "no_candidates",
+                "provenance": "NO_CANDIDATES",
+                "cache_hit": False,
                 "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
             })
             return
@@ -761,6 +786,8 @@ class SearchService:
 
             yield _format_sse("done", {
                 "thread_id": thread_id,
+                "provenance": "RAG_GENERATION",
+                "cache_hit": False,
                 "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
             })
 
