@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     AGENT_MAX_CONTEXT_TOKENS: int = 3000  # حد أقصى للـ Tokens المرسلة للموديل
 
     # Search & Retrieval Optimization
-    QDRANT_SEARCH_CANDIDATES_LIMIT: int = 8  # عدد المرشحين المسترجعين للـ Reranker (تحسين زمن المعالجة على CPU)
+    QDRANT_SEARCH_CANDIDATES_LIMIT: int = 5  # عدد المرشحين المسترجعين للـ Reranker (الأمثل لتقليص زمن الـ CPU)
 
     # Exact In-Memory Cache Configuration (Tier-1)
     EXACT_CACHE_ENABLED: bool = True
