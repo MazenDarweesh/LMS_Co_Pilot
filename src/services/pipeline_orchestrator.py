@@ -10,6 +10,7 @@ from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata
 from src.services.audio_downloader import audio_downloader
 from src.services.transcription_service import TranscriptionService
 from src.services.transcript_normalizer import transcript_normalizer
+from src.services.lms_client import lms_client_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.db.event_store import EventStoreRepository
 
@@ -205,11 +206,24 @@ class PipelineOrchestrator:
                     await event_store.insert_event(session_id, "System", "PIPELINE_COMPLETE", {"status": "success", "total_chunks": len(results)})
                     log.info("Pipeline completed successfully", total_chunks=len(results))
                     
+                    # 🔔 Notify LMS backend of completion via webhook callback
+                    asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+                        lesson_id=lesson_id,
+                        status="Completed",
+                        total_chunks=len(results)
+                    ))
+                    
                     return results
                     
                 except Exception as e:
                     logger.error("Pipeline failed", error=str(e), session_id=session_id)
                     await event_store.insert_event(session_id, "System", "PIPELINE_FAILED", {"error": str(e)})
+                    # 🔔 Notify LMS backend of failure via webhook callback
+                    asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+                        lesson_id=lesson_id,
+                        status="Failed",
+                        error=str(e)
+                    ))
                     raise e
                 finally:
                     # 🧹 تنظيف الملفات الصوتية المؤقتة دائماً حتى لو فشل الـ Pipeline لمنع امتلاء القرص

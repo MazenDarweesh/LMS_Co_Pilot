@@ -87,6 +87,45 @@ class LMSClientService:
         if self._lesson_context_cache is not None:
             self._lesson_context_cache.pop(lesson_id, None)
 
+    async def notify_lesson_ai_status(
+        self,
+        lesson_id: str,
+        status: str,
+        error: str | None = None,
+        total_chunks: int = 0
+    ) -> bool:
+        """
+        Sends an asynchronous webhook notification to the .NET LMS backend
+        when audio ingestion completes or fails.
+        Fails safely without raising unhandled exceptions (fire-and-forget / best-effort).
+        """
+        if not self._client:
+            logger.warning("LMS client not initialized for status notification", lesson_id=lesson_id)
+            return False
+
+        payload = {
+            "status": status,
+            "chunks_count": total_chunks,
+            "current_stage": "QDRANT_UPSERT_COMPLETE" if status == "Completed" else "PIPELINE_FAILED",
+            "error": error,
+            "lessonId": lesson_id,
+            "totalChunks": total_chunks,
+        }
+        try:
+            resp = await self._client.post(
+                f"/api/internal/lessons/{lesson_id}/ai-status",
+                json=payload
+            )
+            if resp.status_code in (200, 201, 202, 204):
+                logger.info("Successfully notified LMS of AI status", lesson_id=lesson_id, status=status)
+                return True
+            else:
+                logger.warning("LMS returned non-success for AI status notification", lesson_id=lesson_id, status_code=resp.status_code)
+                return False
+        except Exception as e:
+            logger.warning("Failed to reach LMS for AI status notification", lesson_id=lesson_id, error=str(e))
+            return False
+
     async def close(self) -> None:
         if self._client:
             await self._client.aclose()

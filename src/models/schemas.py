@@ -194,4 +194,15 @@ class SyncFailedResponse(BaseModel):
     status: str = "accepted"
     lessons_queued: list[str]
     count: int
-    message: str = "Reconciliation and re-ingestion scheduled successfully"
+    message: str = "Reconciliation and re-ingestion scheduled successfully"
+
+
+class LessonStatusResponse(BaseModel):
+    lesson_id: str
+    status: str = Field(..., description="حالة المعالجة: idle | processing | completed | failed")
+    chunks_count: int = Field(default=0, description="عدد الـ Chunks المخزنة في Qdrant")
+    current_stage: str | None = Field(default=None, description="المرحلة الحالية من معالجة الـ Pipeline")
+    error: str | None = Field(default=None, description="رسالة الخطأ في حال الفشل")
+    can_generate_quiz: bool = Field(default=False, description="هل يمكن توليد كويز للدرس")
+    can_generate_summary: bool = Field(default=False, description="هل يمكن توليد ملخص للدرس")
+    last_updated: str | None = Field(default=None, description="وقت آخر حدث مسجل")

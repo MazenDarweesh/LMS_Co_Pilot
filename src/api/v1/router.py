@@ -19,6 +19,7 @@ from src.core.config import settings
 from src.core.metrics import record_search_feedback
 from src.core.middleware import limiter
 from src.db.event_store import EventStoreRepository
+from qdrant_client.models import Filter, FieldCondition, MatchValue
 from src.models.schemas import (
     AudioIngestRequestV2,
     GeneratedQuiz,
@@ -27,6 +28,7 @@ from src.models.schemas import (
     WebhookPayload,
     SyncFailedRequest,
     SyncFailedResponse,
+    LessonStatusResponse,
 )
 from typing import Literal
 from src.models.search_models import (
@@ -425,6 +427,11 @@ async def sync_and_reingest_lesson(lesson_id: str, db_pool) -> None:
             logger.info("Sync and re-ingestion finished successfully", lesson_id=lesson_id)
         except Exception as e:
             logger.error("Sync and re-ingestion failed for lesson", lesson_id=lesson_id, error=str(e))
+            asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+                lesson_id=lesson_id,
+                status="Failed",
+                error=str(e)
+            ))
 
 
 @router.post("/admin/sync-failed", response_model=SyncFailedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -512,6 +519,89 @@ async def stream_ingestion_events(
             await asyncio.sleep(1)
 
     return EventSourceResponse(event_generator())
+
+
+@router.get("/ingest/status/{lesson_id}", response_model=LessonStatusResponse)
+@limiter.limit("60/minute")
+async def get_ingest_status(
+    request: Request,
+    lesson_id: str
+):
+    """
+    استعلام خفيف وفوري عن حالة معالجة الدرس:
+    - يفحص عدد الـ Chunks المخزنة في Qdrant
+    - يفحص آخر الأحداث المسجلة في الـ Event Store
+    - يحدد هل يمكن توليد الكويز والملخص
+    """
+    if not re.match(r"^[a-zA-Z0-9_-]+$", lesson_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid lesson_id format. Potential injection attempt blocked."
+        )
+
+    # 1. فحص Qdrant لمعرفة عدد الـ Chunks الفعلي المخزن
+    chunks_count = 0
+    if getattr(qdrant_service, "_client", None) is not None:
+        try:
+            lesson_filter = Filter(
+                must=[FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))]
+            )
+            records = await qdrant_service.client.scroll(
+                collection_name=settings.QDRANT_COLLECTION,
+                scroll_filter=lesson_filter,
+                limit=100,
+                with_payload=False
+            )
+            chunks_count = len(records[0]) if records and records[0] else 0
+        except Exception as e:
+            logger.warning("Could not scroll Qdrant for lesson status", lesson_id=lesson_id, error=str(e))
+
+    # 2. فحص الـ Event Store لمعرفة الجلسة وآخر حدث
+    session_id = f"sess_{lesson_id}"
+    events = []
+    pool = getattr(request.app.state, "db_pool", None)
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                repo = EventStoreRepository(conn)
+                events = await repo.get_session_events(session_id)
+        except Exception as e:
+            logger.warning("Could not fetch session events for lesson status", session_id=session_id, error=str(e))
+
+    last_event = events[-1] if events else None
+    last_event_type = last_event.get("event_type") if last_event else None
+    last_updated = last_event.get("timestamp") if last_event else None
+    error_msg = None
+
+    # 3. تحديد الحالة المنطقية الحتمية
+    if chunks_count > 0:
+        status_val = "completed"
+        can_generate = True
+    elif last_event_type == "PIPELINE_FAILED":
+        status_val = "failed"
+        can_generate = False
+        payload = last_event.get("payload", {})
+        error_msg = payload.get("error") if isinstance(payload, dict) else str(payload)
+    elif last_event_type == "PIPELINE_COMPLETE":
+        status_val = "completed"
+        can_generate = True
+    elif last_event_type is not None:
+        status_val = "processing"
+        can_generate = False
+    else:
+        status_val = "idle"
+        can_generate = False
+
+    return LessonStatusResponse(
+        lesson_id=lesson_id,
+        status=status_val,
+        chunks_count=chunks_count,
+        current_stage=last_event_type,
+        error=error_msg,
+        can_generate_quiz=can_generate,
+        can_generate_summary=can_generate,
+        last_updated=last_updated
+    )
 
 
 @router.get("/lessons/{lesson_id}")
