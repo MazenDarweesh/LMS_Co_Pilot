@@ -77,17 +77,23 @@ class ExactCacheService:
                 self._cache.clear()
         logger.info("Exact In-Memory Cache cleared and closed 🛑")
 
-    def _compute_key(self, normalized_query: str, user_ctx: UserContext) -> str:
-        """Generates a deterministic 4D SHA256 key scoped strictly by tenant, department, and role."""
+    def _compute_key(
+        self,
+        normalized_query: str,
+        user_ctx: UserContext,
+        scope_fingerprint: str = "",
+    ) -> str:
+        """Generates a deterministic 5D SHA256 key scoped strictly by tenant, department, role, and filter scope."""
         dept = user_ctx.claims.department_id or "global"
         role = user_ctx.claims.role
-        raw_key = f"{user_ctx.company_id}:{dept}:{role}:{normalized_query.strip().lower()}"
+        raw_key = f"{user_ctx.company_id}:{dept}:{role}:{scope_fingerprint}:{normalized_query.strip().lower()}"
         return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
     def lookup(
         self,
         normalized_query: str,
         user_ctx: UserContext,
+        scope_fingerprint: str = "",
     ) -> SearchResponse | None:
         """
         Fast in-memory lookup (< 2ms).
@@ -96,7 +102,7 @@ class ExactCacheService:
         if not self._enabled or self._cache is None:
             return None
 
-        cache_key = self._compute_key(normalized_query, user_ctx)
+        cache_key = self._compute_key(normalized_query, user_ctx, scope_fingerprint)
 
         with self._lock:
             entry: CachedEntry | None = self._cache.get(cache_key)
@@ -152,12 +158,13 @@ class ExactCacheService:
         normalized_query: str,
         response: SearchResponse,
         user_ctx: UserContext,
+        scope_fingerprint: str = "",
     ) -> None:
         """Stores a verified search response in the in-memory cache."""
         if not self._enabled or self._cache is None:
             return
 
-        cache_key = self._compute_key(normalized_query, user_ctx)
+        cache_key = self._compute_key(normalized_query, user_ctx, scope_fingerprint)
         lesson_ids = list({
             getattr(s, "lesson_id", None)
             for s in response.sources

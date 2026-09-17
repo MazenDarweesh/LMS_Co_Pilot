@@ -31,6 +31,8 @@ class SearchRequest(BaseModel):
     lesson_id: str | None = Field(default=None, validation_alias=AliasChoices("lesson_id", "lessonId", "LessonId"))
     playlist_id: str | None = Field(default=None, validation_alias=AliasChoices("playlist_id", "playlistId", "PlaylistId"))
     video_id: str | None = Field(default=None, validation_alias=AliasChoices("video_id", "videoId", "VideoId"))
+    level_id: str | None = Field(default=None, validation_alias=AliasChoices("level_id", "levelId", "LevelId"))
+    type_id: str | None = Field(default=None, validation_alias=AliasChoices("type_id", "typeId", "TypeId"))
     limit: int = Field(default=5, ge=1, le=20, validation_alias=AliasChoices("limit", "Limit"))
     thread_id: str | None = Field(default=None, validation_alias=AliasChoices("thread_id", "threadId", "ThreadId"))
     skip_cache: bool = Field(
@@ -39,13 +41,28 @@ class SearchRequest(BaseModel):
         description="تجاوز الكاش لإعادة المحاولة وتوليد إجابة جديدة طازجة"
     )
 
+    @property
+    def scope_fingerprint(self) -> str:
+        """بصمة رقمية للنطاق والفلاتر لعزل الكاش ومنع تداخل نتائج نطاقات مختلفة."""
+        parts = [
+            self.scope or "all",
+            self.module_id or "",
+            self.unit_id or "",
+            self.lesson_id or "",
+            self.level_id or "",
+            self.type_id or "",
+            self.playlist_id or "",
+            self.video_id or "",
+        ]
+        return ":".join(parts)
+
     @field_validator("scope", mode="before")
     @classmethod
     def normalize_scope(cls, v: str | None) -> str:
         if not v:
             return "all"
         v_norm = str(v).strip().lower()
-        if v_norm in {"all", "course", "standalone", "playlist", "lesson"}:
+        if v_norm in {"all", "module", "unit", "lesson", "course", "standalone", "playlist"}:
             return v_norm
         return "all"
 

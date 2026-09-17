@@ -66,7 +66,7 @@ class SemanticCacheService:
                 vectors_config=VectorParams(size=1024, distance=Distance.COSINE),
             )
             # Create payload indexes for fast filtering
-            for field in ["company_id", "lesson_ids", "user_id"]:
+            for field in ["company_id", "lesson_ids", "user_id", "scope_fingerprint"]:
                 await client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field,
@@ -85,6 +85,7 @@ class SemanticCacheService:
         self,
         query_vector: list[float],
         user_ctx: UserContext,
+        scope_fingerprint: str = "",
     ) -> SearchResponse | None:
         """
         Searches the semantic cache for a past query vector with cosine similarity >= threshold.
@@ -98,15 +99,22 @@ class SemanticCacheService:
 
         try:
             client = qdrant_service.client
-            # Multi-tenant filter: only search records matching user's company_id
-            search_filter = Filter(
-                must=[
+            # Multi-tenant filter: only search records matching user's company_id and scope fingerprint
+            must_conditions = [
+                FieldCondition(
+                    key="company_id",
+                    match=MatchValue(value=user_ctx.company_id),
+                )
+            ]
+            if scope_fingerprint:
+                must_conditions.append(
                     FieldCondition(
-                        key="company_id",
-                        match=MatchValue(value=user_ctx.company_id),
+                        key="scope_fingerprint",
+                        match=MatchValue(value=scope_fingerprint),
                     )
-                ]
-            )
+                )
+
+            search_filter = Filter(must=must_conditions)
 
             results = await client.query_points(
                 collection_name=self.collection_name,
@@ -171,6 +179,7 @@ class SemanticCacheService:
         query_vector: list[float],
         response: SearchResponse,
         user_ctx: UserContext,
+        scope_fingerprint: str = "",
     ) -> None:
         """
         Stores an LLM-generated search response and query embedding into the semantic cache.
@@ -197,6 +206,7 @@ class SemanticCacheService:
                     "lesson_ids": lesson_ids,
                     "company_id": user_ctx.company_id,
                     "user_id": user_ctx.user_id,
+                    "scope_fingerprint": scope_fingerprint,
                     "created_at": now.isoformat(),
                     "created_at_ts": int(now.timestamp()),
                 },

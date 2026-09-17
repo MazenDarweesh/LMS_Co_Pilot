@@ -62,6 +62,12 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
         must.append(FieldCondition(key="playlist_id", match=MatchValue(value=req.playlist_id)))
     if req.video_id:
         must.append(FieldCondition(key="video_id", match=MatchValue(value=req.video_id)))
+
+    # 3. Level & Content Type Filtering
+    if req.level_id:
+        must.append(FieldCondition(key="level_id", match=MatchValue(value=req.level_id)))
+    if req.type_id:
+        must.append(FieldCondition(key="type_id", match=MatchValue(value=req.type_id)))
         
     return Filter(must=must) if must else None
 
@@ -360,7 +366,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
             t_exact = time.time()
-            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
+            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             exact_duration = time.time() - t_exact
             record_stage_duration("exact_cache", exact_duration)
             if exact_hit is not None:
@@ -404,6 +410,7 @@ class SearchService:
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
                 user_ctx=user_ctx,
+                scope_fingerprint=req.scope_fingerprint,
             )
             cache_duration = time.time() - t_cache
             record_stage_duration("cache_lookup", cache_duration)
@@ -411,7 +418,7 @@ class SearchService:
                 record_cache_lookup(hit=True)
                 # Auto-populate Tier-1 Exact Cache for immediate subsequent hits
                 if settings.EXACT_CACHE_ENABLED:
-                    exact_cache_service.store(normalized_query, cached_resp, user_ctx)
+                    exact_cache_service.store(normalized_query, cached_resp, user_ctx, req.scope_fingerprint)
 
                 metrics["cache_hit"] = True
                 metrics["cache_latency_ms"] = round(cache_duration * 1000, 2)
@@ -551,6 +558,7 @@ class SearchService:
                 normalized_query=normalized_query,
                 response=final_response,
                 user_ctx=user_ctx,
+                scope_fingerprint=req.scope_fingerprint,
             )
 
         if settings.SEMANTIC_CACHE_ENABLED and answer_text:
@@ -560,6 +568,7 @@ class SearchService:
                     query_vector=dense_vec,
                     response=final_response,
                     user_ctx=user_ctx,
+                    scope_fingerprint=req.scope_fingerprint,
                 )
             )
             _background_tasks.add(cache_task)
@@ -593,13 +602,15 @@ class SearchService:
                 if intent_res.intent == IntentType.SECURITY_VIOLATION:
                     record_guardrail_refusal("security_violation")
                 record_stage_duration("total", time.time() - t0)
+                latency_ms = round((time.time() - t0) * 1000, 2)
                 yield _format_sse("sources", {"sources": []})
                 yield _format_sse("token", {"text": intent_res.canned_response})
                 yield _format_sse("done", {
                     "intent": intent_res.intent.value,
                     "provenance": "INTENT_ROUTER",
                     "cache_hit": False,
-                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                    "latency_ms": latency_ms,
+                    "metrics": {"total_latency_ms": latency_ms},
                 })
                 return
 
@@ -611,18 +622,20 @@ class SearchService:
         # 1.1 Exact In-Memory Cache
         if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
             t_stage = time.time()
-            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx)
+            exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             record_stage_duration("exact_cache", time.time() - t_stage)
             if exact_hit is not None:
                 record_exact_cache_lookup(hit=True)
                 record_stage_duration("total", time.time() - t0)
+                latency_ms = round((time.time() - t0) * 1000, 2)
                 yield _format_sse("sources", {"sources": [s.model_dump() for s in exact_hit.sources]})
                 yield _format_sse("token", {"text": exact_hit.answer})
                 yield _format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "exact",
                     "provenance": "EXACT_CACHE",
-                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                    "latency_ms": latency_ms,
+                    "metrics": {"total_latency_ms": latency_ms},
                 })
                 return
             else:
@@ -635,20 +648,26 @@ class SearchService:
 
         if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
             t_sem = time.time()
-            cached_resp = await semantic_cache_service.lookup(query_vector=dense_vec, user_ctx=user_ctx)
+            cached_resp = await semantic_cache_service.lookup(
+                query_vector=dense_vec,
+                user_ctx=user_ctx,
+                scope_fingerprint=req.scope_fingerprint,
+            )
             record_stage_duration("cache_lookup", time.time() - t_sem)
             if cached_resp is not None:
                 record_cache_lookup(hit=True)
                 record_stage_duration("total", time.time() - t0)
+                latency_ms = round((time.time() - t0) * 1000, 2)
                 if settings.EXACT_CACHE_ENABLED:
-                    exact_cache_service.store(normalized_query, cached_resp, user_ctx)
+                    exact_cache_service.store(normalized_query, cached_resp, user_ctx, req.scope_fingerprint)
                 yield _format_sse("sources", {"sources": [s.model_dump() for s in cached_resp.sources]})
                 yield _format_sse("token", {"text": cached_resp.answer})
                 yield _format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "semantic",
                     "provenance": "SEMANTIC_CACHE",
-                    "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                    "latency_ms": latency_ms,
+                    "metrics": {"total_latency_ms": latency_ms},
                 })
                 return
             else:
@@ -670,13 +689,15 @@ class SearchService:
 
         if not candidates:
             record_stage_duration("total", time.time() - t0)
+            latency_ms = round((time.time() - t0) * 1000, 2)
             yield _format_sse("sources", {"sources": []})
             yield _format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
             yield _format_sse("done", {
                 "status": "no_candidates",
                 "provenance": "NO_CANDIDATES",
                 "cache_hit": False,
-                "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                "latency_ms": latency_ms,
+                "metrics": {"total_latency_ms": latency_ms},
             })
             return
 
@@ -805,7 +826,12 @@ class SearchService:
             if full_answer:
                 final_resp = SearchResponse(answer=full_answer, sources=sources, query_used=req.query)
                 if settings.EXACT_CACHE_ENABLED:
-                    exact_cache_service.store(normalized_query, final_resp, user_ctx)
+                    exact_cache_service.store(
+                        normalized_query,
+                        final_resp,
+                        user_ctx,
+                        req.scope_fingerprint,
+                    )
                 if settings.SEMANTIC_CACHE_ENABLED:
                     cache_task = asyncio.create_task(
                         semantic_cache_service.store(
@@ -813,16 +839,19 @@ class SearchService:
                             query_vector=dense_vec,
                             response=final_resp,
                             user_ctx=user_ctx,
+                            scope_fingerprint=req.scope_fingerprint,
                         )
                     )
                     _background_tasks.add(cache_task)
                     cache_task.add_done_callback(_background_tasks.discard)
 
+            latency_ms = round((time.time() - t0) * 1000, 2)
             yield _format_sse("done", {
                 "thread_id": thread_id,
                 "provenance": "RAG_GENERATION",
                 "cache_hit": False,
-                "metrics": {"total_latency_ms": round((time.time() - t0) * 1000, 2)},
+                "latency_ms": latency_ms,
+                "metrics": {"total_latency_ms": latency_ms},
             })
 
 
