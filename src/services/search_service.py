@@ -51,13 +51,24 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
     elif req.scope == "playlist":
         must.append(FieldCondition(key="content_type", match=MatchValue(value="playlist_video_chunk")))
         
-    # 2. Scope ID Filtering
-    if req.lesson_id:
+    # 2. Hierarchical Scope ID Filtering
+    # Explicit binding: only filter by lesson/unit/module when scope specifically targets that level.
+    # If scope is 'all', lingering IDs from UI state are cleanly ignored.
+    if req.scope == "lesson" and req.lesson_id:
         must.append(FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)))
-    if req.unit_id:
+    elif req.scope == "unit" and req.unit_id:
         must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
-    if req.module_id:
+    elif req.scope == "module" and req.module_id:
         must.append(FieldCondition(key="module_id", match=MatchValue(value=req.module_id)))
+    elif req.scope not in {"all", "module", "unit", "lesson"}:
+        # Backward compatibility for direct ID queries or legacy playlist/video requests
+        if req.lesson_id:
+            must.append(FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)))
+        elif req.unit_id:
+            must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
+        elif req.module_id:
+            must.append(FieldCondition(key="module_id", match=MatchValue(value=req.module_id)))
+
     if req.playlist_id:
         must.append(FieldCondition(key="playlist_id", match=MatchValue(value=req.playlist_id)))
     if req.video_id:

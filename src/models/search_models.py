@@ -44,11 +44,22 @@ class SearchRequest(BaseModel):
     @property
     def scope_fingerprint(self) -> str:
         """بصمة رقمية للنطاق والفلاتر لعزل الكاش ومنع تداخل نتائج نطاقات مختلفة."""
+        scope_val = self.scope or "all"
+        effective_mod = self.module_id or "" if scope_val == "module" else ""
+        effective_unit = self.unit_id or "" if scope_val == "unit" else ""
+        effective_lesson = self.lesson_id or "" if scope_val == "lesson" else ""
+
+        # In non-standard or legacy scopes, preserve whichever IDs are provided
+        if scope_val not in {"all", "module", "unit", "lesson"}:
+            effective_mod = self.module_id or ""
+            effective_unit = self.unit_id or ""
+            effective_lesson = self.lesson_id or ""
+
         parts = [
-            self.scope or "all",
-            self.module_id or "",
-            self.unit_id or "",
-            self.lesson_id or "",
+            scope_val,
+            effective_mod,
+            effective_unit,
+            effective_lesson,
             self.level_id or "",
             self.type_id or "",
             self.playlist_id or "",
