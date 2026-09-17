@@ -45,12 +45,11 @@ class LessonContentService:
         # ترتيب الـ chunks حسب وقت البداية
         chunks = sorted(chunks, key=lambda x: x.payload.get("start_time", 0))
         
-        # حد أدنى للمحتوى: يجب أن يكون عدد الـ chunks لا يقل عن عدد الأسئلة المطلوبة
-        if len(chunks) < num_questions:
-            raise ValueError(
-                f"محتوى الدرس '{lesson_id}' غير كافٍ لتوليد {num_questions} أسئلة. "
-                f"وُجد {len(chunks)} chunk(s) فقط. يُرجى التأكد من اكتمال استيعاب الدرس."
-            )
+        # تكيف عدد الأسئلة المطلوبة مع عدد الـ chunks المتاحة (في حال كان الدرس قصيراً)
+        target_num_questions = min(num_questions, len(chunks))
+        if target_num_questions < 1:
+            raise ValueError(f"لا يوجد محتوى متاح لتوليد أسئلة للدرس {lesson_id}")
+        num_questions = target_num_questions
         
         # أخذ أفضل 20 chunk (أو أقل إذا كان الدرس قصيراً)
         chunks = chunks[:20]
