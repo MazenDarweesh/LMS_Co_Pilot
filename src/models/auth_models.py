@@ -5,9 +5,9 @@ from pydantic import BaseModel, Field, ConfigDict, AliasChoices, field_validator
 class TokenClaims(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
     
-    user_id: str = Field(validation_alias=AliasChoices("Id", "id", "sub", "nameid", "userId"))
-    role: str = Field(validation_alias=AliasChoices("Role", "role", "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"))
-    company_id: str = Field(validation_alias=AliasChoices("CompanyId", "companyId", "company_id", "tenant_id", "TenantId"))
+    user_id: str = Field(validation_alias=AliasChoices("Id", "id", "sub", "nameid", "userId", "uid"))
+    role: str = Field(default="Student", validation_alias=AliasChoices("Role", "role", "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"))
+    company_id: str = Field(default="default", validation_alias=AliasChoices("CompanyId", "companyId", "company_id", "tenant_id", "TenantId", "tenant", "Tenant", "company", "Company"))
     department_id: str | None = Field(default=None, validation_alias=AliasChoices("DepartmentId", "departmentId", "department_id"))
 
     @field_validator("role", mode="before")

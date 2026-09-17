@@ -105,6 +105,15 @@ def test_token_claims_resilience():
     assert c2.role == "Teacher"
     assert c2.company_id == "comp-2"
 
+    # Pattern 3: Real .NET Admin token without CompanyId
+    c3 = TokenClaims.model_validate({
+        "sub": "6c4215fa-5f19-4700-8888-abcdef123456",
+        "Role": "Admin"
+    })
+    assert c3.user_id == "6c4215fa-5f19-4700-8888-abcdef123456"
+    assert c3.role == "Admin"
+    assert c3.company_id == "default"
+
 
 def test_search_request_scope_lesson():
     """Verify SearchRequest accepts scope='lesson' as required by Angular lesson viewer."""

@@ -1,4 +1,5 @@
 import jwt
+from pydantic import ValidationError
 import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -35,9 +36,9 @@ class AuthValidatorService:
             return TokenClaims.model_validate(payload)
         except jwt.ExpiredSignatureError:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
-        except jwt.InvalidTokenError as e:
-            logger.error("Invalid JWT provided", error=str(e))
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+        except (jwt.InvalidTokenError, ValidationError) as e:
+            logger.error("Invalid JWT provided or claims validation failed", error=str(e))
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid token: {str(e)}")
             
     async def close(self):
         pass

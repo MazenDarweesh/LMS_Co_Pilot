@@ -656,9 +656,16 @@ async def generate_lesson_quiz(
         # Generate exactly 5 questions across the timeline
         return await lesson_content_service.generate_quiz(lesson_id=lesson_id, num_questions=5)
     except ValueError as e:
+        logger.warning("Quiz generation ValueError", lesson_id=lesson_id, error=str(e))
+        if "لا يوجد محتوى" in str(e):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No transcribed chunks found for lesson '{lesson_id}'. Please process the video first."
+            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="فشل توليد الاختبار بسبب خطأ داخلي.")
+        logger.error("Quiz generation failed", lesson_id=lesson_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"فشل توليد الاختبار بسبب خطأ داخلي: {str(e)}")
 
 
 @router.post("/admin/lessons/{lesson_id}/generate-summary", response_model=GeneratedSummary)
@@ -681,9 +688,16 @@ async def generate_lesson_summary(
             )
         return await lesson_content_service.generate_summary(lesson_id=lesson_id)
     except ValueError as e:
+        logger.warning("Summary generation ValueError", lesson_id=lesson_id, error=str(e))
+        if "لا يوجد محتوى" in str(e):
+            raise HTTPException(
+                status_code=404,
+                detail=f"No transcribed chunks found for lesson '{lesson_id}'. Please process the video first."
+            )
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail="فشل توليد الملخص بسبب خطأ داخلي.")
+        logger.error("Summary generation failed", lesson_id=lesson_id, error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"فشل توليد الملخص بسبب خطأ داخلي: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
