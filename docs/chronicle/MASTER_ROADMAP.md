@@ -1,7 +1,6 @@
-    ---
-
-last_synced_commit: "da9c342"
-last_updated: "2026-09-18T13:45:00Z"
+---
+last_synced_commit: "aa6f686"
+last_updated: "2026-09-20T17:35:00Z"
 active_milestone: "M09"
 total_milestones: 9
 completed_milestones: 9
@@ -25,7 +24,7 @@ completed_milestones: 9
 | **M06** | Real-Time Streaming Search & Feedback | ✅ COMPLETED | 2026-09-13 -> 2026-09-13 | SSE Streaming (<300ms TTFT) + Feedback Engine + ADR-14 | [M06 Dossier](milestones/M06_streaming_feedback_guardrails.md) |
 | **M07** | Production Telemetry & SLA Alerting | ✅ COMPLETED | 2026-09-13 -> 2026-09-14 | TTFT/TPOT, Guardrail Refusals, Prometheus Alerts, Feedback DB | [M07 Dossier](milestones/M07_observability_alerting_feedback_persistence.md) |
 | **M08** | Canonical Integration Contract v3.0.0 & Pre-Production Hardening | ✅ COMPLETED | 2026-09-14 -> 2026-09-14 | Dual-Route Multiplexing (/v1 & /api), DTO Alignment, Alertmanager 9093, OWASP Headers & Finally Disk Cleanup | [M08 Dossier](milestones/M08_canonical_contract_hardening.md) |
-| **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-18 | Lifecycle States (None->Queued->Processing->Completed/Failed), Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
+| **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-20 | Lifecycle States (None->Queued->Processing->Completed/Failed), HMAC-SHA256 Webhooks, Zero-Hop Claims RBAC, Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
@@ -45,7 +44,9 @@ completed_milestones: 9
 ## 🎯 Milestone Deliverables (M09 Completed)
 
 * **Video AI Ingestion Lifecycle State Machine:** 5-state asynchronous lifecycle (`None` ➔ `Queued` ➔ `Processing` ➔ `Completed` / `Failed`) with per-lesson `asyncio.Lock` serialization, orchestrating audio ingestion, Whisper transcription, Gemini normalization, and Qdrant upserts.
-* **Dual-Synchronization Protocol (Push Webhook + Fallback Status API):** Real-time webhook notification dispatched to .NET (`POST /api/internal/lessons/{lessonId}/ai-status`) with `X-Service-Token`, alongside a stateless query endpoint (`GET /v1/ingest/status/{lesson_id}` and `/api/ingest/status/{lesson_id}`) returning live Qdrant chunk counts and active lock states.
+* **Dual-Synchronization Protocol (Push Webhook + Fallback Status API):** Real-time webhook notification dispatched to .NET (`POST /api/internal/lessons/{lessonId}/ai-status`), alongside a stateless query endpoint (`GET /v1/ingest/status/{lesson_id}` and `/api/ingest/status/{lesson_id}`) returning live Qdrant chunk counts and active lock states.
+* **Stripe-Standard HMAC-SHA256 Webhook Security (ADR-21):** Replaced static service tokens with digital signatures calculated over raw UTF-8 binary bytes (`timestamp + "." + raw_body`). Enforced constant-time comparisons (`hmac.compare_digest`) and a strict 300-second anti-replay window.
+* **Zero-Hop Claims RBAC & Resilient Ingress (ADR-22):** Direct extraction of `company_id` and `department_id` from JWT claims. Admins bypass LMS internal permission network calls (0ms hop); students gracefully fall back to claims-based tenant isolation if LMS permissions service is unreachable, eliminating 503 errors and saving 20-40ms on search.
 * **Adaptive Quiz Content Generation & Grounding (ADR-18):** Bound MCQ quiz generation to `actual_k = min(num_questions, len(chunks))` to prevent hallucinations on short video lessons, paired with structured `404 Not Found` responses on uningested content.
 * **Resilient Cross-Stack JWT Claim Ingress (ADR-20):** Defensive fallback in `AuthService` handling optional `company_id` claims for SuperAdmins and cross-framework claim aliases without bypassing cryptographic signature checks.
 

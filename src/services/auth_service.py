@@ -56,10 +56,9 @@ def _build_user_entities(claims: TokenClaims, perms: UserPermissions | None = No
     - Grants standalone and playlist global access ONLY to Admins.
     - Scopes by department if present in JWT claims.
     """
-    entities: list[str] = [
-        f"tenant:{claims.company_id}",
-        f"role:{claims.role}",
-    ]
+    entities: list[str] = [f"role:{claims.role}"]
+    if claims.company_id:
+        entities.append(f"tenant:{claims.company_id}")
     if claims.department_id:
         entities.append(f"dept:{claims.department_id}")
     

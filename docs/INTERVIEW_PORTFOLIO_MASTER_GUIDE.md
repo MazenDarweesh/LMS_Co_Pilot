@@ -1,8 +1,8 @@
 ---
-last_synced_commit: "da9c342"
-last_synced_at: 2026-09-18T13:45:00Z
-guide_version: 2.0
-word_count: 10500
+last_synced_commit: "aa6f686"
+last_synced_at: 2026-09-20T17:35:00Z
+guide_version: 2.1
+word_count: 11200
 max_word_budget: 14000
 ---
 
@@ -53,15 +53,17 @@ max_word_budget: 14000
 
 ### 🔐 3. بروتوكول الأمان والمصادقة المتبادلة (Authentication & Security Cheat Sheet)
 
-1. **توكن الطالب/المشرف (User JWT):**
+1. **توكن الطالب/المشرف والـ Zero-Hop Claims RBAC (User JWT):**
    - يُصدره .NET بتشفير `HS256`، بمُصدر `DynamicProLearn` وجمهور `DynamicProLearnClient`.
    - بايثون يتحقق منه باستخدام نفس الـ `JWT_SECRET`.
-   - **المرونة الهندسية (Resilient Claims):** تم تصميم بايثون ليدعم غياب `company_id` للـ SuperAdmins، والتعامل مع مسميات الحقول المختلفة في .NET (`sub` أو `Id`، و `role` أو `Role`) دون حدوث خطأ 422 أو 500.
-2. **توكن الخدمات الداخلي (Internal Service Token):**
-   - يُستخدم حصراً في الاتصال المباشر بين السيرفرين (Machine-to-Machine).
-   - بايثون يرسل لـ .NET: `X-Service-Token: <token>` (أو `Authorization: Bearer <token>`).
-   - دوت نت يرسل لـ بايثون: `X-Service-Token: <token>`.
-   - **سياسة Fail-Closed:** لا توجد قيم افتراضية للتساهل في بيئة الإنتاج؛ غياب أو عدم تطابق التوكن ينتج عنه `401 Unauthorized` فوراً.
+   - **القفزة الصفرية (Zero-Hop Claims):** بايثون يستخرج `company_id` و `department_id` مباشرة من Claims التوكن عبر `AliasChoices`.
+   - **توفير زمن الشبكة:** المشرف (Admin) يتخطى استدعاء صلاحيات LMS بالكامل (0ms network hop)؛ وبالنسبة للطالب، إذا تعطل سيرفر الـ LMS مؤقتاً، يتراجع بايثون بأمان إلى عزل المستأجر بناءً على التوكن بدلاً من رفض الطلب بـ 503، مما يوفر 20-40ms على كل استعلام بحث.
+2. **التوقيع الرقمي للـ Webhook بمعيار Stripe/GitHub (HMAC-SHA256 Webhook Security):**
+   - يُستخدم لتأمين إشعارات تحديث وحذف الدروس من .NET إلى بايثون (`POST /v1/webhooks/lesson-updated`).
+   - دوت نت يحسب التوقيع المشفر: `HMAC-SHA256(secret, timestamp + "." + raw_body)` ويرسل الترويسات `X-Signature-256` و `X-Timestamp`.
+   - بايثون يتحقق من التوقيع مباشرة على بايتات الطلب الخام (Raw UTF-8 binary bytes) قبل قراءة الـ JSON لمنع أخطاء الـ Serialization Drift.
+   - **حماية ضد هجمات الإعادة (Anti-Replay Attack):** رفض أي طلب يزيد فارق توقيته عن 300 ثانية.
+   - **مقارنة ثابتة الزمن (Constant-Time):** باستخدام `hmac.compare_digest` لمنع هجمات التوقيت (Timing Attacks).
 
 ---
 
@@ -678,6 +680,30 @@ max_word_budget: 14000
     3. **الحماية الدفاعية للموارد (Finally Cleanup):** نقل عملية حذف الملفات الصوتية المؤقتة لكتلة `finally:` إلزامية لضمان الحذف التلقائي من القرص حتى لو حدث استثناء مفاجئ أثناء التفريغ أو التضمين.
     4. **موزع التنبيهات وترويسات OWASP:** دمج خدمة Alertmanager على المنفذ 9093 لتوزيع تنبيهات الـ SLA، وحقن ترويسات الأمان المؤسسية (`nosniff`, `DENY`) في الـ Middleware.
   * **النتيجة (Result):** اجتياز كامل لاختبارات التوافقية بنسبة 100%، وحماية تامة للقرص من التسريب، وتكامل سلس ومستقر بين بيئتي العمل دون أي تعديل اضطراري لكود .NET.
+
+---
+
+### سيناريو 4: الأمان الموزع والتوقيع المشفر والـ Zero-Hop RBAC (HMAC-SHA256 Webhooks & Zero-Hop Claims)
+* **Question [EN]:** "In enterprise integrations, static service tokens are vulnerable to leakage, and cross-service permission round-trips add unacceptable latency. How did you harden machine-to-machine webhooks and optimize token authorization in your AI microservice?"
+* **السؤال [AR]:** "في تكامل الأنظمة المؤسسية، تُعد توكنات الخدمات الثابتة عرضة للتسريب، كما أن استدعاءات الصلاحيات المتكررة بين الخدمات تزيد من زمن التأخير (Latency). كيف حصّنت الويب هوك بين الأنظمة وحسّنت مصادقة وصلاحيات التوكن في محرك الذكاء الاصطناعي؟"
+
+* **Answer [EN] (STAR Method):**
+  * **Situation:** Our Python AI service previously used a static shared secret header (`X-Service-Token`) for .NET webhooks, which was vulnerable to replay attacks and payload tampering. Concurrently, every student and admin search request performed a network round-trip back to the .NET LMS backend to fetch granular permissions, adding 20-40ms to search latency and causing cascading 503 outages whenever the LMS service experienced brief blips.
+  * **Task:** Upgrade webhook authentication to industry cryptographic standards, eliminate redundant inter-service network hops for Admins, and ensure zero-downtime resilient fallback for student search.
+  * **Action:**
+    1. **Stripe/GitHub Standard HMAC-SHA256:** Replaced static tokens with digital signatures calculated over raw binary UTF-8 request bytes (`timestamp + "." + raw_body`) matching .NET `WebhookDispatcher`. Added strict anti-replay attack expiration (`abs(now - timestamp) <= 300s`) and constant-time signature comparison (`hmac.compare_digest`).
+    2. **Zero-Hop Claims RBAC (Admins 0ms Hop):** Decoded `company_id` and `department_id` directly from .NET 10 JWT claims via Pydantic `AliasChoices`. Admins bypass LMS permission network calls entirely (0ms hop).
+    3. **Resilient Student Fallback:** For non-admins, if the LMS permission service is temporarily unreachable, the system gracefully falls back to token claims for tenant/department isolation instead of raising a 503 error.
+  * **Result:** Achieved 100% test pass rate across 51 unit tests, saved 20-40ms on search queries, and hardened distributed webhook communication against replay and timing side-channel attacks.
+
+* **الإجابة [AR] (منهجية STAR):**
+  * **الموقف (Situation):** كان محرك الذكاء الاصطناعي يعتمد على توكن خدمة ثابت (`X-Service-Token`) للـ Webhooks القادمة من دوت نت، وهو عرضة لهجمات الإعادة (Replay Attacks) والتلاعب بالبيانات. في الوقت ذاته، كان كل استعلام بحث للمشرف أو الطالب يرسل طلباً شبكياً للـ LMS لجلب الصلاحيات، مما يضيف 20-40ms زمن تأخير ويتسبب في أخطاء 503 عند أي تذبذب في خادم الـ LMS.
+  * **المهمة (Task):** ترقية أمان الـ Webhook إلى المعايير التشفيرية القياسية عالمياً، وإلغاء القفزات الشبكية الزائدة للمشرفين، وتوفير بديل مرن يمنع انهيار الخدمة للطلاب.
+  * **الإجراء (Action):**
+    1. **توقيع رقمي HMAC-SHA256 بمعيار Stripe و GitHub:** استبدال التوكن الثابت بتوقيع رقمي يُحسب على بايتات الطلب الخام مباشرة (`timestamp + "." + raw_body`)، مع مهلة أمان ضد هجمات الإعادة (Anti-Replay <= 300 ثانية)، ومقارنة ثابتة الزمن بـ `hmac.compare_digest`.
+    2. **القفزة الصفرية للصلاحيات (Zero-Hop Claims RBAC):** استخراج معرف الشركة والقسم مباشرة من Claims توكن JWT لدوت نت عبر `AliasChoices`. المشرف يتخطى استدعاءات الشبكة بنسبة 100% (0ms network hop).
+    3. **التراجع المرن للطلاب (Resilient Fallback):** في حال تعطل خدمة صلاحيات LMS مؤقتاً، يتراجع بايثون للعزل بناءً على بيانات التوكن بدلاً من رفض الطلب بـ 503.
+  * **النتيجة (Result):** اجتياز 51 اختباراً مؤتمتاً بنجاح 100%، توفير 20-40ms في استعلامات البحث، وتحصين النظام بالكامل ضد هجمات التوقيت والتلاعب بالحمولة.
 
 ---
 

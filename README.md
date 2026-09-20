@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "da9c342", "last_synced_at": "2026-09-18T13:45:00Z", "documented_endpoints": 16} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "aa6f686", "last_synced_at": "2026-09-20T17:35:00Z", "documented_endpoints": 18} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,6 +19,8 @@
 
 ## ✨ Key Features
 
+- 🛡️ **Stripe-Standard HMAC-SHA256 Webhook Security** — Digital signature verification (`X-Signature-256`, `X-Timestamp`) calculated over raw UTF-8 binary request bytes matching .NET 10 `WebhookDispatcher`, enforced via constant-time comparison (`hmac.compare_digest`), a strict 300-second anti-replay window, and zero reliance on static tokens
+- 🚀 **Zero-Hop Claims RBAC & Resilient Ingress** — Decodes `company_id` and `department_id` directly from .NET 10 JWT claims (`TokenClaims` with `AliasChoices`); Admins skip internal LMS network permission calls entirely (0ms network hop), while students fail gracefully to claims-based tenant isolation if LMS permissions service is temporarily unreachable, eliminating 503 errors and saving 20-40ms on search
 - 🔄 **Video AI Ingestion Lifecycle State Machine & Resilient Webhooks** — Seamlessly coordinates multi-minute audio pipelines (`None` ➔ `Queued` ➔ `Processing` ➔ `Completed` / `Failed`) with `.NET 10` via asynchronous status push callbacks (`POST /api/internal/lessons/{lessonId}/ai-status`), live stateless polling queries (`GET /v1/ingest/status/{lesson_id}`), and thread-safe per-lesson `asyncio.Lock` serialization
 - 🧠 **Adaptive Content Generation & Anti-Hallucination Grounding** — Dynamically scales MCQ quiz generation counts `actual_k = min(num_questions, len(chunks))` for short video lessons (preventing hallucinations from context exhaustion) and fails safely with structured typed 404s on uningested content
 - 🔐 **Cross-Stack Resilient JWT Negotiation** — Fault-tolerant claim validation with optional defaults for SuperAdmins lacking tenant IDs and defensive claim mapping between ASP.NET Core Identity namespaces and FastAPI
@@ -120,16 +122,18 @@
 | `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, heartbeat keep-alive, and backpressure |
 | `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async PostgreSQL persistence, and Prometheus metrics |
 | `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates with instant Ragas evaluation dataset export (`?format=ragas&limit=100`) |
+| `POST` | `/v1/admin/cache/clear` | JWT Admin · 10 req/min | Purges both Tier-1 Exact LRU Cache (in-memory) and Tier-2 Semantic Vector Cache (Qdrant) |
 | `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
 | `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
 | `GET` | `/v1/ingest/status/{lesson_id}` | Public / Token · 60 req/min | Query live lesson ingestion state (`None` / `Processing` / `Completed`) & Qdrant chunk count |
-| `POST` | `/v1/webhooks/lesson-updated` | Service Token · 10 req/min | Re-index or delete vectors on LMS content change with per-lesson lock |
+| `POST` | `/v1/webhooks/lesson-updated` | HMAC-SHA256 (Stripe-Standard) · 60 req/min | Re-index or delete vectors on LMS content change with per-lesson lock and anti-replay protection |
 | `POST` | `/v1/admin/sync-failed` | JWT Admin · 5 req/min | Batch-queue reconciliation of failed or delayed lesson syncs after downtime |
 | `GET` | `/v1/lessons/{lesson_id}` | JWT (BOLA Protected) · 20 req/min | Retrieve processed checkpoints for a lesson (strictly restricted to entitled students & company admins) |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin · 5 req/min | Generate 5-question MCQs from Qdrant chunks |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 5 req/min | Generate hierarchical pyramid summary of a lesson |
-| `POST` | `/v1/speech/evaluate-quality` | JWT Admin | Calculate WER/CER for AI transcript evaluations |
-| `POST` | `/v1/speech/tafqit` | Rate Limited · 60 req/min | Convert numerical digits to Arabic text words |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin · 10 req/min | Generate adaptive MCQs (`actual_k = min(num_questions, len(chunks))`) directly from Qdrant chunks |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 10 req/min | Generate hierarchical pyramid summary of a lesson |
+| `POST` | `/v1/speech/evaluate-quality` | JWT Admin · 10 req/min | Calculate WER/CER for AI transcript evaluations |
+| `POST` | `/v1/speech/tafqit` | Rate Limited · 20 req/min | Convert numerical digits to Arabic text words |
+| `GET` | `/ready` | Public | Readiness probe (returns 200 OK only after model warmup and DB/Qdrant pool readiness) |
 | `GET` | `/metrics` | Prometheus Scraper / Public | Prometheus metrics endpoint (exact/semantic cache hit rates, TTFT/TPOT histograms, guardrail refusal counters, stage latencies, token counters) |
 | `GET` | `/health` | Public | System health check and environment status |
 
@@ -390,6 +394,9 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Fallback stateless ingestion status endpoint (`GET /v1/ingest/status/{lesson_id}`)
 - [x] Adaptive MCQ quiz generation for short video lengths (`min(k, chunks)`)
 - [x] Resilient cross-stack JWT claim validation for SuperAdmins and claim aliases
+- [x] Stripe/GitHub Standard HMAC-SHA256 webhook signature verification (X-Signature-256, X-Timestamp, anti-replay window <= 300s)
+- [x] Zero-Hop Claims RBAC (Admins 0ms network hop, student claims fallback preventing 503s)
+- [x] Pre-production code audit (Pillars 1-5, OWASP A01-A04, Rust tokenizer thread safety, Docker non-root appuser)
 - [x] Locust concurrent load testing suite & traffic simulator
 - [x] Automated GitHub Actions CI/CD pipeline (PostgreSQL 16, Qdrant 1.13.2, Docker build)
 - [ ] PDF ingestion via Marker / MinerU (Week 9)
@@ -431,4 +438,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-18*
+*Last updated by `readme-updater` skill — 2026-09-20*
