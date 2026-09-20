@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # LMS Backend & JWT Security
     LMS_BASE_URL: str = "http://localhost:8080"
     SERVICE_TOKEN: str = "change-this-in-env-file"
+    LMS_WEBHOOK_SECRET: str = "default_webhook_secret_key_2026"
     JWT_SECRET: str = "your-lms-jwt-secret-must-match-dotnet"
     JWT_ALGORITHM: str = "HS256"
     JWT_AUDIENCE: str | None = None

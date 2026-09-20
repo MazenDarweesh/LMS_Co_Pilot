@@ -1,7 +1,10 @@
+import hmac
+import hashlib
+import time
 import jwt
 from pydantic import ValidationError
 import structlog
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Header, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.core.config import settings
@@ -97,3 +100,64 @@ def require_role(*roles: str):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions for this action")
         return ctx
     return _check
+
+
+async def verify_webhook_signature(
+    request: Request,
+    x_signature_256: str | None = Header(default=None, alias="X-Signature-256"),
+    x_timestamp: str | None = Header(default=None, alias="X-Timestamp"),
+) -> bool:
+    """
+    Stripe/GitHub Standard Webhook Signature Verification (HMAC-SHA256).
+    
+    Validates HMAC-SHA256(secret, timestamp + "." + raw_body).
+    - Enforces strict anti-replay protection (tolerance window <= 300 seconds).
+    - Constant-time signature comparison prevents timing attacks.
+    - Fails closed if headers are missing or invalid.
+    """
+    if not x_signature_256 or not x_timestamp:
+        logger.warning("Webhook rejected: Missing required X-Signature-256 or X-Timestamp headers")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing required webhook signature headers (X-Signature-256, X-Timestamp)"
+        )
+
+    # 1. Replay Attack Prevention (Tolerance: 5 minutes = 300 seconds)
+    try:
+        timestamp_int = int(x_timestamp)
+    except ValueError:
+        logger.warning("Webhook rejected: Invalid X-Timestamp header format", timestamp=x_timestamp)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid X-Timestamp header")
+
+    current_time = time.time()
+    if abs(current_time - timestamp_int) > 300:
+        logger.warning(
+            "Webhook rejected: Timestamp expired (replay attack protection)",
+            timestamp=timestamp_int,
+            current_time=current_time,
+            drift_seconds=abs(current_time - timestamp_int),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Webhook timestamp expired (replay attack protection)"
+        )
+
+    # 2. Read raw binary body & compute expected signature
+    raw_body = await request.body()
+    payload_to_verify = f"{x_timestamp}.".encode("utf-8") + raw_body
+
+    expected_sig = hmac.new(
+        settings.LMS_WEBHOOK_SECRET.encode("utf-8"),
+        payload_to_verify,
+        hashlib.sha256,
+    ).hexdigest().lower()
+
+    # 3. Constant-time comparison (prevents timing side-channel attacks)
+    received_sig = x_signature_256.lower().removeprefix("sha256=")
+    if not hmac.compare_digest(expected_sig, received_sig):
+        logger.warning("Webhook rejected: Invalid HMAC signature")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook signature")
+
+    logger.debug("Webhook HMAC signature verified successfully", timestamp=timestamp_int)
+    return True
+

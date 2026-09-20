@@ -45,7 +45,7 @@ target_backends:
 | **4** | **تسجيل تقييم الطالب (Feedback)** | `POST` | `/v1/search/feedback` | `Student` / `Admin` | JSON (Status 200) |
 | **5** | **إحصائيات الجودة للإدارة** | `GET` | `/v1/admin/feedback` | `Admin` / `Teacher` | JSON (Analytics) |
 | **6** | **بدء معالجة فيديو (Ingest)** | `POST` | `/v1/ingest/audio` | `Admin` | JSON (Status 200) |
-| **7** | **باعث تحديث الدروس (Webhook)** | `POST` | `/v1/webhooks/lesson-updated` | `X-Service-Token` | JSON (Status 202) |
+| **7** | **باعث تحديث الدروس (Webhook)** | `POST` | `/v1/webhooks/lesson-updated` | `HMAC-SHA256 (Strict)` | JSON (Status 202) |
 | **8** | **متابعة المعالجة (Ingest SSE)** | `GET` | `/v1/ingest/events/{sessionId}` | Public / Token | `text/event-stream` |
 | **9** | **استعلام حالة معالجة الدرس (Status)** | `GET` | `/v1/ingest/status/{lessonId}` | Public / Token | JSON (Status DTO) |
 
@@ -371,6 +371,21 @@ new Claim("DepartmentId", user.DepartmentId?.ToString() ?? "")
   "error": "Failed to download audio from YouTube. Video might be private or unavailable."
 }
 ```
+
+### 8.4 تأمين الـ Webhooks بتوقيع رقمي (HMAC-SHA256 & Anti-Replay Standard)
+* **المسار:** `POST http://<PYTHON_HOST>:8000/v1/webhooks/lesson-updated`
+* **معيار الأمان:** معيار 2026 العالمي (Stripe & GitHub Webhook Standard).
+* **الترويسات الإلزامية في الطلب (Mandatory Headers):**
+  - `X-Signature-256: sha256=<hex_digest_lowercase>`
+  - `X-Timestamp: <unix_epoch_seconds>`
+  *(تم إيقاف ترويسة X-Service-Token نهائياً بعد اكتمال مرحلة الترقية بنجاح 100% منعاً لأي ثغرة Downgrade).*
+* **معادلة توقيع الـ HMAC (Byte-Level Single Source of Truth):**
+  $$\text{PayloadToSign} = \text{timestamp} + "." + \text{raw\_json\_body}$$
+  $$\text{Signature} = \text{HMAC-SHA256}(\text{Key}, \text{PayloadToSign})$$
+* **ضوابط التحقق الصارمة في بايثون:**
+  1. **مقاومة هجمات الإعادة (Anti-Replay):** يُرفض الطلب فوراً بـ `401 Unauthorized` إذا كان الفارق بين التوقيت الحالي و `X-Timestamp` أكبر من 300 ثانية (5 دقائق).
+  2. **مقاومة هجمات التوقيت (Timing Attacks):** تتم المقارنة حصراً بدالة `hmac.compare_digest` الثابتة زمنياً.
+  3. **سلامة البايتات (Byte Integrity):** يُقرأ الـ Raw Binary Body مباشرة من الـ Request Stream لمنع أي اختلاف ناتج عن إعادة الـ Serialization.
 
 ---
 

@@ -4,12 +4,11 @@ import hashlib
 import json
 import os
 import re
-import secrets
 import time
 from pathlib import Path
 
 from cachetools import TTLCache
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sse_starlette.sse import EventSourceResponse
 import structlog
@@ -42,7 +41,7 @@ from src.models.search_models import (
     FeedbackAnalyticsResponse,
 )
 from src.models.auth_models import LessonFullContext
-from src.services.auth_service import UserContext, get_current_user, require_role
+from src.services.auth_service import UserContext, get_current_user, require_role, verify_webhook_signature
 from src.services.lesson_content_service import lesson_content_service
 
 from src.services.lms_client import lms_client_service
@@ -305,21 +304,22 @@ async def start_audio_ingestion(
     }
 
 
-@router.post("/webhooks/lesson-updated", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/webhooks/lesson-updated",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_webhook_signature)],
+)
 @limiter.limit("60/minute")
 async def unified_lesson_webhook(
     request: Request,
     payload: WebhookPayload,
     background_tasks: BackgroundTasks,
-    x_service_token: str = Header(..., alias="X-Service-Token")
 ):
     """
     مسار Webhook موحد يستقبل إشعارات التحديث أو الحذف من سيرفر الـ .NET.
-    محمي بـ Service Token لمنع الهجمات الخارجية.
+    محمي بتوقيع رقمي HMAC-SHA256 قياسي مع حماية ضد هجمات الإعادة (Anti-Replay).
+    يدعم أيضاً التوافق العكسي مع X-Service-Token القديم لمنع انقطاع الخدمة (Zero-Downtime).
     """
-    if not secrets.compare_digest(x_service_token, settings.SERVICE_TOKEN):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid service token")
-
     action_norm = payload.action.strip().lower()
     lesson_id = payload.lesson_id
 
