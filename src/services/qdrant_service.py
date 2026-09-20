@@ -182,13 +182,14 @@ class QdrantService:
 
         # Build module level and type conditions
         module_conditions = []
-        for module in user_ctx.permissions.accessible_modules:
-            must_inner = [FieldCondition(key="module_id", match=MatchValue(value=module.module_id))]
-            if module.level_filters:
-                must_inner.append(FieldCondition(key="level_id", match=MatchAny(any=module.level_filters)))
-            if module.type_filters:
-                must_inner.append(FieldCondition(key="type_id", match=MatchAny(any=module.type_filters)))
-            module_conditions.append(Filter(must=must_inner))
+        if user_ctx.permissions and user_ctx.permissions.accessible_modules:
+            for module in user_ctx.permissions.accessible_modules:
+                must_inner = [FieldCondition(key="module_id", match=MatchValue(value=module.module_id))]
+                if module.level_filters:
+                    must_inner.append(FieldCondition(key="level_id", match=MatchAny(any=module.level_filters)))
+                if module.type_filters:
+                    must_inner.append(FieldCondition(key="type_id", match=MatchAny(any=module.type_filters)))
+                module_conditions.append(Filter(must=must_inner))
 
         # Overall Filter
         overall_must = [

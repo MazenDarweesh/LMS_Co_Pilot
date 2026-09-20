@@ -49,31 +49,33 @@ class AuthValidatorService:
 # Module-level singleton — initialize() called from lifespan
 auth_validator_service = AuthValidatorService()
 
-def _build_user_entities(claims: TokenClaims, perms: UserPermissions) -> list[str]:
+def _build_user_entities(claims: TokenClaims, perms: UserPermissions | None = None) -> list[str]:
     """
     Constructs the precise list of Qdrant filtering entities.
     - Enforces strict Level & Type filtering for modules.
     - Grants standalone and playlist global access ONLY to Admins.
+    - Scopes by department if present in JWT claims.
     """
     entities: list[str] = [
         f"tenant:{claims.company_id}",
         f"role:{claims.role}",
     ]
+    if claims.department_id:
+        entities.append(f"dept:{claims.department_id}")
     
     # 🔴 GAP 2/3 FIX: Standalone & Playlists are restricted to Admins only.
     if claims.role == "Admin":
         entities.append("content:standalone")
         entities.append("content:playlist")
 
-    # 🔴 GAP 1 FIX: Strict Level & Type Filters per Module
-    for mod in perms.accessible_modules:
-        entities.append(f"module:{mod.module_id}")
-
-    # Standard unit and lesson access
-    for uid in perms.accessible_unit_ids:
-        entities.append(f"unit:{uid}")
-    for lid in perms.accessible_lesson_ids:
-        entities.append(f"lesson:{lid}")
+    # 🔴 GAP 1 FIX: Strict Level & Type Filters per Module (when granular permissions available)
+    if perms:
+        for mod in perms.accessible_modules:
+            entities.append(f"module:{mod.module_id}")
+        for uid in perms.accessible_unit_ids:
+            entities.append(f"unit:{uid}")
+        for lid in perms.accessible_lesson_ids:
+            entities.append(f"lesson:{lid}")
 
     return entities
 
@@ -83,12 +85,24 @@ async def get_current_user(
     token = credentials.credentials
     claims = auth_validator_service.decode_jwt(token)
 
+    # 🚀 Zero-Hop Optimization 1: Admins have global tenant access
+    # Admins bypass granular module/unit/lesson permission calls; their JWT claims provide full context.
+    if claims.role in ("Admin", "System"):
+        entities = _build_user_entities(claims, perms=None)
+        return UserContext(claims=claims, permissions=None, user_entities=entities)
+
+    # 🚀 Zero-Hop Optimization 2: For Students/Teachers, attempt to fetch granular permissions with graceful fallback
+    perms: UserPermissions | None = None
     try:
-        # Caching is now handled directly by TTLCache inside lms_client_service
         perms = await lms_client_service.get_user_permissions(claims.user_id)
     except Exception as e:
-        logger.error("LMS connection failed", user_id=claims.user_id, error=str(e))
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth service unavailable")
+        logger.warning(
+            "LMS permissions service unreachable; falling back to token claims (Zero-Hop)",
+            user_id=claims.user_id,
+            company_id=claims.company_id,
+            error=str(e),
+        )
+        perms = None
 
     entities = _build_user_entities(claims, perms)
     return UserContext(claims=claims, permissions=perms, user_entities=entities)

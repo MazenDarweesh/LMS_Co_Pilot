@@ -17,6 +17,10 @@ class TokenClaims(BaseModel):
             return v[0] if v else "Student"
         return str(v)
 
+    @property
+    def sub(self) -> str:
+        return self.user_id
+
 # 2. Nested Module Permissions (Level & Type Filters)
 # Maps to the .NET LMS internal API JSON response
 class AccessibleModule(BaseModel):
