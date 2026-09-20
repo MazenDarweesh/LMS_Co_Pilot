@@ -116,19 +116,22 @@ class LessonContentService:
         if not chunks:
             raise ValueError(f"لا يوجد محتوى مسجل للدرس {lesson_id}")
         
-        # حد أدنى للملخص: 3 chunks على الأقل لضمان جودة المحتوى
-        MIN_CHUNKS_FOR_SUMMARY = 3
+        # حد أدنى للملخص: chunk واحد على الأقل، مع تكييف عدد المواضيع حسب طول المحتوى
+        MIN_CHUNKS_FOR_SUMMARY = 1
         if len(chunks) < MIN_CHUNKS_FOR_SUMMARY:
             raise ValueError(
                 f"محتوى الدرس '{lesson_id}' غير كافٍ لتوليد ملخص. "
-                f"وُجد {len(chunks)} chunk(s) فقط، والحد الأدنى هو {MIN_CHUNKS_FOR_SUMMARY}."
+                f"لا يوجد أي محتوى مسجل للدرس في قاعدة البيانات."
             )
             
         chunk_texts = [f"- {c.payload.get('text_msa', '')}" for c in chunks]
         context_str = "\n".join(chunk_texts)
         
+        # تكييف عدد المواضيع ديناميكياً: الدروس القصيرة (1-2 chunks) يُولد لها 1-2 موضوع، والدروس الكاملة 3 مواضيع
+        num_topics = min(3, max(1, len(chunks)))
+        
         prompt = SUMMARY_GENERATION_PROMPT.format(
-            num_topics=3, # حسب الـ ADR-06 اخترنا 3 مواضيع رئيسية
+            num_topics=num_topics,
             context_chunks=context_str
         )
         

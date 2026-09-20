@@ -1,9 +1,10 @@
----
-last_synced_commit: "1ec6603"
-last_updated: "2026-09-14T18:15:00Z"
-active_milestone: "M08"
-total_milestones: 8
-completed_milestones: 8
+    ---
+
+last_synced_commit: "da9c342"
+last_updated: "2026-09-18T13:45:00Z"
+active_milestone: "M09"
+total_milestones: 9
+completed_milestones: 9
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -15,7 +16,7 @@ completed_milestones: 8
 ## 📊 Milestone Progression & Historical Ledger
 
 | ID | Milestone Name | Status | Date Range | Primary Deliverables | Detail Dossier |
-|:---:|:---|:---:|:---:|:---|:---:|
+| :---: | :--- | :---: | :---: | :--- | :---: |
 | **M01** | Audio Ingestion & Dialect Normalization | ✅ COMPLETED | 2026-09-01 -> 2026-09-03 | Whisper + Gemini Flash CODA Normalizer | [M01 Dossier](milestones/M01_audio_ingestion.md) |
 | **M02** | Two-Stage Hybrid Search & Reranking | ✅ COMPLETED | 2026-09-04 -> 2026-09-06 | BGE-M3 + BM25 RRF & FlashRank ONNX | [M02 Dossier](milestones/M02_hybrid_search_rerank.md) |
 | **M03** | Multi-Tenant Semantic Cache & RBAC | ✅ COMPLETED | 2026-09-06 -> 2026-09-07 | Cosine >= 0.95 Cache + Tenant Isolation | [M03 Dossier](milestones/M03_tenant_cache_security.md) |
@@ -24,19 +25,29 @@ completed_milestones: 8
 | **M06** | Real-Time Streaming Search & Feedback | ✅ COMPLETED | 2026-09-13 -> 2026-09-13 | SSE Streaming (<300ms TTFT) + Feedback Engine + ADR-14 | [M06 Dossier](milestones/M06_streaming_feedback_guardrails.md) |
 | **M07** | Production Telemetry & SLA Alerting | ✅ COMPLETED | 2026-09-13 -> 2026-09-14 | TTFT/TPOT, Guardrail Refusals, Prometheus Alerts, Feedback DB | [M07 Dossier](milestones/M07_observability_alerting_feedback_persistence.md) |
 | **M08** | Canonical Integration Contract v3.0.0 & Pre-Production Hardening | ✅ COMPLETED | 2026-09-14 -> 2026-09-14 | Dual-Route Multiplexing (/v1 & /api), DTO Alignment, Alertmanager 9093, OWASP Headers & Finally Disk Cleanup | [M08 Dossier](milestones/M08_canonical_contract_hardening.md) |
+| **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-18 | Lifecycle States (None->Queued->Processing->Completed/Failed), Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
 ┌─────────────────────┬───────┬────────────┬────────────────────────┐
 │ Metric              │ Value │ Target     │ Visual Bar             │
 ├─────────────────────┼───────┼────────────┼────────────────────────┤
-│ Milestones Complete │ 8 / 8 │ 8 (Target) │ [████████████████████] │ 100.0%
+│ Milestones Complete │ 9 / 9 │ 9 (Target) │ [████████████████████] │ 100.0%
 │ Evaluation Quality  │ 0.92  │ >= 0.80    │ [██████████████████░░] │ Passed
 │ Latency (Exact/Sem) │ <1ms  │ <= 25ms    │ [████████████████████] │ Production
 │ Streaming TTFT      │ <300ms│ <= 500ms   │ [████████████████████] │ Production
 │ SLA Alert Coverage  │ 4/4   │ 4 rules    │ [████████████████████] │ Production
 └─────────────────────┴───────┴────────────┴────────────────────────┘
 ```
+
+---
+
+## 🎯 Milestone Deliverables (M09 Completed)
+
+* **Video AI Ingestion Lifecycle State Machine:** 5-state asynchronous lifecycle (`None` ➔ `Queued` ➔ `Processing` ➔ `Completed` / `Failed`) with per-lesson `asyncio.Lock` serialization, orchestrating audio ingestion, Whisper transcription, Gemini normalization, and Qdrant upserts.
+* **Dual-Synchronization Protocol (Push Webhook + Fallback Status API):** Real-time webhook notification dispatched to .NET (`POST /api/internal/lessons/{lessonId}/ai-status`) with `X-Service-Token`, alongside a stateless query endpoint (`GET /v1/ingest/status/{lesson_id}` and `/api/ingest/status/{lesson_id}`) returning live Qdrant chunk counts and active lock states.
+* **Adaptive Quiz Content Generation & Grounding (ADR-18):** Bound MCQ quiz generation to `actual_k = min(num_questions, len(chunks))` to prevent hallucinations on short video lessons, paired with structured `404 Not Found` responses on uningested content.
+* **Resilient Cross-Stack JWT Claim Ingress (ADR-20):** Defensive fallback in `AuthService` handling optional `company_id` claims for SuperAdmins and cross-framework claim aliases without bypassing cryptographic signature checks.
 
 ---
 
@@ -62,6 +73,7 @@ completed_milestones: 8
 ## 🔗 Cross-Document Living Suite
 
 This master chronicle is strictly coupled with:
+
 1. **GitHub Showcase:** [`README.md`](../../README.md)
 2. **Career & Technical Interview Playbook:** [`docs/INTERVIEW_PORTFOLIO_MASTER_GUIDE.md`](../INTERVIEW_PORTFOLIO_MASTER_GUIDE.md)
 3. **Execution Plan:** [`docs/REMAINING_TASKS_BLUEPRINT.md`](../REMAINING_TASKS_BLUEPRINT.md)

@@ -2,6 +2,7 @@ import os
 import json
 import hashlib
 import asyncio
+import time
 import aiofiles
 import structlog
 from pathlib import Path
@@ -13,6 +14,12 @@ from src.services.transcript_normalizer import transcript_normalizer
 from src.services.lms_client import lms_client_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.db.event_store import EventStoreRepository
+from src.core.metrics import (
+    record_video_ingestion_stage,
+    record_video_ingestion_completed,
+    record_video_ingestion_failed,
+    set_video_ingestion_in_flight,
+)
 
 logger = structlog.get_logger()
 
@@ -61,7 +68,9 @@ class PipelineOrchestrator:
 
                 # 3. الاستماع (الآذان - Groq)
                 await event_store.insert_event(session_id, "GroqWhisper", "TRANSCRIPTION_STARTED", {"chunk_index": chunk_index})
+                t_trans = time.perf_counter()
                 transcription_segments = await self.transcription_service.transcribe(chunk_path)
+                record_video_ingestion_stage("transcription", time.perf_counter() - t_trans)
                 
                 # استخراج النص الكامل من القطع
                 raw_text = " ".join([seg["text"] for seg in transcription_segments])
@@ -73,6 +82,7 @@ class PipelineOrchestrator:
                 # 4. التنقيح (العقل - Gemini)
                 await event_store.insert_event(session_id, "GeminiFlash", "NORMALIZATION_STARTED", {"chunk_index": chunk_index})
                 
+            t_norm = time.perf_counter()
             normalized_segment = await transcript_normalizer.normalize_segment(
                 raw_text=raw_text,
                 start_time=start_time,
@@ -80,6 +90,7 @@ class PipelineOrchestrator:
                 lesson_id=lesson_id,
                 video_id=youtube_url  # Pydantic schema will extract the ID and format it automatically
             )
+            record_video_ingestion_stage("normalization", time.perf_counter() - t_norm)
 
             # 5. حفظ الـ Checkpoint بطريقة آمنة (Atomic Write)
             os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -104,6 +115,8 @@ class PipelineOrchestrator:
         log.info("Pipeline started")
         
         session_id = f"sess_{lesson_id}"
+        set_video_ingestion_in_flight(1)
+        pipeline_start_time = time.perf_counter()
 
         # استخدام مهلة أقصاها 10 دقائق لكامل الـ Pipeline لضمان عدم تجمد السيرفر
         async with asyncio.timeout(600):
@@ -117,11 +130,15 @@ class PipelineOrchestrator:
                     await event_store.insert_event(session_id, "System", "PIPELINE_STARTED", {"url": youtube_url})
 
                     # 1. التحميل
+                    t_dl = time.perf_counter()
                     audio_file_path = await audio_downloader.download_audio(youtube_url)
+                    record_video_ingestion_stage("download", time.perf_counter() - t_dl)
                     await event_store.insert_event(session_id, "AudioService", "DOWNLOAD_COMPLETE", {"file": audio_file_path})
 
                     # 2. التقطيع
+                    t_chunk = time.perf_counter()
                     chunk_paths = await audio_downloader.chunk_audio(audio_file_path)
+                    record_video_ingestion_stage("chunking", time.perf_counter() - t_chunk)
                     await event_store.insert_event(session_id, "AudioService", "CHUNKING_COMPLETE", {"chunks_count": len(chunk_paths)})
 
                     # 3. المعالجة المتزامنة الآمنة (Structured Concurrency)
@@ -191,20 +208,28 @@ class PipelineOrchestrator:
 
                         # تنفيذ التضمين لكل المقاطع بالتوازي باستخدام asyncio.gather
                         # هذا سيجعل معالجة الفيديوهات الطويلة (> 1 ساعة) أسرع بكثير!
+                        t_emb = time.perf_counter()
                         prepared_points = await asyncio.gather(*(prepare_point(seg) for seg in results))
+                        record_video_ingestion_stage("embedding", time.perf_counter() - t_emb)
                         
                         payloads = [p[0] for p in prepared_points]
                         dense_vecs = [p[1] for p in prepared_points]
                         sparse_vecs = [p[2] for p in prepared_points]
 
+                        t_upsert = time.perf_counter()
                         await qdrant_service.upsert_chunks(payloads, dense_vecs, sparse_vecs)
+                        record_video_ingestion_stage("qdrant_upsert", time.perf_counter() - t_upsert)
+
                         await event_store.insert_event(
                             session_id, "QdrantService", "QDRANT_UPSERT_COMPLETE",
                             {"chunks_count": len(payloads)}
                         )
 
+                    total_duration = time.perf_counter() - pipeline_start_time
+                    record_video_ingestion_completed(total_duration, len(results))
+
                     await event_store.insert_event(session_id, "System", "PIPELINE_COMPLETE", {"status": "success", "total_chunks": len(results)})
-                    log.info("Pipeline completed successfully", total_chunks=len(results))
+                    log.info("Pipeline completed successfully", total_chunks=len(results), duration_seconds=round(total_duration, 2))
                     
                     # 🔔 Notify LMS backend of completion via webhook callback
                     asyncio.create_task(lms_client_service.notify_lesson_ai_status(
@@ -216,7 +241,9 @@ class PipelineOrchestrator:
                     return results
                     
                 except Exception as e:
-                    logger.error("Pipeline failed", error=str(e), session_id=session_id)
+                    total_duration = time.perf_counter() - pipeline_start_time
+                    record_video_ingestion_failed(total_duration)
+                    logger.error("Pipeline failed", error=str(e), session_id=session_id, duration_seconds=round(total_duration, 2))
                     await event_store.insert_event(session_id, "System", "PIPELINE_FAILED", {"error": str(e)})
                     # 🔔 Notify LMS backend of failure via webhook callback
                     asyncio.create_task(lms_client_service.notify_lesson_ai_status(
@@ -226,6 +253,7 @@ class PipelineOrchestrator:
                     ))
                     raise e
                 finally:
+                    set_video_ingestion_in_flight(-1)
                     # 🧹 تنظيف الملفات الصوتية المؤقتة دائماً حتى لو فشل الـ Pipeline لمنع امتلاء القرص
                     if audio_file_path and os.path.exists(audio_file_path):
                         try:

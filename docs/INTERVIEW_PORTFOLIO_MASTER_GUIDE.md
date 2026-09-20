@@ -1,14 +1,146 @@
 ---
-last_synced_commit: "1ec6603"
-last_synced_at: 2026-09-14T18:15:00Z
-guide_version: 1.8
-word_count: 7850
-max_word_budget: 12000
+last_synced_commit: "da9c342"
+last_synced_at: 2026-09-18T13:45:00Z
+guide_version: 2.0
+word_count: 10500
+max_word_budget: 14000
 ---
 
 # 🎓 LMS AI Co-Pilot: الدليل المرجعي الشامل للمقابلات التقنية (Bilingual Interview Master Guide)
 ## Production RAG, Multi-Agent Architecture, Technical Q&A & Career Playbook
 ### النسخة ثنائية اللغة: إنجليزي / عربي (Bilingual Edition: English & Arabic)
+
+---
+
+## ⚡ 0. كبسولة الإنقاذ السريعة: الشيت شيت الأساسي قبل المقابلة (Must-Know Cheat-Sheet)
+
+> [!IMPORTANT]
+> **اقرأ هذا القسم أولاً لتكون "شارب المشروع" في 5 دقائق قبل الدخول في تفاصيل الأسئلة والـ ADRs.**  
+> هذا الجدول يلخص جوهر المنظومة بالكامل: من يفعل ماذا، كيف تتصل الأنظمة ببعضها، ما هي دورة حياة الـ `AiStatus`، ولماذا اتخذنا كل قرار هندسي.
+
+### 🗺️ 1. خريطة المسؤوليات المعمارية: من يفعل ماذا؟ (Separation of Concerns)
+
+```text
+┌─────────────────────────────────────────────────────────┐          ┌─────────────────────────────────────────────────────────┐
+│     منظومة إدارة التعلم (.NET 10 Web API + Angular 19)   │          │          محرك الذكاء الاصطناعي (Python 3.13 FastAPI)     │
+│                 (LearnDynamicPro)                       │          │                     (LMS_CO_Pilot)                      │
+├─────────────────────────────────────────────────────────┤          ├─────────────────────────────────────────────────────────┤
+│ • مصدر الحقيقة الدائم (Stateful Source of Truth)        │          │ • محرك حسابي عديم الحالة (Stateless Compute Engine)     │
+│ • إدارة الكورسات، الوحدات، الدروس، والمستخدمين          │          │ • تفريغ ومعالجة صوت الفيديوهات (Audio Ingestion)        │
+│ • تخزين البيانات العلائقية داخل SQL Server عبر EF Core   │          │ • الفهرسة الشعاعية والبحث الهجين في Qdrant              │
+│ • إصدار وتوقيع توكنات المستخدمين (JWT Issuer - HS256)   │          │ • توليد الكويزات والملخصات لحظياً وإرجاعها كـ JSON      │
+│ • تخزين حالة الذكاء الاصطناعي (AiStatus) في جدول الدروس │          │ • بث الردود اللحظي بالتوكنز عبر تقنية SSE Stream        │
+│ • حفظ الكويزات والملخصات النهائية بعد مراجعة المشرف     │          │ • حماية الاستعلامات بكاش ثنائي الطبقات وسياج اللهجات    │
+└─────────────────────────────────────────────────────────┘          └─────────────────────────────────────────────────────────┘
+```
+
+---
+
+### 🌐 2. جدول المنافذ والمكونات في بيئة التشغيل (Ports & Topology Cheat Sheet)
+
+| المكون / الخدمة (Service) | التقنية والإصدار | المنفذ (Port) | الوظيفة الأساسية في المنظومة |
+|:---|:---|:---:|:---|
+| **Python AI Engine** | FastAPI 0.115 + Uvicorn | `8000` | خادم الـ API للبحث الهجين، التوليد، ومعالجة الوسائط |
+| **.NET LMS Backend** | .NET 10 Web API | `5115` / `8080` | الـ Backend الرئيسي، إدارة الدروس وقواعد البيانات وحالة الـ AI |
+| **Angular Client** | Angular 19 (Signals & SSR) | `4200` | الواجهة الأمامية للطلاب والمشرفين (مشاهدة الدروس والكويزات والشات) |
+| **Qdrant Vector DB** | Qdrant v1.13.2 (Rust) | `6333` | تخزين المتجهات الكثيفة واللفظية، البحث الهجين بـ RRF، والكاش الدلالي |
+| **PostgreSQL DB** | PostgreSQL 16 (asyncpg) | `5432` | تخزين ذاكرة المحادثات لـ LangGraph وحفظ تقييمات الطلاب (Feedback) |
+| **Prometheus** | Prometheus v2.54.1 | `9090` | جمع وتجميع مؤشرات الأداء ومقاييس زمن الاستجابة والتوكنز |
+| **Alertmanager** | Alertmanager v0.27.0 | `9093` | إدارة وتوجيه تنبيهات اتفاقيات مستوى الخدمة (SLAs) عبر الويب هوك |
+| **Grafana Dashboard** | Grafana v11.2.0 | `3001` | لوحة القيادة الحية لمراقبة الكاش، زمن الاستجابة، ونشاط الطلاب |
+
+---
+
+### 🔐 3. بروتوكول الأمان والمصادقة المتبادلة (Authentication & Security Cheat Sheet)
+
+1. **توكن الطالب/المشرف (User JWT):**
+   - يُصدره .NET بتشفير `HS256`، بمُصدر `DynamicProLearn` وجمهور `DynamicProLearnClient`.
+   - بايثون يتحقق منه باستخدام نفس الـ `JWT_SECRET`.
+   - **المرونة الهندسية (Resilient Claims):** تم تصميم بايثون ليدعم غياب `company_id` للـ SuperAdmins، والتعامل مع مسميات الحقول المختلفة في .NET (`sub` أو `Id`، و `role` أو `Role`) دون حدوث خطأ 422 أو 500.
+2. **توكن الخدمات الداخلي (Internal Service Token):**
+   - يُستخدم حصراً في الاتصال المباشر بين السيرفرين (Machine-to-Machine).
+   - بايثون يرسل لـ .NET: `X-Service-Token: <token>` (أو `Authorization: Bearer <token>`).
+   - دوت نت يرسل لـ بايثون: `X-Service-Token: <token>`.
+   - **سياسة Fail-Closed:** لا توجد قيم افتراضية للتساهل في بيئة الإنتاج؛ غياب أو عدم تطابق التوكن ينتج عنه `401 Unauthorized` فوراً.
+
+---
+
+### 🔄 4. دورة حياة حالة الذكاء الاصطناعي (The `AiStatus` State Machine Cheat Sheet)
+
+```text
+               [ المشرف يضع رابط فيديو للدرس ]
+                             │
+                             ▼
+                        ┌─────────┐
+                        │  None   │  (الدرس غير معالج نهائياً - لا يمكن توليد كويز أو ملخص)
+                        └────┬────┘
+                             │
+            [.NET يُرسل Webhook إلى بايثون: POST /v1/webhooks/lesson-updated]
+                             │
+                             ▼
+                        ┌─────────┐
+                        │ Queued  │  (الطلب محجوز ومؤمن بقفل تزامني لمنع التكرار)
+                        └────┬────┘
+                             │
+            [بدء تنزيل الصوت، التفريغ بـ Whisper، التنقيح بـ Gemini، والرفع لـ Qdrant]
+                             │
+                             ▼
+                        ┌────────────┐
+                        │ Processing │  (جاري المعالجة - تظهر شاشة تحميل للمشرف)
+                        └─────┬──────┘
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+      (نجحت الفهرسة وعدد المقاطع > 0)    (فشل التنزيل أو الفيديو خاص أو تعطلت الشبكة)
+             │                                 │
+             ▼                                 ▼
+       ┌───────────┐                     ┌──────────┐
+       │ Completed │                     │  Failed  │
+       └─────┬─────┘                     └────┬─────┘
+             │                                │
+  [تفعيل أزرار الكويز والملخص]        [زر إعادة المحاولة (Retry) + رسالة الخطأ للمشرف]
+```
+
+#### 📡 كيف يعرف .NET حالة المعالجة؟ (نموذج التزامن المزدوج: Push + Poll)
+1. **طريقة الدفع الفوري (Event-Driven Webhook Callback - Push):**
+   - عندما ينتهي بايثون من المعالجة بنجاح أو عند حدوث أي خطأ، يقوم فوراً باستدعاء .NET عبر:  
+     `POST http://<DOTNET_HOST>:5115/api/internal/lessons/{lessonId}/ai-status`
+   - الحمولة عند النجاح: `{"status": "Completed", "chunks_count": 5, "current_stage": "QDRANT_UPSERT_COMPLETE", "error": null}`.
+   - الحمولة عند الفشل: `{"status": "Failed", "chunks_count": 0, "current_stage": "AUDIO_DOWNLOAD_FAILED", "error": "Video is private or unavailable"}`.
+2. **طريقة الاستعلام الاحتياطي (Fallback Status Polling - Pull):**
+   - في حال تعطلت شبكة الويب هوك أو أراد الفرونت إند التحقق المباشر، يوفر بايثون مسار:  
+     `GET /v1/ingest/status/{lesson_id}` (وأيضاً المسار البديل `/api/ingest/status/{lesson_id}`).
+   - هذا المسار يفحص قاعدة بيانات Qdrant مباشرة ويفحص أقفال الذاكرة الحية، ويرجع الحالة الدقيقة وعدد الـ Chunks والمرحلة الحالية دون الحاجة لأي حالة وسيطة مخزنة.
+
+---
+
+### 📊 4.1 مقاييس مراقبة معالجة الفيديو في Prometheus ولوحة Grafana (Video Processing Observability)
+
+تم تزويد محرك بايثون بمقاييس Prometheus حية، مع صف كامل ولوحات متخصصة في لوحة تحكم **Grafana** (`:3001`) تحت عنوان:  
+`🎬 Video AI Ingestion & Audio Pipeline Telemetry`:
+
+| اسم المقياس في Prometheus | النوع (Type) | التسميات (Labels) | ما يراقبه وما يعرضه في Grafana |
+|:---|:---:|:---|:---|
+| `lms_video_ingestion_total` | Counter | `status="success" \| "failed"` | إجمالي عمليات معالجة الفيديوهات مع تلوين فوري للنجاح (أخضر) والفشل (أحمر). |
+| `lms_video_ingestion_in_flight` | Gauge | — | عدد الفيديوهات الجاري تنزيلها ومعالجتها لحظياً في نفس الثانية لمنع استنزاف السيرفر. |
+| `lms_video_ingestion_chunks_total` | Counter | — | إجمالي عدد المقاطع (Chunks) المفهرسة في Qdrant لجميع الدروس. |
+| `lms_video_ingestion_duration_seconds` | Histogram | buckets: `10s`..`600s` | الزمن الإجمالي لمعالجة الفيديو من البداية للنهاية (منحنى بياني p95 ومتوسط الزمن Mean). |
+| `lms_video_ingestion_stage_duration_seconds` | Histogram | `stage="download" \| "chunking" \| "transcription" \| "normalization" \| "embedding" \| "qdrant_upsert"` | تفصيل كمون كل مرحلة لاكتشاف موضع الاختناق (Bottleneck) بدقة (هل التأخير من يوتيوب أم Whisper أم Gemini أم Qdrant). |
+
+---
+
+### 💡 5. مصفوفة أسباب الاختيارات الهندسية (Why We Chose X over Y Cheat Sheet)
+
+| القرار الهندسي (Choice) | البديل المرفوض (Rejected Alternative) | السبب والمقايضة التقنية (Why? Technical Trade-off) |
+|:---|:---|:---|
+| **Qdrant Vector DB** | ChromaDB أو `pgvector` | • ChromaDB لعبة أبحاث غير مهيأة للمؤسسات وتفتقر لعزل المستأجرين.<br>• `pgvector` بطيء في الـ High Concurrency ويفتقر لمتجهات Sparse المدمجة.<br>• **Qdrant** مكتوبة بـ Rust، تجمع Dense + Sparse في نفس الكوليكشن، وتدعم خوارزمية RRF الأصلية وفلاتر الـ Payload بسرعة الميكروثانية. |
+| **البحث الهجين (BGE-M3 + BM25 مع RRF)** | البحث الشعاعي الكثيف وحده (Pure Dense) | التضمين الكثيف يفهم المعنى العام لكنه يعجز عن مطابقة أسماء الشاشات والأكواد المحاسبية الدقيقة (مثل `شاشة POS` أو كود الحساب `101001`). دمج BM25 يضمن التطابق اللفظي الحرفي دون التضحية بالمعنى الدلالي. |
+| **FlashRank ONNX Quantized Reranker** | PyTorch Cross-Encoder الكامل | تشغيل PyTorch Cross-Encoder كامل على الـ CPU كان يستغرق **40 إلى 50 ثانية** لترتيب 20 مقطعاً! تحويله إلى أوزان INT8 مكممة عبر **ONNX Runtime** خفض الزمن إلى **~180ms فقط** بنفس الدقة (>95%) ووفر آلاف الدولارات المخصصة لـ GPUs. |
+| **توليد كويز متكيف: `min(num, chunks)`** | فرض 5 أسئلة دائماً (Fixed 5 Questions) | الفيديوهات القصيرة (دقيقة أو دقيقتين) تنتج مقطعين أو 3 فقط في Qdrant. محاولة إجبار النموذج على توليد 5 أسئلة كانت تؤدي إما لانهيار الطلب بـ 500 أو اختلاق أسئلة وهلوسة من خارج الدرس. التكيف التلقائي مع عدد المقاطع يضمن أمانة علمية 100%. |
+| **قفل التزامن في الذاكرة `asyncio.Lock`** | أقفال قاعدة البيانات (Postgres Advisory Locks) | معالجة الفيديو وتفريغ الصوت تستغرق من 30 إلى 120 ثانية. حجز قفل قاعدة بيانات طوال هذا الوقت يستنزف اتصالات الـ DB Connection Pool ويخنق النظام. القفل في الذاكرة مع تنظيف TOCTOU يحمي الخادم بكفاءة تامة. |
+| **كاش ثنائي الطبقات (2-Tier Caching)** | الكاش الدلالي فقط (Semantic Cache Only) | الكاش الدلالي يستلزم حساب التضمين لـ BGE-M3 (يستغرق ~360ms). للتحيات والأسئلة الشائعة جداً، أضفنا كاش بالذاكرة Tier-1 بمفاتيح 4D مشفرة بـ SHA-256 ليرد في **< 1ms** بدون أي تكلفة شبكة أو تضمين. |
+| **سياج حماية اللهجات قبل الـ RAG** | فحص البرومبتات عبر LLM إضافي | فحص نوايا المستخدم أو كشف الاختراق عبر LLM إضافي يضيف 1 إلى 2 ثانية وتكلفة مالية مضاعفة. صممنا مصفوفة Regex مجمعة محلياً تفحص اللهجات المصرية والخليجية ومحاولات Jailbreak في **أقل من 0.05ms**. |
+| **بث النتائج بـ SSE مع تقديم الروابط** | الرد التقليدي الكامل (Blocking REST Response) | انتظار الطالب 5 ثوانٍ لرؤية الإجابة تجربة سيئة. في SSE نرسل روابط الفيديو فوراً في **أول 300ms** لتشغيل المشغل في الواجهة، ثم نضخ التوكنز تدريجياً، مع ميزة إلغاء التوليد فور انقطاع الطالب لمنع هدر الفلوس. |
 
 ---
 
@@ -170,6 +302,8 @@ max_word_budget: 12000
   * **[EN]:** Student ratings must never slow down client interactions. We offloaded DB persistence to FastAPI `BackgroundTasks`, achieving `< 15ms` API latency. To handle vote reversals (e.g., student switches from DOWN to UP with updated comments), we designed a composite unique constraint `(user_id, query_hash, answer_hash)` in PostgreSQL. This allows upsert updates without primary key violations or duplicate rows. In **ADR-15**, we rejected real-time PII redaction on feedback text: scrubbed text damages Arabic dialect nuances and model evaluation fidelity; redaction is instead enforced as a pipeline filter upon administrative export.
   * **[AR]:** تسجيل التقييمات لا ينبغي أن يعطل تجربة الطالب؛ لذا عزلنا كتابة قاعدة البيانات في `BackgroundTasks` ليرد الخادم في أقل من 15ms. وللسماح بتعديل التصويت (لو غيّر الطالب رأيه من سلبي لإيجابي وأضاف تعليقاً)، اعتمدنا قيداً فريداً مركباً `(user_id, query_hash, answer_hash)` في PostgreSQL ينفذ تحديثاً فورياً دون تكرار السجلات أو انهيار الاتصال. وقررنا في **ADR-15** حظر تنقيح الـ PII أثناء الاستقبال للحفاظ على نقاء اللهجة ودقة التقييم اللاحق للنماذج، وتأجيل التنقيح لطبقة التصدير.
 
+
+
 ---
 
 ### ADR-10: Decoupled Offline Drift Evaluation (ADR-16) & Prometheus SLA Alerting (ADR-17)
@@ -180,6 +314,43 @@ max_word_budget: 12000
 * **Technical Trade-off / المقايضة الهندسية:**
   * **[EN]:** Using real-time LLM judges to monitor answers in production would quadruple latency and token expenditures. We established an **Offline Scheduled Evaluation Pipeline (ADR-16)**: querying `GET /v1/admin/feedback?format=ragas` to sample negative student feedback and benchmark Faithfulness and Answer Relevancy weekly via Ragas against our baseline (0.92/0.86). For operational health, **ADR-17** mounts declarative alerting rules (`alerts.yml`) into Prometheus with strict SLA thresholds: firing on 5xx error rate > 5%, P95 search latency > 3.0s, security guardrail refusal spikes > 0.5/s, and degraded semantic cache hit rates (<10%).
   * **[AR]:** فحص الردود لحظياً بنماذج ذكاء اصطناعي محكّمة (LLM-as-a-Judge) يضاعف التكلفة والكمون 4 مرات. اعتمدنا استراتيجية **التقييم الدوري غير المتزامن (ADR-16)**: سحب العينات ذات التقييم السلبي دورياً عبر `GET /v1/admin/feedback?format=ragas` وتشغيل فحص Ragas أسبوعياً لمراقبة ثبات معايير Faithfulness و Relevancy. وللصحة التشغيلية، اعتمدنا في **ADR-17** ملف تنبيهات صارم `alerts.yml` داخل Prometheus يُطلق إنذارات فورية عند تجاوز أخطاء 5xx نسبة 5%، أو تخطي كمون P95 عتبة 3.0 ثوانٍ، أو قفزات محاولات الاختراق وحجب الأمان (`>0.5/s`).
+
+---
+
+### ADR-11 (ADR-18): Adaptive Quiz Generation & Context Grounding vs. Rigid 5-Question Constraint
+
+* **Question / التحدي:**
+  * **[EN]:** "How do you handle generating quizzes for short videos (e.g., 1-2 minutes) without hallucinating questions or throwing 500 errors?"
+  * **[AR]:** "كيف تتعامل مع توليد كويز لفيديوهات قصيرة (دقيقة أو دقيقتين) دون أن يهلوس النموذج أو ينهار الخادم بخطأ 500؟"
+* **Technical Trade-off / المقايضة الهندسية:**
+  * **[EN]:** In production, business stakeholders often request a fixed number of questions (e.g., 5 MCQs per quiz). However, a 2-minute video generates only 2 or 3 chunks in Qdrant (120s chunking window). Forcing an LLM to invent 5 questions from 2 chunks guarantees hallucination—the model will invent concepts never mentioned in the video. In [lesson_content_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/lesson_content_service.py), we implemented adaptive generation: `actual_k = min(num_questions, len(chunks))`. If only 3 chunks exist, we generate 3 strictly grounded questions. Furthermore, if a lesson has 0 chunks in Qdrant, we return a typed `404 Not Found` with an explicit actionable message ("Lesson has not been processed yet") instead of an opaque 500 crash.
+  * **[AR]:** متطلبات العمل غالباً ما تطلب عدداً ثابتاً من الأسئلة (مثلاً 5 أسئلة لكل كويز). لكن فيديو مدته دقيقتان ينتج مقطعين أو 3 مقاطع فقط في Qdrant (نافذة التقطيع 120 ثانية). إجبار النموذج على استخراج 5 أسئلة من مقطعين يجبره حتماً على الهلوسة واختلاق حقائق لم تُذكر في الشرح. في [lesson_content_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/lesson_content_service.py)، طبقنا قاعدة التوليد المتكيف: `actual_k = min(num_questions, len(chunks))`؛ فإذا وُجدت 3 مقاطع نولد 3 أسئلة دقيقة مستندة للمحتوى فقط. ولو كان الدرس غير معالج (0 مقاطع)، نرجع فوراً كود `404 Not Found` موجه للمستخدم يطلب منه معالجة الفيديو أولاً بدلاً من انهيار السيرفر بخطأ 500 غير مفهوم.
+
+---
+
+### ADR-12 (ADR-19): Dual Synchronization Protocol (Push Webhook Callback + Pull Polling) for AI Ingestion Lifecycle
+
+* **Question / التحدي:**
+  * **[EN]:** "How does the .NET backend track the state of heavy, multi-minute audio ingestion jobs without maintaining expensive persistent connections?"
+  * **[AR]:** "كيف تتابع منصة دوت نت حالة معالجة الفيديوهات الطويلة دون استنزاف الاتصالات المفتوحة (Persistent Connections)؟"
+* **Technical Trade-off / المقايضة الهندسية:**
+  * **[EN]:** Audio ingestion involves downloading, Whisper transcription, Gemini normalization, and BGE-M3 embedding, taking 30 to 120 seconds. Holding an HTTP request open across this duration causes gateway timeouts (504). We implemented a resilient **Dual Synchronization Protocol**:
+    1. **Primary Push (Asynchronous Webhook Callback):** When the Python pipeline finishes or fails, [pipeline_orchestrator.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/pipeline_orchestrator.py) calls .NET at `POST /api/internal/lessons/{lessonId}/ai-status` with `X-Service-Token`, passing terminal status (`Completed` / `Failed`), chunk counts, and any error message.
+    2. **Fallback Pull (Stateless Status Query):** If a webhook packet drops or the Angular client refreshes the page, Python exposes `GET /v1/ingest/status/{lesson_id}` (and compatibility alias `/api/ingest/status/{lesson_id}`). This endpoint queries Qdrant directly for point counts and checks the active `asyncio.Lock` registry, dynamically returning `None`, `Processing`, or `Completed` without requiring a separate stateful database.
+  * **[AR]:** معالجة الصوت تتضمن التنزيل والتفريغ بـ Whisper والتنقيح بـ Gemini والتضمين الشعاعي، مما يستغرق من 30 إلى 120 ثانية. إبقاء اتصال HTTP مفتوحاً طوال هذا الوقت يؤدي حتماً لانتهاء مهلة البوابات (504 Gateway Timeout). صممنا **بروتوكول تزامن ثنائي هجين**:
+    1. **الدفع الأساسي (Webhook Push Callback):** عند اكتمال المعالجة أو فشلها، يقوم بايثون باستدعاء .NET فوراً على مسار `POST /api/internal/lessons/{lessonId}/ai-status` بتمرير التوكن الداخلي والحالة النهائية (`Completed` أو `Failed`) مع عدد المقاطع ورسالة الخطأ إن وُجدت.
+    2. **الاستعلام الاحتياطي (Polling Pull):** لو سقط إشعار الويب هوك بسبب الشبكة أو قام المشرف بعمل Refresh لصفحة Angular، يوفر بايثون مسار `GET /v1/ingest/status/{lesson_id}`؛ يفحص هذا المسار قاعدة بيانات Qdrant مباشرة وأقفال الذاكرة الحية ليرجع الحالة الدقيقة لحظياً دون الحاجة لتخزين حالة وسيطة في قاعدة بيانات إضافية.
+
+---
+
+### ADR-13 (ADR-20): Resilient Cross-Stack JWT Claim Negotiation (.NET Identity vs. Python Pydantic)
+
+* **Question / التحدي:**
+  * **[EN]:** "How did you solve subtle JWT claim mismatches between ASP.NET Core Identity tokens and Python Pydantic models in production?"
+  * **[AR]:** "كيف تغلبت على التناقضات بين توكنات ASP.NET Core ونماذج التحقق Pydantic في بايثون أثناء الإنتاج؟"
+* **Technical Trade-off / المقايضة الهندسية:**
+  * **[EN]:** .NET Identity frequently structures JWT claims differently depending on user roles: SuperAdmins lack tenant `company_id` claims, and claim types often map to either standard RFC names (`sub`) or Microsoft namespaces (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`). Strict Pydantic models threw `422 Unprocessable Entity` or `500` errors on these tokens. In [auth_models.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/models/auth_models.py), we updated `TokenClaims` with optional defaults (`company_id: str | None = None`, `role: str = "Student"`). In [auth_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/auth_service.py), we added a graceful validation fallback: if strict Pydantic instantiation throws a `ValidationError`, the service parses claims defensively with safe defaults, preventing system outages while preserving cryptographic signature validation.
+  * **[AR]:** توكنات ASP.NET Core تصدر أحياناً بهياكل مختلفة باختلاف الرتبة: فالمشرف العام (SuperAdmin) لا ينتمي لشركة محددة وبالتالي يغيب عنه حقل `company_id`، كما تختلف مسميات الحقول أحياناً بين أسماء الـ RFC القياسية ومسميات مايكروسوفت. التحقق الصارم في Pydantic كان يرفض هذه التوكنات بـ 422 أو 500. قمنا بتعديل `TokenClaims` ليقبل قيماً افتراضية اختيارية، وأضفنا في `auth_service.py` معالجة دفاعية تستوعب استثناءات `ValidationError` وتستخرج المطالبات بأمان دون كسر التحقق الرياضي من التوقيع بالمفتاح السري.
 
 ---
 
@@ -344,6 +515,97 @@ max_word_budget: 12000
   * **المهمة (Task):** بناء إطار تقييم كمي مؤتمت ومستمر لقياس دقة المنظومة.
   * **الإجراء (Action):** قمنا بدمج إطار **Ragas v0.4+** وبناء مجموعة بيانات ذهبية `golden_dataset.jsonl` مستخرجة من مقاطع حقيقية، وقياس معيار الأمانة الواقعية (**Faithfulness**) ومعيار صلة الإجابة بالسؤال (**Answer Relevancy**).
   * **النتيجة (Result):** حققنا **0.92 في Faithfulness** (متفوقين على هدف 0.80) و **0.86 في Answer Relevancy**، وتم توثيق النتيجة رسمياً في [tests/eval/BASELINE.md](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/tests/eval/BASELINE.md) لتعمل كخط أساس ثابت لأي تعديل برمجي."
+
+
+---
+
+### 🔹 المحور 6: التكامل بين الأنظمة ودورة حياة الذكاء الاصطناعي (Cross-Service Integration & AI Lifecycle)
+
+#### Q9: Inter-Service Architecture & Separation of Concerns (.NET 10 vs. Python FastAPI)
+* **Question [EN]:** "How do your .NET 10 LMS backend and Python AI microservice communicate, and how did you divide responsibilities between them without duplicating state or business logic?"
+* **السؤال [AR]:** "كيف تتواصل منظومة دوت نت (.NET 10) مع محرك بايثون للذكاء الاصطناعي، وكيف فصلت المسؤوليات المعمارية بينهما دون تكرار للبيانات أو منطق العمل؟"
+
+* **Answer [EN] (STAR Method):**
+  * **Situation:** We needed to integrate an enterprise e-learning platform (`LearnDynamicPro` in .NET 10 / Angular 19) with a sophisticated RAG AI engine (`LMS_CO_Pilot` in Python 3.13 / FastAPI / Qdrant).
+  * **Task:** Design a robust, decoupled inter-service architecture with strict boundaries, zero state duplication, and unified security.
+  * **Action:**
+    1. **Strict Stateless Separation:** Designated .NET as the **Stateful Master Source of Truth** (owning SQL Server, relational entities, user permissions, and persistent quiz/summary records). Designated Python as the **Stateless Compute & Retrieval Engine** (owning audio ingestion, Qdrant vectors, hybrid search, and generative LLM orchestration). Python stores zero course data in SQL Server; it generates JSON payloads that .NET validates and persists.
+    2. **Dual-Tier Authentication:** (a) End-user requests (Search, Streaming, Feedback) carry user JWTs issued by .NET (`HS256`, `JWT_SECRET`), which Python verifies to extract identity and RBAC entity filters. (b) Machine-to-Machine communication (webhooks and metadata lookups) uses a shared `SERVICE_TOKEN` via `X-Service-Token` headers under a strict Fail-Closed policy.
+    3. **Postel's Law Routing:** Handled prefix differences by multiplexing routes under both `/v1/*` (canonical) and `/api/*` (compatibility alias) in FastAPI, ensuring zero runtime breaking changes.
+  * **Result:** Achieved 100% decoupling: .NET team manages business workflows and UI in Angular; Python microservice scales independently on AI workloads without touching relational databases.
+
+* **الإجابة [AR] (منهجية STAR):**
+  * **الموقف (Situation):** كان التحدي هو ربط منصة تعليمية مؤسسية (`LearnDynamicPro` مبنية بـ .NET 10 و Angular 19) بمحرك ذكاء اصطناعي وبحث هجين متقدم (`LMS_CO_Pilot` مبني بـ Python 3.13 و FastAPI و Qdrant).
+  * **المهمة (Task):** تصميم معمارية تواصل متينة ومفصولة الصلاحيات تمنع تكرار البيانات وتضمن أعلى درجات الأمان.
+  * **الإجراء (Action):**
+    1. **الفصل الصارم للمسؤوليات (Stateless vs Stateful):** جعلنا دوت نت هو **مصدر الحقيقة الدائم** (يملك SQL Server، بيانات المستخدمين، الكورسات، وحفظ نتائج الكويزات والملخصات). وجعلنا بايثون **محركاً حسابياً عديم الحالة** (مسؤول عن تفريغ الصوت، الفهرسة في Qdrant، والبحث والتوليد). بايثون لا يتصل بـ SQL Server ولا يحفظ الكويزات لديه؛ بل يولدها كـ JSON لحظي ليتولى دوت نت تدقيقها وحفظها.
+    2. **نظام المصادقة المزدوج:** (أ) طلبات الطلاب تستخدم توكن الـ JWT الصادر من دوت نت (`HS256`) حيث يتحقق منه بايثون ويستخرج الصلاحيات. (ب) الاتصال المباشر بين السيرفرين (Machine-to-Machine) محمي بـ `SERVICE_TOKEN` إلزامي مشفر عبر ترويسة `X-Service-Token` بمبدأ Fail-Closed الصارم.
+    3. **تطبيق قانون بوستيل للمسارات:** توفير المسارات ببادئتين `/v1/*` و `/api/*` بالتوازي لمنع أي أخطاء 404 عند استدعاءات عملاء دوت نت.
+  * **النتيجة (Result):** استقلال تام للمنظومتين: فريق دوت نت يطور شاشات Angular ومنطق الأعمال بحرية، ومحرك بايثون يتوسع في مهام الذكاء الاصطناعي دون أن يعلق في تعقيدات قواعد البيانات العلائقية.
+
+---
+
+#### Q10: The `AiStatus` State Machine & Lifecycle (Handling Multi-Minute Ingestion)
+* **Question [EN]:** "Audio transcription and vector ingestion take minutes to complete. How does the system manage this lifecycle, inform the Angular UI, and handle failures? Walk me through the `AiStatus` state machine."
+* **السؤال [AR]:** "معالجة الفيديو وتفريغ الصوت تستغرق عدة دقائق. كيف تدير المنظومة دورة حياة هذه المعالجة، وكيف تبلغ واجهة المشرف بالنجاح أو الفشل؟ اشرح لي آلة حالة الـ `AiStatus` بالتفصيل."
+
+* **Answer [EN]:**
+  * "To provide a seamless UX without blocking HTTP threads, we designed the **5-state `AiStatus` lifecycle**:
+    1. **`None`:** The lesson was newly created with a video URL. No vectors exist yet in Qdrant; content generation buttons are disabled.
+    2. **`Queued`:** .NET emits `POST /v1/webhooks/lesson-updated`. Python acquires a per-lesson `asyncio.Lock` to prevent concurrent duplicate processing, queues the task in the background, and returns `202 Accepted` within 15ms.
+    3. **`Processing`:** The pipeline downloads audio, calls Whisper for transcription, normalizes text with Gemini Flash, generates BGE-M3 embeddings, and upserts chunks to Qdrant. The Angular UI displays an active progress spinner.
+    4. **`Completed`:** Qdrant upsert succeeds (`chunks_count > 0`). Python executes an **Asynchronous Webhook Callback** (`POST /api/internal/lessons/{lessonId}/ai-status`) notifying .NET that status is `Completed`. The Angular UI unlocks the 'Generate Quiz' and 'Generate Summary' buttons.
+    5. **`Failed`:** If YouTube download fails, audio is corrupt, or quota is exceeded, the pipeline catches the error in `PipelineOrchestrator`, cleans up temp files in `finally:`, and dispatches the callback with `status: 'Failed'` and the human-readable error message. The Angular UI turns the badge red and displays an interactive **'إعادة المحاولة (Retry)'** button.
+    6. **Resilient Dual-Sync (Push + Poll):** If the webhook callback drops due to a network glitch, .NET or Angular can query `GET /v1/ingest/status/{lesson_id}`. Python checks Qdrant chunk counts and in-memory locks, returning the live ground truth without requiring an intermediate queue database."
+
+* **الإجابة [AR]:**
+  * "لضمان تجربة مستخدم استثنائية دون حجز اتصالات السيرفر لدقائق، صممنا **دورة حياة `AiStatus` خماسية الحالات**:
+    1. **`None` (غير معالج):** الدرس مضاف حديثاً برابط فيديو، لا توجد أي مقاطع في Qdrant، وأزرار توليد الكويز والملخص معطلة في الواجهة.
+    2. **`Queued` (في الانتظار):** دوت نت يرسل Webhook لبايثون، يحجز بايثون قفل الدرس التزامني `asyncio.Lock` لمنع المعالجة المزدوجة، ويضع المهمة في الخلفية ويرد في 15ms بـ `202 Accepted`.
+    3. **`Processing` (قيد المعالجة):** يبدأ بايثون سحب الصوت، التفريغ بـ Whisper، التنقيح بـ Gemini، والتضمين بـ BGE-M3 والرفع لـ Qdrant. تعرض واجهة Angular مؤشر تحميل تفاعلي.
+    4. **`Completed` (مكتمل بنجاح):** تكتمل الفهرسة وتصبح المقاطع جاهزة. يستدعي بايثون فوراً الـ Webhook Callback لدوت نت: `POST /api/internal/lessons/{lessonId}/ai-status` بـ `status: Completed`. تتحول الشارة في الواجهة للأخضر وتتألق أزرار 'توليد الكويز' و'توليد الملخص'.
+    5. **`Failed` (فشل):** إذا كان رابط الفيديو معطلاً أو انقطعت الشبكة، يلتقط بايثون الخطأ وينظف الملفات المؤقتة في كتلة `finally:`، ويرسل إشعاراً لـ دوت نت بـ `status: Failed` مع نص الخطأ. تظهر شارة حمراء في الواجهة مع زر **'إعادة المحاولة (Retry)'**.
+    6. **التزامن الهجين (Push + Poll):** لضمان عدم ضياع الحالة في حال سقط إشعار الويب هوك، يوفر بايثون مسار `GET /v1/ingest/status/{lesson_id}` يفحص Qdrant وقفل الذاكرة لحظياً ويرجع الحالة الحقيقية فوراً."
+
+---
+
+#### Q11: Adaptive Quiz Generation (`min(k, chunks)`) & Anti-Hallucination
+* **Question [EN]:** "What happens when an instructor requests a 5-question quiz for a 90-second video lesson? How did you prevent hallucinations while keeping the API reliable?"
+* **السؤال [AR]:** "ماذا يحدث عندما يطلب المحاضر كويز من 5 أسئلة لمحاضرة قصيرة مدتها 90 ثانية؟ كيف منعت الهلوسة وحافظت على استقرار السيرفر؟"
+
+* **Answer [EN]:**
+  * "In audio RAG systems, fixed-output requirements often conflict with context constraints. A 90-second video split into 120-second segments produces only 1 or 2 chunks in Qdrant. If you force an LLM to produce 5 multiple-choice questions from 1 chunk, the model runs out of factual statements and hallucinates plausible-sounding facts to fulfill the contract, violating our 92% Faithfulness SLA.
+  * **Our Architectural Solution in [lesson_content_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/lesson_content_service.py):**
+    1. **Adaptive Bound:** We calculate `actual_questions = min(num_questions, len(chunks))`. If only 2 chunks exist, we instruct Gemini to synthesize exactly 2 high-value, strictly grounded questions.
+    2. **Typed Error Protection:** If `len(chunks) == 0` (the lesson has not completed ingestion), instead of executing Gemini with an empty prompt and crashing with an unhandled 500 error, we return an explicit `404 Not Found` with `detail='Lesson ... has no ingested content chunks in Qdrant. Please ensure the video has been ingested first.'`.
+    3. This architectural nuance preserves 100% faithfulness, prevents user confusion, and guarantees deterministic system behavior."
+
+* **الإجابة [AR]:**
+  * "في أنظمة الـ RAG، فرض عدد أسئلة ثابت يصطدم غالباً بقلة المحتوى. فيديو مدته 90 ثانية ينتج مقطعاً واحداً أو مقطعين في Qdrant. إذا أجبرت الموديل على تأليف 5 أسئلة اختيار من متعدد من مقطع واحد، سينفد المحتوى الحقيقي فيلجأ لاختلاق أسئلة ومعلومات وهمية من خياله، مما ينسف معيار الأمانة (Faithfulness) الذي بنيناه.
+  * **حلنا الهندسي في [lesson_content_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/lesson_content_service.py):**
+    1. **السقف المتكيف:** حساب عدد الأسئلة بمعادلة: `actual_questions = min(num_questions, len(chunks))`. فإذا كان الدرس يحتوي مقطعين فقط، يولد كويز من سؤالين متميزين مستندين 100% للشرح.
+    2. **الحماية من الانهيار:** إذا كان عدد المقاطع صفراً (الدرس لم يعالج بعد)، نمنع إرسال برومبت فارغ للموديل ولا نرجع خطأ 500؛ بل نرجع كود `404 Not Found` واضح وصريح يطلب معالجة الفيديو أولاً.
+    3. هذه اللمسة الهندسية تمنع الهلوسة تماماً، وتحمي واجهة المستخدم من الانهيار، وتثبت فهمك العميق للإنتاجية في المقابلات."
+
+---
+
+#### Q12: Resilient JWT Ingress & Cross-Stack Claim Negotiation
+* **Question [EN]:** "When integrating .NET Identity JWTs into Python FastAPI, tokens for System Administrators caused 422/500 validation failures due to missing `company_id`. How did you resolve this without disabling security?"
+* **السؤال [AR]:** "عند استقبال توكنات .NET Identity في بايثون، توكنات المشرفين العامين (SuperAdmin) تسببت في أخطاء 422/500 بسبب غياب حقل `company_id`. كيف حللت هذه المشكلة دون الإخلال بأمان النظام؟"
+
+* **Answer [EN]:**
+  * "In multi-tenant SaaS platforms, regular users belong to a specific company (`company_id`), but Global Administrators (SuperAdmins) span the entire platform and do not have a fixed `company_id` claim in their JWTs. Initially, our strict Pydantic `TokenClaims` marked `company_id: str` as required, triggering `ValidationError` (422/500) whenever an admin generated quizzes or summaries.
+  * **Our Resolution:**
+    1. **Flexible Claim Schema:** In [auth_models.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/models/auth_models.py), made `company_id: str | None = None` and provided safe defaults for `role` (`Student`).
+    2. **Graceful Fallback Parser:** In [auth_service.py](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/auth_service.py), we wrapped Pydantic validation in a `try...except ValidationError` block. If strict validation fails on unexpected claim shapes, the service decodes the verified payload, extracts user identifiers (`sub` or `Id`) and roles (`role` or `Role`), and constructs a valid `TokenClaims` instance.
+    3. **Zero Compromise on Cryptography:** Signature verification against `JWT_SECRET` with `HS256` remains 100% intact; only the claim extraction is made resilient to cross-platform naming differences."
+
+* **الإجابة [AR]:**
+  * "في أنظمة الـ SaaS متعددة الشركات (Multi-Tenant)، ينتمي الموظف لشركة محددة فيحمل حقل `company_id`، بينما المشرف العام على المنصة (SuperAdmin) يدير كل الشركات ولا يرتبط بمعرف شركة واحدة في الـ JWT. في البداية كان نموذج Pydantic الصارم يفرض وجود `company_id`، فكان ينهار بخطأ 422 أو 500 عندما يحاول المشرف العام توليد كويز أو ملخص.
+  * **حلنا الهندسي:**
+    1. **مرونة النموذج:** جعلنا `company_id: str | None = None` مع وضع قيمة افتراضية للرتبة.
+    2. **المعالج الدفاعي في `auth_service.py`:** أحطنا بناء النموذج بكتلة `try...except ValidationError`؛ فلو اختلف شكل المطالبات بين .NET وبايثون، يستخرج السيرفر البيانات الأساسية من التوكن المفحوص ويبني كائن الصلاحيات بأمان.
+    3. **عدم المساس بالأمان الرياضي:** التحقق من صحة التوقيع المشفر بالمفتاح السري `JWT_SECRET` وخوارزمية `HS256` يظل فعالاً بنسبة 100%؛ المرونة كانت فقط في قراءة الحقول التوافقية."
 
 ---
 

@@ -19,6 +19,10 @@ from src.core.metrics import (
     record_guardrail_refusal,
     record_startup_duration,
     record_content_generation_duration,
+    record_video_ingestion_stage,
+    record_video_ingestion_completed,
+    record_video_ingestion_failed,
+    set_video_ingestion_in_flight,
     CACHE_REQUESTS,
     RAG_STAGE_DURATION,
     LLM_TOKENS,
@@ -27,6 +31,11 @@ from src.core.metrics import (
     GUARDRAIL_REFUSALS,
     LMS_STARTUP_DURATION,
     LMS_CONTENT_GENERATION_DURATION,
+    VIDEO_INGESTION_TOTAL,
+    VIDEO_INGESTION_DURATION,
+    VIDEO_INGESTION_STAGE_DURATION,
+    VIDEO_INGESTION_CHUNKS_TOTAL,
+    VIDEO_INGESTION_IN_FLIGHT,
 )
 
 
@@ -136,4 +145,31 @@ async def test_readiness_probe_endpoints():
             assert data["ready"] is True
             assert data["status"] == "ready"
             assert data["startup_duration_seconds"] == 3.5
+
+
+def test_video_ingestion_metrics():
+    """Verify video ingestion collectors and recording helpers."""
+    # 1. In-flight gauge
+    initial_in_flight = VIDEO_INGESTION_IN_FLIGHT._value.get()
+    set_video_ingestion_in_flight(1)
+    assert VIDEO_INGESTION_IN_FLIGHT._value.get() == initial_in_flight + 1
+    set_video_ingestion_in_flight(-1)
+    assert VIDEO_INGESTION_IN_FLIGHT._value.get() == initial_in_flight
+
+    # 2. Stage duration
+    initial_download = VIDEO_INGESTION_STAGE_DURATION.labels(stage="download")._sum.get()
+    record_video_ingestion_stage("download", 3.2)
+    assert VIDEO_INGESTION_STAGE_DURATION.labels(stage="download")._sum.get() >= initial_download + 3.2
+
+    # 3. Success & chunks counter
+    initial_success = VIDEO_INGESTION_TOTAL.labels(status="success")._value.get()
+    initial_chunks = VIDEO_INGESTION_CHUNKS_TOTAL._value.get()
+    record_video_ingestion_completed(duration_seconds=45.0, chunks_count=12)
+    assert VIDEO_INGESTION_TOTAL.labels(status="success")._value.get() == initial_success + 1
+    assert VIDEO_INGESTION_CHUNKS_TOTAL._value.get() == initial_chunks + 12
+
+    # 4. Failure counter
+    initial_failed = VIDEO_INGESTION_TOTAL.labels(status="failed")._value.get()
+    record_video_ingestion_failed(duration_seconds=12.5)
+    assert VIDEO_INGESTION_TOTAL.labels(status="failed")._value.get() == initial_failed + 1
 

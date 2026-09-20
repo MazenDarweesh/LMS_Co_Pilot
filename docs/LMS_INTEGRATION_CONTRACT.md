@@ -47,6 +47,7 @@ target_backends:
 | **6** | **بدء معالجة فيديو (Ingest)** | `POST` | `/v1/ingest/audio` | `Admin` | JSON (Status 200) |
 | **7** | **باعث تحديث الدروس (Webhook)** | `POST` | `/v1/webhooks/lesson-updated` | `X-Service-Token` | JSON (Status 202) |
 | **8** | **متابعة المعالجة (Ingest SSE)** | `GET` | `/v1/ingest/events/{sessionId}` | Public / Token | `text/event-stream` |
+| **9** | **استعلام حالة معالجة الدرس (Status)** | `GET` | `/v1/ingest/status/{lessonId}` | Public / Token | JSON (Status DTO) |
 
 ---
 
@@ -345,6 +346,29 @@ new Claim("DepartmentId", user.DepartmentId?.ToString() ?? "")
   "typeName": "فيديو توضيحي",
   "tenantIds": ["company-id-1"],
   "targetRoles": ["Admin", "Student", "Tester"]
+}
+```
+
+### 8.3 إشعار حالة معالجة الذكاء الاصطناعي (Lesson AI Status Callback Webhook)
+* **المسار:** `POST http://<DOTNET_HOST>:5115/api/internal/lessons/{lessonId}/ai-status`
+* **الترويسة:** `X-Service-Token: <AI_SERVICE_TOKEN>` (أو `Authorization: Bearer <AI_SERVICE_TOKEN>`)
+* **الهدف:** استدعاء فوري غير متزامن يقوم به بايثون عند اكتمال أو فشل استيعاب ومعالجة فيديو الدرس لتحديث جدول الدروس في SQL Server وتنبيه الواجهة بتحديث الـ `AiStatus`.
+* **الحمولة عند الاكتمال بنجاح (200 OK):**
+```json
+{
+  "status": "Completed",
+  "chunks_count": 5,
+  "current_stage": "QDRANT_UPSERT_COMPLETE",
+  "error": null
+}
+```
+* **الحمولة عند الفشل:**
+```json
+{
+  "status": "Failed",
+  "chunks_count": 0,
+  "current_stage": "AUDIO_DOWNLOAD_FAILED",
+  "error": "Failed to download audio from YouTube. Video might be private or unavailable."
 }
 ```
 

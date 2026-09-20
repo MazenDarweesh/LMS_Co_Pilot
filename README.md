@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "1ec6603", "last_synced_at": "2026-09-14T18:15:00Z", "documented_endpoints": 15} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "da9c342", "last_synced_at": "2026-09-18T13:45:00Z", "documented_endpoints": 16} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,6 +19,9 @@
 
 ## ✨ Key Features
 
+- 🔄 **Video AI Ingestion Lifecycle State Machine & Resilient Webhooks** — Seamlessly coordinates multi-minute audio pipelines (`None` ➔ `Queued` ➔ `Processing` ➔ `Completed` / `Failed`) with `.NET 10` via asynchronous status push callbacks (`POST /api/internal/lessons/{lessonId}/ai-status`), live stateless polling queries (`GET /v1/ingest/status/{lesson_id}`), and thread-safe per-lesson `asyncio.Lock` serialization
+- 🧠 **Adaptive Content Generation & Anti-Hallucination Grounding** — Dynamically scales MCQ quiz generation counts `actual_k = min(num_questions, len(chunks))` for short video lessons (preventing hallucinations from context exhaustion) and fails safely with structured typed 404s on uningested content
+- 🔐 **Cross-Stack Resilient JWT Negotiation** — Fault-tolerant claim validation with optional defaults for SuperAdmins lacking tenant IDs and defensive claim mapping between ASP.NET Core Identity namespaces and FastAPI
 - 📜 **LMS Master Integration Contract v3.0.0-FINAL & Dual-Prefix Multiplexing** — Seamless zero-friction interoperability with `.NET 10 Web API` (`LearnDynamicPro`) and Angular 19; exposes dual route prefixes (`/v1` canonical and `/api` compatibility alias), provides hybrid C# DTO serialization (`question_text`, `question_number`, `option_id`), guarantees mandatory summary `overview` grounding, and handles case-insensitive Webhooks (`"Updated"` / `"Deleted"`)
 - 🚨 **Standalone Alertmanager & SLA Incident Dispatch (Port 9093)** — Dedicated Alertmanager container (`prom/alertmanager:v0.27.0`) in `docker-compose.yml` with webhook incident routing, evaluating Prometheus SLA rules across high HTTP 5xx error rates (>5%), P95 search latency degradation (>3.0s), security guardrail & prompt injection spikes (>0.5/sec), and degraded semantic cache hit rates (<10%)
 - 🛡️ **Production-Hardened Audio Pipeline & OWASP Security Headers** — Ingestion pipeline elevated with non-blocking async file I/O (`aiofiles`), dynamic Whisper ERP domain prompt priming (`WHISPER_ERP_DOMAIN_PROMPT`), guaranteed temporary audio cleanup in `finally` blocks preventing disk leaks, and global HTTP security headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection: 1; mode=block`)
@@ -119,6 +122,7 @@
 | `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates with instant Ragas evaluation dataset export (`?format=ragas&limit=100`) |
 | `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
 | `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
+| `GET` | `/v1/ingest/status/{lesson_id}` | Public / Token · 60 req/min | Query live lesson ingestion state (`None` / `Processing` / `Completed`) & Qdrant chunk count |
 | `POST` | `/v1/webhooks/lesson-updated` | Service Token · 10 req/min | Re-index or delete vectors on LMS content change with per-lesson lock |
 | `POST` | `/v1/admin/sync-failed` | JWT Admin · 5 req/min | Batch-queue reconciliation of failed or delayed lesson syncs after downtime |
 | `GET` | `/v1/lessons/{lesson_id}` | JWT (BOLA Protected) · 20 req/min | Retrieve processed checkpoints for a lesson (strictly restricted to entitled students & company admins) |
@@ -199,6 +203,8 @@ All metrics are scraped in real-time by **Prometheus** (`:9090`) and visualized 
 │ ⚡ Cache Response Turnaround          │ ~460 ms (vs ~4,500 ms)│
 │ 🛡️ Error Rate during Concurrency    │ 0.00%                 │
 │ 🔌 Active Connection Leaks           │ 0 (Guaranteed finally)│
+│ 🎬 Video Ingestion Pipeline (p95)    │ ~45s (Whisper+Qdrant) │
+│ 📦 Total Indexed Qdrant Chunks       │ Live tracked (Prom)   │
 └──────────────────────────────────────┴───────────────────────┘
 ```
 
@@ -338,8 +344,9 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | `tests/integration/test_webhooks.py` | LMS lesson update/delete synchronization events | 7 | ✅ 100% Passed |
 | `tests/unit/test_memory_trimmer.py` | Token budget guard & sliding window message trimmer | 9 | ✅ 100% Passed |
 | `tests/unit/test_metrics.py` | Prometheus custom metric collectors and /metrics exposition | 2 | ✅ 100% Passed |
-| `tests/test_arabic_speech.py` | Arabic WER/CER metrics and numerical Tafqit utilities | 3 | ✅ 100% Passed |
-| `tests/test_api.py` | System health check and API lifecycle status | 2 | ✅ 100% Passed |
+| `tests/unit/test_ingest_status.py` | Ingestion status lifecycle state machine, fallback status querying, and webhook notifications | 4 | ✅ 100% Passed |
+| `tests/unit/test_filter_scoping.py` | Hierarchical scope filtering, multi-dimensional search constraints, and payload isolation | 6 | ✅ 100% Passed |
+| `tests/unit/test_dotnet_compatibility.py` | Cross-stack DTO compatibility, dual-prefix routing multiplexing, and error resilience | 8 | ✅ 100% Passed |
 | `tests/load/locustfile.py` | Concurrent stress testing (70% Cache / 20% Cold RAG / 10% Health) | Multi-User | ✅ 0% Error Rate |
 | `.github/workflows/ci.yml` | Multi-container CI pipeline (PostgreSQL 16 + Qdrant + Pytest + Docker) | CI Gate | ✅ Passed |
 
@@ -378,6 +385,11 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Canonical LMS Integration Contract v3.0.0-FINAL (.NET 10 Web API & Angular 19 alignment)
 - [x] Dual-prefix route multiplexing (/v1 canonical + /api compatibility alias)
 - [x] Production code audit hardening (OWASP security headers, ASR domain prompt, zero disk leaks)
+- [x] Video AI ingestion lifecycle state machine (None -> Queued -> Processing -> Completed/Failed)
+- [x] Webhook callback dispatch to .NET backend (`POST /api/internal/lessons/{lessonId}/ai-status`)
+- [x] Fallback stateless ingestion status endpoint (`GET /v1/ingest/status/{lesson_id}`)
+- [x] Adaptive MCQ quiz generation for short video lengths (`min(k, chunks)`)
+- [x] Resilient cross-stack JWT claim validation for SuperAdmins and claim aliases
 - [x] Locust concurrent load testing suite & traffic simulator
 - [x] Automated GitHub Actions CI/CD pipeline (PostgreSQL 16, Qdrant 1.13.2, Docker build)
 - [ ] PDF ingestion via Marker / MinerU (Week 9)
@@ -419,4 +431,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-14*
+*Last updated by `readme-updater` skill — 2026-09-18*

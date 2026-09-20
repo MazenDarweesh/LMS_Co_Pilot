@@ -108,6 +108,37 @@ LMS_CONTENT_GENERATION_DURATION = Histogram(
 )
 
 
+# 10. Video AI Ingestion & Processing Metrics
+VIDEO_INGESTION_TOTAL = Counter(
+    "lms_video_ingestion_total",
+    "Total count of video ingestion runs categorized by status",
+    labelnames=["status"],  # "success" | "failed"
+)
+
+VIDEO_INGESTION_DURATION = Histogram(
+    "lms_video_ingestion_duration_seconds",
+    "Total end-to-end duration of video ingestion pipeline in seconds",
+    buckets=(10.0, 30.0, 60.0, 120.0, 180.0, 300.0, 600.0),
+)
+
+VIDEO_INGESTION_STAGE_DURATION = Histogram(
+    "lms_video_ingestion_stage_duration_seconds",
+    "Duration of individual video ingestion stages in seconds",
+    labelnames=["stage"],  # "download", "chunking", "transcription", "normalization", "embedding", "qdrant_upsert"
+    buckets=(0.5, 1.0, 2.5, 5.0, 10.0, 20.0, 45.0, 90.0, 180.0),
+)
+
+VIDEO_INGESTION_CHUNKS_TOTAL = Counter(
+    "lms_video_ingestion_chunks_total",
+    "Total number of video chunks successfully indexed into Qdrant",
+)
+
+VIDEO_INGESTION_IN_FLIGHT = Gauge(
+    "lms_video_ingestion_in_flight",
+    "Current number of video processing jobs running concurrently",
+)
+
+
 # ─── Recording Helpers ────────────────────────────────────────────────────────
 
 def record_cache_lookup(hit: bool) -> None:
@@ -182,6 +213,36 @@ def record_content_generation_duration(content_type: str, action: str, duration_
         LMS_CONTENT_GENERATION_DURATION.labels(type=content_type.lower(), action=action.lower()).observe(duration_seconds)
 
 
+def record_video_ingestion_stage(stage: str, duration_seconds: float) -> None:
+    """Records the duration of a video ingestion stage in seconds."""
+    if duration_seconds >= 0:
+        VIDEO_INGESTION_STAGE_DURATION.labels(stage=stage.lower()).observe(duration_seconds)
+
+
+def record_video_ingestion_completed(duration_seconds: float, chunks_count: int) -> None:
+    """Records a successful video ingestion run."""
+    VIDEO_INGESTION_TOTAL.labels(status="success").inc()
+    if duration_seconds >= 0:
+        VIDEO_INGESTION_DURATION.observe(duration_seconds)
+    if chunks_count > 0:
+        VIDEO_INGESTION_CHUNKS_TOTAL.inc(chunks_count)
+
+
+def record_video_ingestion_failed(duration_seconds: float = 0.0) -> None:
+    """Records a failed video ingestion run."""
+    VIDEO_INGESTION_TOTAL.labels(status="failed").inc()
+    if duration_seconds >= 0:
+        VIDEO_INGESTION_DURATION.observe(duration_seconds)
+
+
+def set_video_ingestion_in_flight(delta: int) -> None:
+    """Increments or decrements active video ingestion jobs."""
+    if delta > 0:
+        VIDEO_INGESTION_IN_FLIGHT.inc(delta)
+    elif delta < 0:
+        VIDEO_INGESTION_IN_FLIGHT.dec(abs(delta))
+
+
 # ─── Instrumentator Initialization ────────────────────────────────────────────
 
 def init_metrics(app: FastAPI) -> Instrumentator | None:
@@ -237,6 +298,11 @@ def init_metrics(app: FastAPI) -> Instrumentator | None:
             LMS_CONTENT_GENERATION_DURATION.labels(type=content_t, action=act)
     for stage in ["exact_cache", "intent_router", "cache_lookup", "embedding", "vector_search", "reranking", "gemini_generation", "total"]:
         RAG_STAGE_DURATION.labels(stage=stage)
+    VIDEO_INGESTION_IN_FLIGHT.set(0)
+    for stat in ["success", "failed"]:
+        VIDEO_INGESTION_TOTAL.labels(status=stat)
+    for stg in ["download", "chunking", "transcription", "normalization", "embedding", "qdrant_upsert"]:
+        VIDEO_INGESTION_STAGE_DURATION.labels(stage=stg)
 
     logger.info("Prometheus metrics initialized with baseline series ✅", endpoint=settings.METRICS_PATH)
     return instrumentator
