@@ -19,6 +19,7 @@ from qdrant_client.models import (
     Filter, FieldCondition, MatchAny, MatchValue,
     PayloadSchemaType, KeywordIndexParams,
     Prefetch, FusionQuery, Fusion,
+    PointIdsList,
 )
 from src.core.config import settings
 from src.models.schemas import QdrantChunkPayload
@@ -92,7 +93,8 @@ class QdrantService:
         keyword_fields = [
             "allowed_entities", "target_roles", "content_type",
             "tenant_ids", "lesson_id", "module_id", "unit_id",
-            "video_id", "playlist_id", "level_id", "type_id"
+            "video_id", "playlist_id", "level_id", "type_id",
+            "lesson_ids", "module_ids"
         ]
         for field in keyword_fields:
             is_tenant = field in ("tenant_ids", "lesson_id")
@@ -143,22 +145,194 @@ class QdrantService:
         logger.info("Qdrant upsert complete", count=len(points))
 
     # ------------------------------------------------------------------
-    # Delete
+    # Multi-Module / Multi-Lesson Reference Linking (Process Once, Reference Everywhere)
+    # ------------------------------------------------------------------
+
+    async def link_lesson_to_existing_video(
+        self,
+        video_identifier: str,
+        source_url: str | None,
+        new_lesson_id: str,
+        new_module_id: str | None = None,
+        new_unit_id: str | None = None,
+        target_roles: list[str] | None = None,
+    ) -> int:
+        """
+        يربط درساً وموديولاً جديداً بنقاط فيديو مخزنة مسبقاً في Qdrant دون إعادة التضمين أو التفريغ.
+        يقوم بتحديث allowed_entities, lesson_ids, module_ids ذرياً في كل نقاط الفيديو.
+        Returns: عدد النقاط التي تم ربطها (0 إذا لم يكن الفيديو موجوداً مسبقاً).
+        """
+        assert self._client is not None, "QdrantService not initialized"
+
+        should_conditions = []
+        if video_identifier:
+            should_conditions.append(FieldCondition(key="video_id", match=MatchValue(value=video_identifier)))
+        if source_url:
+            should_conditions.append(FieldCondition(key="source_url", match=MatchValue(value=source_url)))
+
+        if not should_conditions:
+            return 0
+
+        query_filter = Filter(should=should_conditions)
+
+        matched_points = []
+        offset = None
+        while True:
+            scroll_res = await self._client.scroll(
+                collection_name=COLLECTION,
+                scroll_filter=query_filter,
+                limit=200,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points, next_offset = scroll_res
+            matched_points.extend(points)
+            if next_offset is None or len(points) < 200:
+                break
+            offset = next_offset
+
+        if not matched_points:
+            return 0
+
+        logger.info("Found existing video points to link in Qdrant", count=len(matched_points), video_id=video_identifier)
+
+        for point in matched_points:
+            payload = point.payload or {}
+            allowed = set(payload.get("allowed_entities") or [])
+            lesson_ids = set(payload.get("lesson_ids") or [])
+            module_ids = set(payload.get("module_ids") or [])
+
+            if payload.get("lesson_id"):
+                lesson_ids.add(payload["lesson_id"])
+            if payload.get("module_id"):
+                module_ids.add(payload["module_id"])
+
+            if new_lesson_id:
+                allowed.add(f"lesson:{new_lesson_id}")
+                lesson_ids.add(new_lesson_id)
+
+            if new_module_id:
+                allowed.add(f"module:{new_module_id}")
+                module_ids.add(new_module_id)
+
+            if new_unit_id:
+                allowed.add(f"unit:{new_unit_id}")
+
+            if target_roles:
+                for r in target_roles:
+                    allowed.add(f"role:{r}")
+
+            updated_payload = {
+                "allowed_entities": sorted(list(allowed)),
+                "lesson_ids": sorted(list(lesson_ids)),
+                "module_ids": sorted(list(module_ids)),
+            }
+            if not payload.get("video_id") and video_identifier:
+                updated_payload["video_id"] = video_identifier
+
+            await self._client.set_payload(
+                collection_name=COLLECTION,
+                payload=updated_payload,
+                points=[point.id],
+            )
+
+        logger.info(
+            "Successfully linked lesson to existing video in Qdrant",
+            lesson_id=new_lesson_id,
+            module_id=new_module_id,
+            points_count=len(matched_points),
+        )
+        return len(matched_points)
+
+    # ------------------------------------------------------------------
+    # Delete (with Reference Counting)
     # ------------------------------------------------------------------
 
     async def delete_by_lesson_id(self, lesson_id: str) -> None:
-        """يحذف كل نقاط درس معين — يُستخدم عند Webhook 'Deleted'."""
+        """
+        يحذف أو يفك ارتباط درس من Qdrant بحساب المراجع (Reference Counting).
+        إذا كان الفيديو مستخدماً في دروس أخرى (Reference Count > 1):
+        يتم فقط إزالة معرف الدرس من allowed_entities و lesson_ids دون حذف النقاط الفيزيائية.
+        إذا كان هذا الدرس الوحيد المرتبط (Reference Count == 1):
+        يتم حذف النقاط فيزيائياً من الـ collection.
+        """
         assert self._client is not None
-        from qdrant_client.models import FilterSelector
-        await self._client.delete(  # type: ignore
-            collection_name=COLLECTION,
-            points_selector=FilterSelector(
-                filter=Filter(
-                    must=[FieldCondition(key="lesson_id", match=MatchAny(any=[lesson_id]))]
-                )
-            ),
+        query_filter = Filter(
+            should=[
+                FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id)),
+                FieldCondition(key="lesson_ids", match=MatchValue(value=lesson_id)),
+            ]
         )
-        logger.info("Qdrant: deleted chunks for lesson", lesson_id=lesson_id)
+
+        matched_points = []
+        offset = None
+        while True:
+            scroll_res = await self._client.scroll(
+                collection_name=COLLECTION,
+                scroll_filter=query_filter,
+                limit=200,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points, next_offset = scroll_res
+            matched_points.extend(points)
+            if next_offset is None or len(points) < 200:
+                break
+            offset = next_offset
+
+        if not matched_points:
+            logger.info("Qdrant: no chunks found for lesson deletion", lesson_id=lesson_id)
+            return
+
+        points_to_delete = []
+        points_to_unlink = []
+
+        for point in matched_points:
+            payload = point.payload or {}
+            lesson_ids = set(payload.get("lesson_ids") or [])
+            if payload.get("lesson_id"):
+                lesson_ids.add(payload["lesson_id"])
+
+            remaining_lessons = lesson_ids - {lesson_id}
+
+            if remaining_lessons:
+                # لا يزال الفيديو مرتبطاً بدروس أخرى في موديولات أخرى -> فك ارتباط فقط
+                allowed = set(payload.get("allowed_entities") or [])
+                allowed.discard(f"lesson:{lesson_id}")
+
+                new_primary = sorted(list(remaining_lessons))[0]
+                updated_payload = {
+                    "allowed_entities": sorted(list(allowed)),
+                    "lesson_ids": sorted(list(remaining_lessons)),
+                    "lesson_id": new_primary,
+                }
+                points_to_unlink.append((point.id, updated_payload))
+            else:
+                # آخر درس مرتبط بهذا الفيديو -> حذف فيزيائي للنقاط
+                points_to_delete.append(point.id)
+
+        for point_id, updated_payload in points_to_unlink:
+            await self._client.set_payload(
+                collection_name=COLLECTION,
+                payload=updated_payload,
+                points=[point_id],
+            )
+
+        if points_to_delete:
+            await self._client.delete(
+                collection_name=COLLECTION,
+                points_selector=PointIdsList(points=points_to_delete),
+            )
+
+        logger.info(
+            "Qdrant: lesson deletion processed with reference counting",
+            lesson_id=lesson_id,
+            points_unlinked=len(points_to_unlink),
+            points_deleted=len(points_to_delete),
+        )
+
 
     # ------------------------------------------------------------------
     # Hybrid Search (RRF Fusion)
@@ -180,16 +354,22 @@ class QdrantService:
         """
         assert self._client is not None
 
-        # Build module level and type conditions
+        # Build module level and type conditions (matching primary or shared modules)
         module_conditions = []
         if user_ctx.permissions and user_ctx.permissions.accessible_modules:
             for module in user_ctx.permissions.accessible_modules:
-                must_inner = [FieldCondition(key="module_id", match=MatchValue(value=module.module_id))]
+                must_inner = [
+                    Filter(should=[
+                        FieldCondition(key="module_id", match=MatchValue(value=module.module_id)),
+                        FieldCondition(key="module_ids", match=MatchValue(value=module.module_id)),
+                    ])
+                ]
                 if module.level_filters:
                     must_inner.append(FieldCondition(key="level_id", match=MatchAny(any=module.level_filters)))
                 if module.type_filters:
                     must_inner.append(FieldCondition(key="type_id", match=MatchAny(any=module.type_filters)))
                 module_conditions.append(Filter(must=must_inner))
+
 
         # Overall Filter
         overall_must = [

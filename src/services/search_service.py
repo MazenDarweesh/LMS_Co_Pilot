@@ -53,21 +53,33 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
         
     # 2. Hierarchical Scope ID Filtering
     # Explicit binding: only filter by lesson/unit/module when scope specifically targets that level.
-    # If scope is 'all', lingering IDs from UI state are cleanly ignored.
+    # Matches both single fields and multi-reference array fields (Process Once, Reference Everywhere).
     if req.scope == "lesson" and req.lesson_id:
-        must.append(FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)))
+        must.append(Filter(should=[
+            FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
+            FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
+        ]))
     elif req.scope == "unit" and req.unit_id:
         must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
     elif req.scope == "module" and req.module_id:
-        must.append(FieldCondition(key="module_id", match=MatchValue(value=req.module_id)))
+        must.append(Filter(should=[
+            FieldCondition(key="module_id", match=MatchValue(value=req.module_id)),
+            FieldCondition(key="module_ids", match=MatchValue(value=req.module_id)),
+        ]))
     elif req.scope not in {"all", "module", "unit", "lesson"}:
         # Backward compatibility for direct ID queries or legacy playlist/video requests
         if req.lesson_id:
-            must.append(FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)))
+            must.append(Filter(should=[
+                FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
+                FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
+            ]))
         elif req.unit_id:
             must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
         elif req.module_id:
-            must.append(FieldCondition(key="module_id", match=MatchValue(value=req.module_id)))
+            must.append(Filter(should=[
+                FieldCondition(key="module_id", match=MatchValue(value=req.module_id)),
+                FieldCondition(key="module_ids", match=MatchValue(value=req.module_id)),
+            ]))
 
     if req.playlist_id:
         must.append(FieldCondition(key="playlist_id", match=MatchValue(value=req.playlist_id)))

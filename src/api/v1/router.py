@@ -28,6 +28,9 @@ from src.models.schemas import (
     SyncFailedRequest,
     SyncFailedResponse,
     LessonStatusResponse,
+    extract_video_id,
+    LessonReferenceRequest,
+    LessonReferenceResponse,
 )
 from typing import Literal
 from src.models.search_models import (
@@ -341,7 +344,107 @@ async def unified_lesson_webhook(
         )
         return {"status": "accepted", "message": "Update and Ingestion triggered"}
 
+    elif action_norm in ("referenced", "linked"):
+        # 🔗 ربط درس جديد بمحتوى فيديو معالج مسبقاً (Process Once, Reference Everywhere)
+        lms_client_service.invalidate_lesson_context(lesson_id)
+        video_url = payload.video_url
+        module_id = payload.module_id
+        unit_id = payload.unit_id
+
+        if not video_url:
+            # Fallback: محاولة جلب سياق الدرس من LMS إذا لم يتضمنه الـ payload
+            try:
+                raw_ctx = await lms_client_service.get_lesson_full_context(lesson_id)
+                video_url = raw_ctx.video_url
+                module_id = module_id or raw_ctx.module_id
+                unit_id = unit_id or raw_ctx.unit_id
+            except Exception as e:
+                logger.warning("Could not fetch full context for reference linking", lesson_id=lesson_id, error=str(e))
+
+        if not video_url:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "video_url is required for referencing existing content")
+
+        clean_vid = extract_video_id(video_url)
+        linked = await qdrant_service.link_lesson_to_existing_video(
+            video_identifier=clean_vid,
+            source_url=video_url,
+            new_lesson_id=lesson_id,
+            new_module_id=module_id,
+            new_unit_id=unit_id,
+        )
+
+        if linked > 0:
+            # 🔔 إشعار سيرفر الـ .NET فوراً باكتمال المعالجة في 0 ثانية
+            asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+                lesson_id=lesson_id,
+                status="Completed",
+                total_chunks=linked,
+            ))
+            return {
+                "status": "accepted",
+                "message": f"Lesson successfully linked to {linked} existing chunks (Process Once)",
+                "linked_chunks": linked,
+            }
+        else:
+            # المحتوى لم تتم معالجته مسبقاً بعد؛ جدولة معالجة كاملة عبر البايبلاين
+            background_tasks.add_task(
+                sync_and_reingest_lesson,
+                lesson_id,
+                request.app.state.db_pool,
+            )
+            return {
+                "status": "accepted",
+                "message": "Content not yet indexed; queued full ingestion",
+                "linked_chunks": 0,
+            }
+
     raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Invalid action: '{payload.action}'")
+
+
+@router.post(
+    "/admin/lessons/reference",
+    response_model=LessonReferenceResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit("60/minute")
+async def link_lesson_reference(
+    request: Request,
+    payload: LessonReferenceRequest,
+    admin_ctx: UserContext = Depends(require_role("Admin")),
+):
+    """
+    يربط درساً أو موديولاً جديداً بمحتوى فيديو تمت معالجته مسبقاً في Qdrant.
+    ينفذ مبدأ 'Process Once, Reference Everywhere' في < 10ms دون إعادة التضمين أو التفريغ.
+    """
+    clean_vid = extract_video_id(payload.source_video_url)
+    linked = await qdrant_service.link_lesson_to_existing_video(
+        video_identifier=clean_vid,
+        source_url=payload.source_video_url,
+        new_lesson_id=payload.lesson_id,
+        new_module_id=payload.module_id,
+        new_unit_id=payload.unit_id,
+    )
+
+    if linked > 0:
+        asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+            lesson_id=payload.lesson_id,
+            status="Completed",
+            total_chunks=linked,
+        ))
+        return LessonReferenceResponse(
+            status="success",
+            message=f"Successfully linked lesson {payload.lesson_id} to {linked} existing video chunks",
+            points_linked=linked,
+            video_id=clean_vid,
+            lesson_id=payload.lesson_id,
+            module_id=payload.module_id,
+        )
+
+    raise HTTPException(
+        status.HTTP_404_NOT_FOUND,
+        f"No existing chunks found in Qdrant for video: {payload.source_video_url}. Ingest the original lesson first."
+    )
+
 
 
 # ⚠️ ARCHITECTURAL CONSTRAINT:

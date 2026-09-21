@@ -7,7 +7,7 @@ import aiofiles
 import structlog
 from pathlib import Path
 from typing import List
-from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata
+from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata, extract_video_id
 from src.services.audio_downloader import audio_downloader
 from src.services.transcription_service import TranscriptionService
 from src.services.transcript_normalizer import transcript_normalizer
@@ -24,16 +24,15 @@ from src.core.metrics import (
 logger = structlog.get_logger()
 
 
-def make_chunk_id(lesson_id: str, chunk_index: int) -> str:
+def make_chunk_id(video_identifier: str, chunk_index: int) -> str:
     """
-    يُولّد chunk_id حتمياً (Deterministic) من lesson_id + رقم المقطع.
-    نفس المدخلات = نفس الـ ID دائماً.
-
-    الهدف: ضمان أن إعادة تشغيل الـ Pipeline أو حدوث Crash ثم Retry
-    لن يُنتج نقاطاً مكررة في Qdrant — الـ upsert سيُحدّث النقطة الموجودة.
+    يُولّد chunk_id حتمياً (Deterministic) من معرف المحتوى + رقم المقطع.
+    نفس الفيديو = نفس الـ ID دائماً، بغض النظر عن معرف الدرس، مما يمنع الازدواجية
+    ويحقق معمارية Process Once, Reference Everywhere.
     """
-    raw = f"{lesson_id}::chunk::{chunk_index}"
+    raw = f"vid::{video_identifier}::chunk::{chunk_index}"
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
+
 
 CHECKPOINT_DIR = Path("downloads/checkpoints")
 
@@ -49,16 +48,19 @@ class PipelineOrchestrator:
             log = logger.bind(lesson_id=lesson_id, chunk_index=chunk_index)
             log.info("Processing chunk started")
 
-            # 1. إنشاء مسارات الـ Checkpoints
-            checkpoint_file = CHECKPOINT_DIR / f"{lesson_id}_chunk_{chunk_index}.json"
-            temp_file = CHECKPOINT_DIR / f"{lesson_id}_chunk_{chunk_index}.tmp"
+            # 1. إنشاء مسارات الـ Checkpoints بمعرف الفيديو (Process Once)
+            video_key = extract_video_id(youtube_url) or hashlib.sha256(youtube_url.encode()).hexdigest()[:16]
+            checkpoint_file = CHECKPOINT_DIR / f"vid_{video_key}_chunk_{chunk_index}.json"
+            temp_file = CHECKPOINT_DIR / f"vid_{video_key}_chunk_{chunk_index}.tmp"
+            legacy_checkpoint = CHECKPOINT_DIR / f"{lesson_id}_chunk_{chunk_index}.json"
 
-            # 2. التحقق من وجود الـ Checkpoint (استرجاع ذكي)
-            if checkpoint_file.exists():
+            # 2. التحقق من وجود الـ Checkpoint (استرجاع ذكي من القرص في < 1ms)
+            target_cp = checkpoint_file if checkpoint_file.exists() else (legacy_checkpoint if legacy_checkpoint.exists() else None)
+            if target_cp and target_cp.exists():
                 try:
-                    async with aiofiles.open(checkpoint_file, "r", encoding="utf-8") as f:
+                    async with aiofiles.open(target_cp, "r", encoding="utf-8") as f:
                         data = json.loads(await f.read())
-                    log.info("Checkpoint hit - loading chunk from disk")
+                    log.info("Checkpoint hit - loading chunk from disk", checkpoint=target_cp.name)
                     return NormalizedTranscriptionSegment(**data)
                 except Exception as e:
                     log.warning("Corrupted checkpoint detected, reprocessing", error=str(e))
@@ -117,6 +119,46 @@ class PipelineOrchestrator:
         session_id = f"sess_{lesson_id}"
         set_video_ingestion_in_flight(1)
         pipeline_start_time = time.perf_counter()
+
+        # 0. فحص المعالجة المسبقة (Process Once Fast Path):
+        # إذا كان الفيديو موجوداً مسبقاً في Qdrant، نقوم فقط بربط الدرس والموديول الجديد في < 10ms!
+        from src.services.qdrant_service import qdrant_service
+        clean_vid_id = extract_video_id(youtube_url)
+        meta = lesson_metadata or LessonMetadata(
+            lesson_id=lesson_id,
+            tenant_ids=["default"],
+        )
+        meta.build_allowed_entities()
+
+        try:
+            linked_count = await qdrant_service.link_lesson_to_existing_video(
+                video_identifier=clean_vid_id,
+                source_url=youtube_url,
+                new_lesson_id=lesson_id,
+                new_module_id=meta.module_id,
+                new_unit_id=meta.unit_id,
+                target_roles=meta.target_roles,
+            )
+            if linked_count > 0:
+                log.info(
+                    "Process Once hit! Video already indexed in Qdrant, linked references in 0s",
+                    chunks_linked=linked_count,
+                    video_id=clean_vid_id,
+                    lesson_id=lesson_id,
+                )
+                total_duration = time.perf_counter() - pipeline_start_time
+                record_video_ingestion_completed(total_duration, linked_count)
+                set_video_ingestion_in_flight(-1)
+
+                # 🔔 إشعار الـ LMS فوراً بإكمال المعالجة في 0 ثانية!
+                asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+                    lesson_id=lesson_id,
+                    status="Completed",
+                    total_chunks=linked_count,
+                ))
+                return []
+        except Exception as link_err:
+            log.warning("Pre-check link existing video encountered error, falling back to full pipeline", error=str(link_err))
 
         # استخدام مهلة أقصاها 10 دقائق لكامل الـ Pipeline لضمان عدم تجمد السيرفر
         async with asyncio.timeout(600):
@@ -186,9 +228,10 @@ class PipelineOrchestrator:
                             text_to_embed = normalize_arabic_text_leaderboard(seg.normalized_text)
                             dense, sparse = await embedding_service.get_both_embeddings(text_to_embed)
                             payload = QdrantChunkPayload(
-                                # ✅ Fix: Deterministic ID — prevents duplicate Qdrant points on retry/re-run
-                                chunk_id=make_chunk_id(lesson_id, results.index(seg)),
+                                # ✅ Fix: Deterministic ID based on video — prevents duplicate Qdrant points across modules
+                                chunk_id=make_chunk_id(clean_vid_id or lesson_id, results.index(seg)),
                                 lesson_id=lesson_id,
+                                lesson_ids=[lesson_id] + meta.lesson_ids,
                                 content_type=ContentType.VIDEO_CHUNK,
                                 source_type=SourceType.YOUTUBE,
                                 source_url=seg.youtube_url,
@@ -198,9 +241,11 @@ class PipelineOrchestrator:
                                 text_original=seg.normalized_text,
                                 tenant_ids=meta.tenant_ids,
                                 module_id=meta.module_id,
+                                module_ids=[meta.module_id] if meta.module_id else meta.module_ids,
                                 unit_id=meta.unit_id,
                                 level_id=meta.level_id,
                                 type_id=meta.type_id,
+                                video_id=clean_vid_id,
                                 target_roles=meta.target_roles,
                                 allowed_entities=meta.allowed_entities,
                             )

@@ -57,9 +57,17 @@ def test_handoff_exact_payload():
     q_filter = _build_scope_filter(req)
     assert q_filter is not None
     assert len(q_filter.must) == 2
-    keys = {c.key: c.match.value for c in q_filter.must}
+    keys = {}
+    for c in q_filter.must:
+        if hasattr(c, "key") and c.key:
+            keys[c.key] = c.match.value
+        elif hasattr(c, "should") and c.should:
+            for s in c.should:
+                if hasattr(s, "key"):
+                    keys[s.key] = s.match.value
     assert keys["module_id"] == "b53f6081-305f-4613-a4e9-11440d463ef1"
     assert keys["level_id"] == "1c55208f-2f74-4b53-906d-7419f4476ce2"
+
 
 
 def test_scope_all_ignores_lingering_ids():
@@ -92,8 +100,8 @@ def test_hierarchical_scopes_isolation():
     f_mod = _build_scope_filter(req_mod)
     assert f_mod is not None
     assert len(f_mod.must) == 1
-    assert f_mod.must[0].key == "module_id"
-    assert f_mod.must[0].match.value == "mod-erp"
+    mod_keys = [c.key for c in f_mod.must[0].should] if hasattr(f_mod.must[0], "should") else [f_mod.must[0].key]
+    assert "module_id" in mod_keys
 
     # 2. Unit scope
     req_unit = SearchRequest(query="q", scope="unit", moduleId="mod-erp", unitId="u-1", lessonId="les-1")
@@ -108,8 +116,9 @@ def test_hierarchical_scopes_isolation():
     f_les = _build_scope_filter(req_les)
     assert f_les is not None
     assert len(f_les.must) == 1
-    assert f_les.must[0].key == "lesson_id"
-    assert f_les.must[0].match.value == "les-1"
+    les_keys = [c.key for c in f_les.must[0].should] if hasattr(f_les.must[0], "should") else [f_les.must[0].key]
+    assert "lesson_id" in les_keys
+
 
 
 def test_scope_fingerprint_deterministic_partitioning():

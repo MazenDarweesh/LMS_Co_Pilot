@@ -1,4 +1,5 @@
 import re
+import hashlib
 from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator, model_validator, computed_field, AliasChoices, ConfigDict
 from typing import Self
@@ -6,6 +7,20 @@ from typing import Self
 from src.models.entities import ContentType, SourceType
 
 YOUTUBE_REGEX = re.compile(r"(?:v=|\/)([a-zA-Z0-9_-]{11})")
+
+
+def extract_video_id(url: str) -> str:
+    """
+    استخراج معرف الفيديو الموحد من رابط يوتيوب أو توليد بصمة حتمية (Deterministic Hash) للروابط الأخرى.
+    يضمن هذا التوحيد إمكانية إعادة استخدام مقاطع الفيديو عبر عدة موديولات ودروس.
+    """
+    if not url:
+        return ""
+    match = YOUTUBE_REGEX.search(url)
+    if match:
+        return match.group(1)
+    return hashlib.sha256(url.strip().encode("utf-8")).hexdigest()[:16]
+
 class AudioIngestRequest(BaseModel):
     youtube_url: str = Field(..., description="رابط يوتيوب الخاص بالمحاضرة")
     lesson_id: str = Field(..., description="المعرف الفريد للدرس (سيعمل كـ session_id للمتابعة)")
@@ -63,8 +78,10 @@ class NormalizedTranscriptionSegment(BaseModel):
 class LessonMetadata(BaseModel):
     """بيانات السياق الكاملة للدرس — تُستخدم لبناء allowed_entities في Qdrant."""
     lesson_id:   str
+    lesson_ids:  list[str] = Field(default_factory=list)
     tenant_ids:  list[str] = Field(default=["default"])
     module_id:   str | None = None
+    module_ids:  list[str] = Field(default_factory=list)
     unit_id:     str | None = None
     level_id:    str | None = None
     type_id:     str | None = None
@@ -73,32 +90,48 @@ class LessonMetadata(BaseModel):
     allowed_entities: list[str] = Field(default_factory=list)
 
     def build_allowed_entities(self) -> "LessonMetadata":
-        """يبني قائمة الكيانات المسموحة من حقول الـ metadata."""
-        entities: list[str] = []
+        """يبني قائمة الكيانات المسموحة من حقول الـ metadata (يدعم موديولات ودروس متعددة)."""
+        entities: set[str] = set()
         for t in self.tenant_ids:
-            entities.append(f"tenant:{t}")
+            entities.add(f"tenant:{t}")
+
+        # دعم موديول فردي أو مصفوفة موديولات
         if self.module_id:
-            entities.append(f"module:{self.module_id}")
+            entities.add(f"module:{self.module_id}")
+        for m in self.module_ids:
+            if m:
+                entities.add(f"module:{m}")
+
         if self.unit_id:
-            entities.append(f"unit:{self.unit_id}")
+            entities.add(f"unit:{self.unit_id}")
         if self.level_id:
-            entities.append(f"level:{self.level_id}")
+            entities.add(f"level:{self.level_id}")
         if self.type_id:
-            entities.append(f"type:{self.type_id}")
-        entities.append(f"lesson:{self.lesson_id}")
+            entities.add(f"type:{self.type_id}")
+
+        # دعم درس فردي أو مصفوفة دروس تشترك في نفس الفيديو
+        if self.lesson_id:
+            entities.add(f"lesson:{self.lesson_id}")
+        for l in self.lesson_ids:
+            if l:
+                entities.add(f"lesson:{l}")
+
         for role in self.target_roles:
-            entities.append(f"role:{role}")
-        self.allowed_entities = entities
+            entities.add(f"role:{role}")
+
+        self.allowed_entities = sorted(list(entities))
         return self
+
 
 
 # -------------------------------------------------------------------
 # نموذج النقطة الكاملة التي تُرسل إلى Qdrant
 # -------------------------------------------------------------------
 class QdrantChunkPayload(BaseModel):
-    """الـ Payload الكامل لكل نقطة (chunk) في Qdrant collection."""
+    """الـ Payload الكامل لكل نقطة (chunk) في Qdrant collection مع دعم المراجع المتعددة."""
     chunk_id:        str
-    lesson_id:       str | None
+    lesson_id:       str | None = None
+    lesson_ids:      list[str] = Field(default_factory=list)
     content_type:    ContentType
     source_type:     SourceType
     source_url:      str                  # رابط يوتيوب مع timestamp
@@ -110,6 +143,7 @@ class QdrantChunkPayload(BaseModel):
     text_original:   str                  # النص الخام (للتدقيق)
     tenant_ids:      list[str]
     module_id:       str | None = None
+    module_ids:      list[str] = Field(default_factory=list)
     unit_id:         str | None = None
     level_id:        str | None = None
     type_id:         str | None = None
@@ -117,6 +151,16 @@ class QdrantChunkPayload(BaseModel):
     playlist_id:     str | None = None
     target_roles:    list[str]
     allowed_entities: list[str]
+
+    @model_validator(mode="after")
+    def sync_multi_reference_fields(self) -> Self:
+        """ضمان التوافق العكسي وتزامن lesson_ids و module_ids مع lesson_id و module_id."""
+        if self.lesson_id and self.lesson_id not in self.lesson_ids:
+            self.lesson_ids.append(self.lesson_id)
+        if self.module_id and self.module_id not in self.module_ids:
+            self.module_ids.append(self.module_id)
+        return self
+
 
 # -------------------------------------------------------------------
 # PR-3: AI Content Generator Schemas (Admin/LMS Integration)
@@ -179,11 +223,31 @@ class AudioIngestRequestV2(BaseModel):
 class WebhookPayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     lesson_id: str = Field(..., validation_alias=AliasChoices("lessonId", "lesson_id", "LessonId"), serialization_alias="lessonId", description="معرف الدرس المرتبط بالحدث")
-    action: str = Field(..., description="نوع الإجراء (Updated / Deleted)")
+    action: str = Field(..., description="نوع الإجراء (Updated / Deleted / Referenced)")
+    video_url: str | None = Field(default=None, validation_alias=AliasChoices("videoUrl", "video_url", "VideoUrl"), description="رابط الفيديو (في حال الربط بمحتوى قائم)")
+    module_id: str | None = Field(default=None, validation_alias=AliasChoices("moduleId", "module_id", "ModuleId"), description="معرف الموديول المرتبط")
+    unit_id: str | None = Field(default=None, validation_alias=AliasChoices("unitId", "unit_id", "UnitId"), description="معرف الوحدة المرتبطة")
 
     @property
     def lessonId(self) -> str:
         return self.lesson_id
+
+
+class LessonReferenceRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    lesson_id: str = Field(..., validation_alias=AliasChoices("lessonId", "lesson_id", "LessonId"), description="معرف الدرس الجديد")
+    source_video_url: str = Field(..., validation_alias=AliasChoices("videoUrl", "video_url", "VideoUrl", "sourceVideoUrl", "source_video_url"), description="رابط الفيديو القائم")
+    module_id: str | None = Field(default=None, validation_alias=AliasChoices("moduleId", "module_id", "ModuleId"), description="معرف الموديول الجديد")
+    unit_id: str | None = Field(default=None, validation_alias=AliasChoices("unitId", "unit_id", "UnitId"), description="معرف الوحدة الجديدة")
+
+
+class LessonReferenceResponse(BaseModel):
+    status: str = "success"
+    message: str
+    points_linked: int
+    video_id: str
+    lesson_id: str
+    module_id: str | None = None
 
 
 class SyncFailedRequest(BaseModel):
