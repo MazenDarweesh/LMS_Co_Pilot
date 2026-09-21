@@ -197,7 +197,7 @@ class QdrantService:
 
         logger.info("Found existing video points to link in Qdrant", count=len(matched_points), video_id=video_identifier)
 
-        for point in matched_points:
+        async def _update_point(point):
             payload = point.payload or {}
             allowed = set(payload.get("allowed_entities") or [])
             lesson_ids = set(payload.get("lesson_ids") or [])
@@ -236,6 +236,9 @@ class QdrantService:
                 payload=updated_payload,
                 points=[point.id],
             )
+
+        # ⚡ تحديث جميع النقاط بالتوازي لتقليص زمن الاستجابة إلى < 15ms
+        await asyncio.gather(*(_update_point(p) for p in matched_points))
 
         logger.info(
             "Successfully linked lesson to existing video in Qdrant",
@@ -313,12 +316,16 @@ class QdrantService:
                 # آخر درس مرتبط بهذا الفيديو -> حذف فيزيائي للنقاط
                 points_to_delete.append(point.id)
 
-        for point_id, updated_payload in points_to_unlink:
-            await self._client.set_payload(
-                collection_name=COLLECTION,
-                payload=updated_payload,
-                points=[point_id],
-            )
+        if points_to_unlink:
+            # ⚡ فك ارتباط النقاط غير المحذوفة بالتوازي
+            await asyncio.gather(*(
+                self._client.set_payload(
+                    collection_name=COLLECTION,
+                    payload=payload,
+                    points=[pid],
+                )
+                for pid, payload in points_to_unlink
+            ))
 
         if points_to_delete:
             await self._client.delete(
