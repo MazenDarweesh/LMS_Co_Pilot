@@ -27,7 +27,10 @@ class LessonContentService:
         logger.info("Generating Quiz", lesson_id=lesson_id, num_questions=num_questions)
         
         lesson_filter = Filter(
-            must=[FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))]
+            should=[
+                FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id)),
+                FieldCondition(key="lesson_ids", match=MatchValue(value=lesson_id)),
+            ]
         )
         
         # جلب أكبر عدد ممكن لضمان التغطية، ثم ترتيبهم برمجياً
@@ -102,7 +105,10 @@ class LessonContentService:
         logger.info("Generating Summary", lesson_id=lesson_id)
         
         lesson_filter = Filter(
-            must=[FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id))]
+            should=[
+                FieldCondition(key="lesson_id", match=MatchValue(value=lesson_id)),
+                FieldCondition(key="lesson_ids", match=MatchValue(value=lesson_id)),
+            ]
         )
         
         records = await qdrant_service.client.scroll(
