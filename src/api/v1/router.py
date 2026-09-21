@@ -375,11 +375,12 @@ async def unified_lesson_webhook(
 
         if linked > 0:
             # 🔔 إشعار سيرفر الـ .NET فوراً باكتمال المعالجة في 0 ثانية
-            asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+            background_tasks.add_task(
+                lms_client_service.notify_lesson_ai_status,
                 lesson_id=lesson_id,
                 status="Completed",
                 total_chunks=linked,
-            ))
+            )
             return {
                 "status": "accepted",
                 "message": f"Lesson successfully linked to {linked} existing chunks (Process Once)",
@@ -410,6 +411,7 @@ async def unified_lesson_webhook(
 async def link_lesson_reference(
     request: Request,
     payload: LessonReferenceRequest,
+    background_tasks: BackgroundTasks,
     admin_ctx: UserContext = Depends(require_role("Admin")),
 ):
     """
@@ -426,11 +428,12 @@ async def link_lesson_reference(
     )
 
     if linked > 0:
-        asyncio.create_task(lms_client_service.notify_lesson_ai_status(
+        background_tasks.add_task(
+            lms_client_service.notify_lesson_ai_status,
             lesson_id=payload.lesson_id,
             status="Completed",
             total_chunks=linked,
-        ))
+        )
         return LessonReferenceResponse(
             status="success",
             message=f"Successfully linked lesson {payload.lesson_id} to {linked} existing video chunks",
