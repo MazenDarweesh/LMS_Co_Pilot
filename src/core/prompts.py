@@ -121,6 +121,11 @@ SUMMARY_GENERATION_PROMPT = """
 # ---------------------------------------------------------------------------
 # RAG System Prompt — Anti-Hallucination & Dynamic Citation Boundaries
 # ---------------------------------------------------------------------------
+_MULTI_LESSON_INSTRUCTIONS = """
+7. **الربط والمقارنة بين الدروس المتعددة (Cross-Module Multi-Lesson):**
+   - المستخدم يستفسر عن موضوع يربط بين عدة دروس. قم بعقد مقارنة منهجية واضحة ومباشرة بين المفاهيم المشتركة أو العمليات المترابطة.
+   - بيّن بدقة مصدر كل فكرة أو خطوة واذكر الدرس التابع لها واستشهد برقم المصدر المقابل [X]."""
+
 _RAW_RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي ومتخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى بدقة وأمانة علمية.
 
 ## التعليمات الصارمة للاستشهاد بالمصادر:
@@ -131,30 +136,33 @@ _RAW_RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي ومتخصص �
 5. **حظر صارم لمنع الهلوسة في أرقام الاستشهاد:**
    - يُحظر تماماً كتابة أو ذكر أي رقم استشهاد أكبر من [{num_sources}] (مثلاً: يمنع منعاً باتاً كتابة [{forbidden_citation}] أو أي رقم أعلى لأنه غير موجود بالمقاطع المسترجعة).
    - استشهد فقط بالأرقام المتاحة فعلياً من [1] إلى [{num_sources}].
-6. إذا لم تتضمن المقاطع إجابة كافية، وضح ذلك للباحث بأمانة ودون اختلاق استشهادات غير موجودة.
+6. إذا لم تتضمن المقاطع إجابة كافية، وضح ذلك للباحث بأمانة ودون اختلاق استشهادات غير موجودة.{multi_lesson_instructions}
 
 ## المقاطع التعليمية المتاحة للسؤال الحالي (المصادر المتاحة من [1] إلى [{num_sources}]):
 {context_str}"""
 
 
 class _SafeRAGPrompt(str):
-    """String subclass that supplies safe defaults for num_sources and forbidden_citation."""
+    """String subclass that supplies safe defaults for num_sources, forbidden_citation, and multi_lesson_instructions."""
     def format(self, *args, **kwargs):
         num = kwargs.setdefault("num_sources", 1)
         kwargs.setdefault("forbidden_citation", num + 1)
+        kwargs.setdefault("multi_lesson_instructions", "")
         return super().format(*args, **kwargs)
 
 
 RAG_SYSTEM_PROMPT = _SafeRAGPrompt(_RAW_RAG_SYSTEM_PROMPT)
 
 
-def get_rag_system_prompt(context_str: str, num_sources: int = 1) -> str:
-    """Helper to build RAG prompt with bounded citation numbers."""
+def get_rag_system_prompt(context_str: str, num_sources: int = 1, is_multi_lesson: bool = False) -> str:
+    """Helper to build RAG prompt with bounded citation numbers and optional multi-lesson instructions."""
     safe_num = max(1, num_sources)
+    multi_instr = _MULTI_LESSON_INSTRUCTIONS if is_multi_lesson else ""
     return RAG_SYSTEM_PROMPT.format(
         context_str=context_str,
         num_sources=safe_num,
-        forbidden_citation=safe_num + 1
+        forbidden_citation=safe_num + 1,
+        multi_lesson_instructions=multi_instr,
     )
 
 # ---------------------------------------------------------------------------

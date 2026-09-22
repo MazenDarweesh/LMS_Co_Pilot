@@ -29,6 +29,11 @@ class SearchRequest(BaseModel):
     module_id: str | None = Field(default=None, validation_alias=AliasChoices("module_id", "moduleId", "ModuleId"))
     unit_id: str | None = Field(default=None, validation_alias=AliasChoices("unit_id", "unitId", "UnitId"))
     lesson_id: str | None = Field(default=None, validation_alias=AliasChoices("lesson_id", "lessonId", "LessonId"))
+    lesson_ids: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("lesson_ids", "lessonIds", "LessonIds"),
+        description="قائمة بمعرفات الدروس للبحث الموجه عبر عدة دروس (Cross-Module Multi-Lesson)"
+    )
     playlist_id: str | None = Field(default=None, validation_alias=AliasChoices("playlist_id", "playlistId", "PlaylistId"))
     video_id: str | None = Field(default=None, validation_alias=AliasChoices("video_id", "videoId", "VideoId"))
     level_id: str | None = Field(default=None, validation_alias=AliasChoices("level_id", "levelId", "LevelId"))
@@ -43,17 +48,23 @@ class SearchRequest(BaseModel):
 
     @property
     def scope_fingerprint(self) -> str:
-        """بصمة رقمية للنطاق والفلاتر لعزل الكاش ومنع تداخل نتائج نطاقات مختلفة."""
+        """بصمة رقمية للنطاق والفلاتر لعزل الكاش ومنع تداخل نتائج نطاقات مختلفة بما في ذلك الدروس المتعددة."""
         scope_val = self.scope or "all"
         effective_mod = self.module_id or "" if scope_val == "module" else ""
         effective_unit = self.unit_id or "" if scope_val == "unit" else ""
-        effective_lesson = self.lesson_id or "" if scope_val == "lesson" else ""
+        
+        if self.lesson_ids:
+            effective_lesson = ",".join(sorted(self.lesson_ids))
+        elif scope_val == "lesson":
+            effective_lesson = self.lesson_id or ""
+        else:
+            effective_lesson = ""
 
         # In non-standard or legacy scopes, preserve whichever IDs are provided
-        if scope_val not in {"all", "module", "unit", "lesson"}:
+        if scope_val not in {"all", "module", "unit", "lesson", "lessons", "multi_lesson"}:
             effective_mod = self.module_id or ""
             effective_unit = self.unit_id or ""
-            effective_lesson = self.lesson_id or ""
+            effective_lesson = ",".join(sorted(self.lesson_ids)) if self.lesson_ids else (self.lesson_id or "")
 
         parts = [
             scope_val,
@@ -73,7 +84,7 @@ class SearchRequest(BaseModel):
         if not v:
             return "all"
         v_norm = str(v).strip().lower()
-        if v_norm in {"all", "module", "unit", "lesson", "course", "standalone", "playlist"}:
+        if v_norm in {"all", "module", "unit", "lesson", "lessons", "multi_lesson", "course", "standalone", "playlist"}:
             return v_norm
         return "all"
 

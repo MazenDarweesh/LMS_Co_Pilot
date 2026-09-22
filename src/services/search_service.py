@@ -54,7 +54,12 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
     # 2. Hierarchical Scope ID Filtering
     # Explicit binding: only filter by lesson/unit/module when scope specifically targets that level.
     # Matches both single fields and multi-reference array fields (Process Once, Reference Everywhere).
-    if req.scope == "lesson" and req.lesson_id:
+    if (req.scope in ("lessons", "multi_lesson") or req.lesson_ids) and req.lesson_ids:
+        must.append(Filter(should=[
+            FieldCondition(key="lesson_id", match=MatchAny(any=req.lesson_ids)),
+            FieldCondition(key="lesson_ids", match=MatchAny(any=req.lesson_ids)),
+        ]))
+    elif req.scope == "lesson" and req.lesson_id:
         must.append(Filter(should=[
             FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
             FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
@@ -66,9 +71,14 @@ def _build_scope_filter(req: SearchRequest) -> Filter | None:
             FieldCondition(key="module_id", match=MatchValue(value=req.module_id)),
             FieldCondition(key="module_ids", match=MatchValue(value=req.module_id)),
         ]))
-    elif req.scope not in {"all", "module", "unit", "lesson"}:
+    elif req.scope not in {"all", "module", "unit", "lesson", "lessons", "multi_lesson"}:
         # Backward compatibility for direct ID queries or legacy playlist/video requests
-        if req.lesson_id:
+        if req.lesson_ids:
+            must.append(Filter(should=[
+                FieldCondition(key="lesson_id", match=MatchAny(any=req.lesson_ids)),
+                FieldCondition(key="lesson_ids", match=MatchAny(any=req.lesson_ids)),
+            ]))
+        elif req.lesson_id:
             must.append(Filter(should=[
                 FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
                 FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
@@ -305,7 +315,12 @@ class SearchService:
             gemini_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
             
         num_sources = state["context"].get("num_sources", 1) if state.get("context") else 1
-        system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
+        is_multi_lesson = state["context"].get("is_multi_lesson", False) if state.get("context") else False
+        system_instruction = get_rag_system_prompt(
+            context_str=context_str,
+            num_sources=num_sources,
+            is_multi_lesson=is_multi_lesson,
+        )
 
         t0 = time.time()
         response = await asyncio.to_thread(
@@ -520,6 +535,7 @@ class SearchService:
         context_str = _build_rag_context_str(valid_chunks)
         sources = _build_source_items(valid_chunks)
         num_sources = len(valid_chunks) if valid_chunks else 1
+        is_multi_lesson = bool(req.lesson_ids) or (req.scope in ("lessons", "multi_lesson"))
         
         thread_id = req.thread_id or str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
@@ -528,7 +544,11 @@ class SearchService:
         final_state = await self.app_graph.ainvoke(
             {
                 "messages": [HumanMessage(content=req.query)],
-                "context": {"context_str": context_str, "num_sources": num_sources},
+                "context": {
+                    "context_str": context_str,
+                    "num_sources": num_sources,
+                    "is_multi_lesson": is_multi_lesson,
+                },
             },
             config=config
         )
@@ -745,7 +765,12 @@ class SearchService:
         t_gen = time.time()
         context_str = _build_rag_context_str(valid_chunks)
         num_sources = len(valid_chunks) if valid_chunks else 1
-        system_instruction = get_rag_system_prompt(context_str=context_str, num_sources=num_sources)
+        is_multi_lesson = bool(req.lesson_ids) or (req.scope in ("lessons", "multi_lesson"))
+        system_instruction = get_rag_system_prompt(
+            context_str=context_str,
+            num_sources=num_sources,
+            is_multi_lesson=is_multi_lesson,
+        )
         thread_id = req.thread_id or str(uuid.uuid4())
 
         gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=req.query)])]
