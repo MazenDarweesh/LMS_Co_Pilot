@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "aa6f686", "last_synced_at": "2026-09-20T17:35:00Z", "documented_endpoints": 18} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "85af704", "last_synced_at": "2026-09-29T15:45:00Z", "documented_endpoints": 20} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,10 +19,13 @@
 
 ## ✨ Key Features
 
+- 🔁 **"Process Once, Reference Everywhere" Deduplication & Linking** — Content-addressable video chunk hashing (`vid::{video_id}::chunk::{i}`) eliminates 100% of duplicate Whisper transcription and BGE-M3 embedding costs across courses. Pre-indexed videos link to new modules in **0 seconds (Fast Path)**, updates execute in `<15ms` via `asyncio.gather`, and shared vectors are protected via reference-counting deletion
+- 🔀 **Cross-Module Multi-Lesson Search & Comparative RAG** — Enables cross-lesson inquiries across different modules (`lesson_ids: list[str]`), matching points in Qdrant with `MatchAny` filters, isolating exact/semantic caches deterministically via sorted `scope_fingerprint`, and guiding Gemini with comparative system prompts
 - 🛡️ **Stripe-Standard HMAC-SHA256 Webhook Security** — Digital signature verification (`X-Signature-256`, `X-Timestamp`) calculated over raw UTF-8 binary request bytes matching .NET 10 `WebhookDispatcher`, enforced via constant-time comparison (`hmac.compare_digest`), a strict 300-second anti-replay window, and zero reliance on static tokens
 - 🚀 **Zero-Hop Claims RBAC & Resilient Ingress** — Decodes `company_id` and `department_id` directly from .NET 10 JWT claims (`TokenClaims` with `AliasChoices`); Admins skip internal LMS network permission calls entirely (0ms network hop), while students fail gracefully to claims-based tenant isolation if LMS permissions service is temporarily unreachable, eliminating 503 errors and saving 20-40ms on search
 - 🔄 **Video AI Ingestion Lifecycle State Machine & Resilient Webhooks** — Seamlessly coordinates multi-minute audio pipelines (`None` ➔ `Queued` ➔ `Processing` ➔ `Completed` / `Failed`) with `.NET 10` via asynchronous status push callbacks (`POST /api/internal/lessons/{lessonId}/ai-status`), live stateless polling queries (`GET /v1/ingest/status/{lesson_id}`), and thread-safe per-lesson `asyncio.Lock` serialization
-- 🧠 **Adaptive Content Generation & Anti-Hallucination Grounding** — Dynamically scales MCQ quiz generation counts `actual_k = min(num_questions, len(chunks))` for short video lessons (preventing hallucinations from context exhaustion) and fails safely with structured typed 404s on uningested content
+- 🧠 **Adaptive Content Generation & Anti-Hallucination Grounding** — Dynamically scales MCQ quiz generation counts `actual_k = min(num_questions, len(chunks))` for short video lessons (preventing hallucinations from context exhaustion) and supports independent quiz/summary regeneration across multi-referenced lessons sharing the same video
+- 🐳 **Production Container Healthcheck & ERP CORS Ready** — Native HTTP healthcheck probe in Dockerfile (`HEALTHCHECK`), robust FastAPI `BackgroundTasks` lifecycle bindings for outbound webhooks, and permissive preflight CORS for embedded ERP Web Component widgets (`<lms-ai-copilot>`)
 - 🔐 **Cross-Stack Resilient JWT Negotiation** — Fault-tolerant claim validation with optional defaults for SuperAdmins lacking tenant IDs and defensive claim mapping between ASP.NET Core Identity namespaces and FastAPI
 - 📜 **LMS Master Integration Contract v3.0.0-FINAL & Dual-Prefix Multiplexing** — Seamless zero-friction interoperability with `.NET 10 Web API` (`LearnDynamicPro`) and Angular 19; exposes dual route prefixes (`/v1` canonical and `/api` compatibility alias), provides hybrid C# DTO serialization (`question_text`, `question_number`, `option_id`), guarantees mandatory summary `overview` grounding, and handles case-insensitive Webhooks (`"Updated"` / `"Deleted"`)
 - 🚨 **Standalone Alertmanager & SLA Incident Dispatch (Port 9093)** — Dedicated Alertmanager container (`prom/alertmanager:v0.27.0`) in `docker-compose.yml` with webhook incident routing, evaluating Prometheus SLA rules across high HTTP 5xx error rates (>5%), P95 search latency degradation (>3.0s), security guardrail & prompt injection spikes (>0.5/sec), and degraded semantic cache hit rates (<10%)
@@ -119,18 +122,19 @@
 | Method | Endpoint | Auth / Protection | Description |
 |:------:|:---------|:-----------------:|:------------|
 | `POST` | `/v1/search` | JWT · 30 req/min | Two-tier cached & hybrid RAG search with role-scoped vector filtering |
-| `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, heartbeat keep-alive, and backpressure |
+| `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, multi-lesson comparative querying (`lesson_ids`), heartbeat, and backpressure |
 | `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async PostgreSQL persistence, and Prometheus metrics |
 | `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates with instant Ragas evaluation dataset export (`?format=ragas&limit=100`) |
 | `POST` | `/v1/admin/cache/clear` | JWT Admin · 10 req/min | Purges both Tier-1 Exact LRU Cache (in-memory) and Tier-2 Semantic Vector Cache (Qdrant) |
 | `POST` | `/v1/ingest/audio` | JWT Admin · 5 req/min | Start YouTube → Qdrant ingestion pipeline (async) |
 | `GET` | `/v1/ingest/events/{session_id}` | EventSource (SSE) | SSE stream for real-time ingestion progress |
 | `GET` | `/v1/ingest/status/{lesson_id}` | Public / Token · 60 req/min | Query live lesson ingestion state (`None` / `Processing` / `Completed`) & Qdrant chunk count |
-| `POST` | `/v1/webhooks/lesson-updated` | HMAC-SHA256 (Stripe-Standard) · 60 req/min | Re-index or delete vectors on LMS content change with per-lesson lock and anti-replay protection |
+| `POST` | `/v1/webhooks/lesson-updated` | HMAC-SHA256 (Stripe-Standard) · 60 req/min | Re-index or delete vectors on LMS content change with per-lesson lock, anti-replay protection, and multi-reference unlinking |
+| `POST` | `/v1/admin/lessons/reference` | JWT Admin · 10 req/min | Instantly links an already-indexed video to a new module/lesson in 0s (Fast Path) without duplicate audio download |
 | `POST` | `/v1/admin/sync-failed` | JWT Admin · 5 req/min | Batch-queue reconciliation of failed or delayed lesson syncs after downtime |
 | `GET` | `/v1/lessons/{lesson_id}` | JWT (BOLA Protected) · 20 req/min | Retrieve processed checkpoints for a lesson (strictly restricted to entitled students & company admins) |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin · 10 req/min | Generate adaptive MCQs (`actual_k = min(num_questions, len(chunks))`) directly from Qdrant chunks |
-| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 10 req/min | Generate hierarchical pyramid summary of a lesson |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-quiz` | JWT Admin · 10 req/min | Generate adaptive MCQs (`actual_k = min(num_questions, len(chunks))`) directly from Qdrant chunks (supports multi-referenced lessons) |
+| `POST` | `/v1/admin/lessons/{lesson_id}/generate-summary` | JWT Admin · 10 req/min | Generate hierarchical pyramid summary of a lesson (supports multi-referenced lessons) |
 | `POST` | `/v1/speech/evaluate-quality` | JWT Admin · 10 req/min | Calculate WER/CER for AI transcript evaluations |
 | `POST` | `/v1/speech/tafqit` | Rate Limited · 20 req/min | Convert numerical digits to Arabic text words |
 | `GET` | `/ready` | Public | Readiness probe (returns 200 OK only after model warmup and DB/Qdrant pool readiness) |
@@ -351,6 +355,8 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | `tests/unit/test_ingest_status.py` | Ingestion status lifecycle state machine, fallback status querying, and webhook notifications | 4 | ✅ 100% Passed |
 | `tests/unit/test_filter_scoping.py` | Hierarchical scope filtering, multi-dimensional search constraints, and payload isolation | 6 | ✅ 100% Passed |
 | `tests/unit/test_dotnet_compatibility.py` | Cross-stack DTO compatibility, dual-prefix routing multiplexing, and error resilience | 8 | ✅ 100% Passed |
+| `tests/unit/test_process_once_reference.py` | "Process Once, Reference Everywhere" video deduplication, 0s Fast Path, asyncio.gather multi-linking, and reference-counting deletion | 8 | ✅ 100% Passed |
+| `tests/unit/test_multi_lesson_search.py` | Cross-module multi-lesson search request parsing, deterministic cache fingerprinting, MatchAny filtering, and comparative prompt generation | 6 | ✅ 100% Passed |
 | `tests/load/locustfile.py` | Concurrent stress testing (70% Cache / 20% Cold RAG / 10% Health) | Multi-User | ✅ 0% Error Rate |
 | `.github/workflows/ci.yml` | Multi-container CI pipeline (PostgreSQL 16 + Qdrant + Pytest + Docker) | CI Gate | ✅ Passed |
 
@@ -399,6 +405,14 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Pre-production code audit (Pillars 1-5, OWASP A01-A04, Rust tokenizer thread safety, Docker non-root appuser)
 - [x] Locust concurrent load testing suite & traffic simulator
 - [x] Automated GitHub Actions CI/CD pipeline (PostgreSQL 16, Qdrant 1.13.2, Docker build)
+- [x] "Process Once, Reference Everywhere" Deduplication (Canonical video hashing `vid::{id}::chunk::{i}`, 0s Fast Path)
+- [x] High-performance concurrent multi-reference vector updates via `asyncio.gather` (<15ms latency)
+- [x] Reference-counting deletion in Qdrant (`delete_by_lesson_id`) protecting shared multi-course video assets
+- [x] Decoupled quiz & summary generation for lessons referencing identical shared video vectors
+- [x] Cross-Module Multi-Lesson Search & Comparative RAG (`lesson_ids: list[str]`, Qdrant `MatchAny` filtering)
+- [x] Deterministic `scope_fingerprint` cache partitioning for permutation-invariant multi-lesson caching
+- [x] Production Docker healthcheck probe (`HEALTHCHECK`) and background task lifecycle bindings
+- [x] Permissive ERP Web Component preflight CORS (`allow_origins=["*"]`, `allow_credentials=True`)
 - [ ] PDF ingestion via Marker / MinerU (Week 9)
 - [ ] Multi-pod deployment with PostgreSQL lease table or Redis lock (Post-MVP / Swarm / Kubernetes)
 

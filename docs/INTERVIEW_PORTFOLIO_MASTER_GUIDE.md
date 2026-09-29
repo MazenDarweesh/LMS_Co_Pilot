@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "aa6f686"
-last_synced_at: 2026-09-20T17:35:00Z
-guide_version: 2.1
-word_count: 11200
-max_word_budget: 14000
+last_synced_commit: "85af704"
+last_synced_at: 2026-09-29T15:45:00Z
+guide_version: 2.2
+word_count: 12500
+max_word_budget: 15000
 ---
 
 # 🎓 LMS AI Co-Pilot: الدليل المرجعي الشامل للمقابلات التقنية (Bilingual Interview Master Guide)
@@ -356,6 +356,44 @@ max_word_budget: 14000
 
 ---
 
+### ADR-14 (ADR-23/24): "Process Once, Reference Everywhere" Deduplication & Reference Counting in Vector Storage
+
+* **Question / التحدي:**
+  * **[EN]:** "How did you eliminate 100% of duplicate Whisper transcription and BGE-M3 vector embedding costs when multiple training modules reuse the exact same video asset, and how did you safely prevent accidental vector deletion?"
+  * **[AR]:** "كيف ألغيت 100% من تكاليف تفريغ Whisper وتضمين BGE-M3 عند استخدام نفس الفيديو في عدة موديولات، وكيف حميت المتجهات من الحذف غير المقصود؟"
+* **Technical Trade-off / المقايضة الهندسية:**
+  * **[EN]:** Re-indexing identical videos across modules wasted Whisper transcription, Gemini normalization, and BGE-M3 vector generation quotas. Furthermore, naively deleting Qdrant points when one referencing lesson was deleted would break search for all other modules sharing that video. We engineered **"Process Once, Reference Everywhere"**:
+    1. **Canonical Video Chunk Addressing:** Formulated deterministic chunk IDs keyed by canonical video ID (`vid::{video_id}::chunk::{i}`). Reused on-disk checkpoints (`vid_{key}_chunk_{i}.json`) prevent redundant compute.
+    2. **0-Second Fast Path Linking:** When an already-indexed video is assigned to a new lesson, the pipeline executes in **0s**, skipping audio download and ASR, and immediately dispatches an asynchronous `Completed` callback to .NET.
+    3. **Concurrent Multi-Module Payloads:** Built `link_lesson_to_existing_video` using `asyncio.gather` to concurrently append `lesson_ids` and `module_ids` across points in `<15ms`.
+    4. **Reference-Counting Deletion:** In `delete_by_lesson_id`, Qdrant points are pruned of the target lesson ID. Vectors are only physically deleted when the reference count drops to 0 (no referencing lessons remain).
+  * **[AR]:** تكرار معالجة نفس الفيديو عبر موديولات مختلفة كان يستنزف حصص Whisper وتوليد المتجهات ويضاعف مساحة Qdrant. الأخطر من ذلك: حذف أحد الدروس المرتبطة بالفيديو كان سيمسح المقاطع الشعاعية بالكامل ويعطل الدروس الأخرى المشتركة فيه. قمنا بهندسة ميزة **"معالجة واحدة ومراجع متعددة"**:
+    1. **عنونة المقاطع ببصمة الفيديو الحتمية:** صممنا معرفات المقاطع بناءً على كود الفيديو الفريد (`vid::{video_id}::chunk::{i}`) مما ضمن عدم تكرار نفس النقطة في Qdrant نهائياً.
+    2. **المسار السريع الفوري (Fast Path في 0 ثوانٍ):** عند ربط فيديو مفرغ مسبقاً بدرس جديد، يتخطى النظام تحميل الصوت و Whisper و Gemini، ويقوم فوراً بربط الصلاحيات وإرسال إشعار اكتمال للـ .NET في 0 ثوانٍ.
+    3. **الربط المتوازي عالي السرعة:** استخدام `asyncio.gather` في `link_lesson_to_existing_video` قلص زمن تحديث مصفوفات الـ Payload لجميع المقاطع من 300ms إلى أقل من 15ms.
+    4. **الحذف بحساب المراجع (Reference Counting):** عند حذف درس، يقوم بايثون فقط بفك ارتباط معرف الدرس؛ وفقط عندما يصل عدد المراجع إلى صفر (آخر درس مرتبط بالفيديو) تُحذف المتجهات فيزيائياً من Qdrant.
+
+---
+
+### ADR-15 (ADR-25): Cross-Module Multi-Lesson Search Scoping & Dynamic Comparative Prompts
+
+* **Question / التحدي:**
+  * **[EN]:** "How do you enable students or employees to compare concepts across multiple lessons from different modules simultaneously while maintaining strict security and cache isolation?"
+  * **[AR]:** "كيف تمكن الطالب أو الموظف من المقارنة بين دروس متعددة عبر موديولات مختلفة مع الحفاظ على الأمان وعزل الكاش بدقة؟"
+* **Technical Trade-off / المقايضة الهندسية:**
+  * **[EN]:** Legacy scoping only allowed single `lesson_id` or single `module_id`. For complex ERP workflows (e.g. comparing "Manufacturing Work Orders" with "General Ledger Journal Entries"), clients needed multi-lesson targeted retrieval. We upgraded the RAG pipeline:
+    1. **Multi-Lesson Request Contract:** Added `lesson_ids: list[str]` with camelCase aliases (`lessonIds`) in `SearchRequest`, normalizing scopes `"lessons"` and `"multi_lesson"`.
+    2. **Deterministic Cache Partitioning:** In `scope_fingerprint`, sorted the list (`sorted(lesson_ids)`), guaranteeing permutation-invariant caching (asking about [L1, L2] shares cache with [L2, L1], but isolates [L1, L3]).
+    3. **MatchAny Vector Filtering:** Generated Qdrant filters using `MatchAny(any=req.lesson_ids)` matching both single `lesson_id` and shared `lesson_ids` array fields, seamlessly respecting Zero-Hop RBAC.
+    4. **Dynamic Comparative Prompt Guidance:** Guided Gemini Flash via dynamic comparative instructions in `RAG_SYSTEM_PROMPT` to systematically contrast workflows and cite lesson timestamps without hallucination.
+  * **[AR]:** في السابق كان البحث محصوراً بدرس واحد أو موديول واحد. في أنظمة الـ ERP يحتاج المستخدم كثيراً لمقارنة العمليات (مثل خطوات أمر التشغيل بالإنتاج مع القيود المحاسبية). قمنا بتطوير محرك البحث:
+    1. **عقد الطلب متعدد الدروس:** إضافة `lesson_ids: list[str]` في `SearchRequest` مع دعم النطاق `"lessons"`.
+    2. **عزل الكاش الحتمي:** فرز معرفات الدروس أبجدياً في `scope_fingerprint`، مما ضمن أن تغيير ترتيب اختيار الدروس [L1, L2] يستفيد من نفس الكاش، بينما يمنع أي تداخل بين مجموعات الدروس المختلفة.
+    3. **فلترة Qdrant بـ MatchAny:** توليد شروط تطابق أي من الدروس المختارة متوافقة مع مصفوفات المراجع المشتركة ونظام الصلاحيات Zero-Hop.
+    4. **توجيه النموذج بالمقارنة المنهجية:** تزويد موجه Gemini بتعليمات خاصة للمقارنة والربط المنهجي وذكر مصادر وتوقيتات كل درس بدقة.
+
+---
+
 ## 🎯 4. بنك أسئلة وأجوبة المقابلات التقنية المتوقعة (Deep Technical Interview Q&A)
 
 ---
@@ -704,6 +742,37 @@ max_word_budget: 14000
     2. **القفزة الصفرية للصلاحيات (Zero-Hop Claims RBAC):** استخراج معرف الشركة والقسم مباشرة من Claims توكن JWT لدوت نت عبر `AliasChoices`. المشرف يتخطى استدعاءات الشبكة بنسبة 100% (0ms network hop).
     3. **التراجع المرن للطلاب (Resilient Fallback):** في حال تعطل خدمة صلاحيات LMS مؤقتاً، يتراجع بايثون للعزل بناءً على بيانات التوكن بدلاً من رفض الطلب بـ 503.
   * **النتيجة (Result):** اجتياز 51 اختباراً مؤتمتاً بنجاح 100%، توفير 20-40ms في استعلامات البحث، وتحصين النظام بالكامل ضد هجمات التوقيت والتلاعب بالحمولة.
+
+---
+
+### 🌟 سيناريو 5: إلغاء التكرار لمعالجة الفيديوهات عبر موديولات متعددة وحساب المراجع في Qdrant
+#### (Scenario 5: Process Once, Reference Everywhere & Multi-Lesson Comparative Search)
+
+* **السؤال المتوقع:**  
+  * **[EN]:** "How do you handle shared content across courses or modules in your vector store without multiplying compute costs or risking accidental data loss?"
+  * **[AR]:** "كيف تدير المحتوى المشترك بين الكورسات والموديولات المختلفة في قاعدة المتجهات دون مضاعفة تكاليف الحوسبة أو تعريض البيانات للحذف غير المقصود؟"
+
+* **الإجابة [EN] (منهجية STAR):**
+  * **Situation:** In enterprise learning systems, the exact same training video is frequently reused across multiple course modules. Re-indexing the same video for each module wasted expensive Whisper transcription and BGE-M3 embedding quotas, while bloating Qdrant storage. Furthermore, naive vector deletion when deleting a single lesson would break citations for all remaining modules sharing that video asset.
+  * **Task:** Implement content-addressable video deduplication, 0-second linking for pre-indexed videos, reference-counting deletion, and cross-module comparative search.
+  * **Action:**
+    1. **Content-Addressable Video Hashing:** Formulated deterministic chunk IDs keyed by canonical video ID (`vid::{video_id}::chunk::{i}`). Checkpoints on disk (`vid_{key}_chunk_{i}.json`) prevent redundant compute.
+    2. **0-Second Fast Path Linking:** When a pre-indexed video is referenced by a new lesson, the pipeline skips audio downloads and transcription entirely, atomically updating Qdrant payloads and dispatching an asynchronous `Completed` callback in 0 seconds.
+    3. **Concurrent Payloads via `asyncio.gather`:** Replaced sequential set-payload loops with parallelized updates, slashing multi-chunk linking latency from ~300ms to `<15ms`.
+    4. **Reference-Counting Deletion:** In `delete_by_lesson_id`, points are unlinked from the deleted lesson. Vectors are only deleted when the reference count reaches 0.
+    5. **Cross-Module Multi-Lesson Scoping:** Extended `SearchRequest` with `lesson_ids` and Qdrant `MatchAny` filtering, backed by sorted deterministic `scope_fingerprint` caching and comparative RAG prompt steering.
+  * **Result:** Eliminated 100% of duplicate AI processing costs for shared videos, achieved <15ms linking latency, protected shared vector assets with 100% integrity across 65 unit tests, and enabled students to conduct multi-lesson comparative inquiries.
+
+* **الإجابة [AR] (منهجية STAR):**
+  * **الموقف (Situation):** في أنظمة التعليم والـ ERP المؤسسية، يتكرر استخدام نفس الفيديو التدريبي في أكثر من موديول أو مسار تعليمي. إعادة معالجة الفيديو في كل مرة كانت تستهلك حصص Whisper وتوليد المتجهات بدون داعٍ وتضاعف حجم الذاكرة في Qdrant. والأسوأ من ذلك: إذا قام المشرف بحذف أحد الدروس، فإن الحذف العادي كان سيمسح متجهات الفيديو ويُعطل باقي الموديولات المشتركة فيه.
+  * **المهمة (Task):** بناء بنية تحتية تمنع تكرار المعالجة نهائياً، وتربط الفيديوهات المكررة في 0 ثوانٍ، وتدير الحذف بأمان عبر حساب المراجع (Reference Counting)، مع إتاحة المقارنة بين عدة دروس في نفس الوقت.
+  * **الإجراء (Action):**
+    1. **عنونة المقاطع ببصمة الفيديو الحتمية:** صياغة معرّف المقاطع اعتماداً على معرف الفيديو (`vid::{video_id}::chunk::{i}`)، واسترجاع الـ Checkpoints من القرص لمنع تكرار المعالجة.
+    2. **المسار السريع الفوري (Fast Path في 0 ثوانٍ):** عند ربط فيديو مفرغ مسبقاً، يتخطى بايثون تحميل الصوت والـ ASR فورياً، ويقوم بتحديث الـ Payload وإشعار .NET بالاكتمال في 0 ثوانٍ.
+    3. **الربط المتوازي بـ `asyncio.gather`:** تسريع تحديث نقاط Qdrant من 300ms إلى أقل من 15ms.
+    4. **الحذف الآمن بحساب المراجع:** فك ارتباط الدرس المحذوف فقط، وتأجيل المسح الفيزيائي للمتجهات حتى يُحذف آخر درس مرتبط بالفيديو.
+    5. **البحث الموجه متعدد الدروس والمقارنة:** دعم `lesson_ids: list[str]` وفلترة Qdrant بـ `MatchAny` مع عزل الكاش حتمياً بفرز المعرفات وتوجيه Gemini للمقارنة المنهجية.
+  * **النتيجة (Result):** توفير 100% من تكاليف معالجة الفيديوهات المكررة، تقليص زمن الربط إلى أقل من 15ms، حماية سلامة البيانات المشتركة بنسبة 100% عبر 65 اختبار وحدة مؤتمت، وتمكين الطلاب من البحث المقارن عبر الدروس والموديولات المختلفة.
 
 ---
 

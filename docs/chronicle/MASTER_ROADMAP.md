@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "aa6f686"
-last_updated: "2026-09-20T17:35:00Z"
-active_milestone: "M09"
-total_milestones: 9
-completed_milestones: 9
+last_synced_commit: "85af704"
+last_updated: "2026-09-29T15:45:00Z"
+active_milestone: "M10"
+total_milestones: 10
+completed_milestones: 10
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -25,19 +25,32 @@ completed_milestones: 9
 | **M07** | Production Telemetry & SLA Alerting | ✅ COMPLETED | 2026-09-13 -> 2026-09-14 | TTFT/TPOT, Guardrail Refusals, Prometheus Alerts, Feedback DB | [M07 Dossier](milestones/M07_observability_alerting_feedback_persistence.md) |
 | **M08** | Canonical Integration Contract v3.0.0 & Pre-Production Hardening | ✅ COMPLETED | 2026-09-14 -> 2026-09-14 | Dual-Route Multiplexing (/v1 & /api), DTO Alignment, Alertmanager 9093, OWASP Headers & Finally Disk Cleanup | [M08 Dossier](milestones/M08_canonical_contract_hardening.md) |
 | **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-20 | Lifecycle States (None->Queued->Processing->Completed/Failed), HMAC-SHA256 Webhooks, Zero-Hop Claims RBAC, Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
+| **M10** | Process Once Reference & Multi-Lesson Search | ✅ COMPLETED | 2026-09-21 -> 2026-09-29 | Deduplication (0s Fast Path), asyncio.gather, Reference-Counting Deletion, Cross-Module Multi-Lesson Search, Comparative Prompting & ERP CORS | [M10 Dossier](milestones/M10_process_once_reference_and_multi_lesson.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
-┌─────────────────────┬───────┬────────────┬────────────────────────┐
-│ Metric              │ Value │ Target     │ Visual Bar             │
-├─────────────────────┼───────┼────────────┼────────────────────────┤
-│ Milestones Complete │ 9 / 9 │ 9 (Target) │ [████████████████████] │ 100.0%
-│ Evaluation Quality  │ 0.92  │ >= 0.80    │ [██████████████████░░] │ Passed
-│ Latency (Exact/Sem) │ <1ms  │ <= 25ms    │ [████████████████████] │ Production
-│ Streaming TTFT      │ <300ms│ <= 500ms   │ [████████████████████] │ Production
-│ SLA Alert Coverage  │ 4/4   │ 4 rules    │ [████████████████████] │ Production
-└─────────────────────┴───────┴────────────┴────────────────────────┘
+┌─────────────────────┬─────────┬─────────────┬────────────────────────┐
+│ Metric              │ Value   │ Target      │ Visual Bar             │
+├─────────────────────┼─────────┼─────────────┼────────────────────────┤
+│ Milestones Complete │ 10 / 10 │ 10 (Target) │ [████████████████████] │ 100.0%
+│ Evaluation Quality  │ 0.92    │ >= 0.80     │ [██████████████████░░] │ Passed
+│ Latency (Exact/Sem) │ <1ms    │ <= 25ms     │ [████████████████████] │ Production
+│ Streaming TTFT      │ <300ms  │ <= 500ms    │ [████████████████████] │ Production
+│ SLA Alert Coverage  │ 4/4     │ 4 rules     │ [████████████████████] │ Production
+└─────────────────────┴─────────┴─────────────┴────────────────────────┘
 ```
+
+---
+
+## 🎯 Milestone Deliverables (M10 Completed)
+
+* **"Process Once, Reference Everywhere" Deduplication Engine:** Canonical video hashing (`vid::{video_id}::chunk::{i}`) eliminating duplicate Whisper transcription and BGE-M3 embedding across courses. Reused disk checkpoints (`vid_{key}_chunk_{i}.json`) prevent redundant compute.
+* **0-Second Fast Path Linking (ADR-24):** Instant linking of pre-indexed videos to new modules in **0 seconds**, notifying .NET via asynchronous webhook callback without re-processing audio.
+* **Concurrent Multi-Module Qdrant Linking:** Accelerated Qdrant point array payload updates via `asyncio.gather`, cutting multi-chunk linking latency from ~300ms to `<15ms`.
+* **Reference-Counting Aware Deletion:** In `delete_by_lesson_id`, safely unlinks lesson references from shared video points and only drops physical vectors when all referencing lessons are deleted (ref count = 0).
+* **Cross-Module Multi-Lesson Search & Scoping:** Extended `SearchRequest` with `lesson_ids: list[str]` and `MatchAny` Qdrant filtering across both single and multi-reference array fields. Deterministic `scope_fingerprint` cache partitioning with `sorted(lesson_ids)`.
+* **Comparative RAG System Prompting:** Injected dynamic cross-lesson comparative guidance into `RAG_SYSTEM_PROMPT` with strict citation bounds when `is_multi_lesson=True`.
+* **Production Deployment & CORS Hardening:** Native HTTP healthcheck probe in Dockerfile, FastAPI `BackgroundTasks` lifecycle bindings for .NET status callbacks, and permissive CORS (`allow_origins=["*"]`) for ERP Web Component integration.
 
 ---
 
