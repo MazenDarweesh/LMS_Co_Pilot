@@ -1,8 +1,27 @@
+from typing import Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "LMS_CO_Pilot"
     ENVIRONMENT: str = "development"
+
+    @field_validator(
+        "DATABASE_URL",
+        "QDRANT_URL",
+        "LMS_BASE_URL",
+        "GROQ_API_KEY",
+        "GEMINI_API_KEY",
+        "JWT_SECRET",
+        "SERVICE_TOKEN",
+        mode="before",
+        check_fields=False
+    )
+    @classmethod
+    def strip_quotes_and_whitespace(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip("\"' ")
+        return v
 
     
     # مفاتيح الـ API ستُقرأ تلقائياً من ملف .env (Best Practice)
