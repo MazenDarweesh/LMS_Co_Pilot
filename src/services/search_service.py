@@ -1,11 +1,12 @@
 import asyncio
 import os
 import json
+import re
 import time
 import uuid
 import threading
 from datetime import datetime, timezone
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 import structlog
 from fastapi import Request
 from google import genai
@@ -316,10 +317,12 @@ class SearchService:
             
         num_sources = state["context"].get("num_sources", 1) if state.get("context") else 1
         is_multi_lesson = state["context"].get("is_multi_lesson", False) if state.get("context") else False
+        visible_fields = state["context"].get("visible_fields") if state.get("context") else None
         system_instruction = get_rag_system_prompt(
             context_str=context_str,
             num_sources=num_sources,
             is_multi_lesson=is_multi_lesson,
+            visible_fields=visible_fields,
         )
 
         t0 = time.time()
@@ -402,7 +405,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 1.1 Fast Ingress: Tier-1 Exact In-Memory Cache (< 2ms)
         # ──────────────────────────────────────────────
-        if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
             t_exact = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             exact_duration = time.time() - t_exact
@@ -443,7 +446,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 2.1 Tier-2 Semantic Cache (Qdrant Vector Cache)
         # ──────────────────────────────────────────────
-        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
             t_cache = time.time()
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
@@ -548,6 +551,7 @@ class SearchService:
                     "context_str": context_str,
                     "num_sources": num_sources,
                     "is_multi_lesson": is_multi_lesson,
+                    "visible_fields": req.visible_fields,
                 },
             },
             config=config
@@ -619,6 +623,44 @@ class SearchService:
 
         return final_response
 
+    async def _extract_form_fields_if_needed(
+        self, query: str, visible_fields: list[str] | None
+    ) -> dict[str, Any]:
+        if not visible_fields:
+            return {}
+        try:
+            prompt = f"""You are an ERP form data extractor.
+Analyze the user's Arabic message and the list of available form fields.
+Extract any explicit values mentioned by the user for these fields.
+
+Available Fields:
+{json.dumps(visible_fields, ensure_ascii=False)}
+
+User Message:
+\"{query}\"
+
+Rules:
+1. Map values strictly to the English field key (e.g. CustomerName, Phone, Address, CreditLimit).
+2. ONLY include fields that the user explicitly provided actual values for.
+3. If the user is just asking an instructional question without providing concrete data (e.g. "how do I add a customer?"), return an empty JSON object: {{}}
+4. Return ONLY a valid JSON object."""
+
+            resp = await asyncio.to_thread(
+                self._gemini_client.models.generate_content,
+                model="gemini-2.5-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0,
+                ),
+            )
+            data = json.loads(resp.text)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.error("Failed to extract ERP form fields", error=str(e))
+        return {}
+
     async def search_stream(
         self, req: SearchRequest, user_ctx: UserContext, request: Request
     ) -> AsyncIterator[str]:
@@ -663,7 +705,7 @@ class SearchService:
         normalized_query = normalize_arabic_text_leaderboard(req.query)
 
         # 1.1 Exact In-Memory Cache
-        if settings.EXACT_CACHE_ENABLED and not req.skip_cache:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
             t_stage = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             record_stage_duration("exact_cache", time.time() - t_stage)
@@ -689,7 +731,7 @@ class SearchService:
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
         record_stage_duration("embedding", time.time() - t_emb)
 
-        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
             t_sem = time.time()
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
@@ -759,6 +801,21 @@ class SearchService:
         # Yield sources event first for immediate citation rendering in frontend
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
 
+        # 🚀 ERP Form Fill Early Extraction: Detect data and emit form_fill event immediately
+        extracted_form_fields: dict[str, Any] = {}
+        form_fill_emitted = False
+        if req.visible_fields:
+            extracted_form_fields = await self._extract_form_fields_if_needed(req.query, req.visible_fields)
+            if extracted_form_fields:
+                payload = {
+                    "intent": "form_fill",
+                    "fields": extracted_form_fields,
+                    "screenKey": req.erp_key,
+                }
+                logger.info("Emitting early form_fill SSE event", fields=list(extracted_form_fields.keys()), erp_key=req.erp_key)
+                yield _format_sse("form_fill", payload)
+                form_fill_emitted = True
+
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
         # ──────────────────────────────────────────────
@@ -770,10 +827,30 @@ class SearchService:
             context_str=context_str,
             num_sources=num_sources,
             is_multi_lesson=is_multi_lesson,
+            visible_fields=req.visible_fields,
+            extracted_form_fields=extracted_form_fields if extracted_form_fields else None,
         )
         thread_id = req.thread_id or str(uuid.uuid4())
 
-        gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=req.query)])]
+        user_prompt_text = req.query
+        if extracted_form_fields:
+            user_prompt_text += (
+                f"\n\n[توجيه تنفيذي لمساعد ERP:\n"
+                f"تم استخراج وتجهيز بيانات النموذج التالية بنجاح للتعبئة في الشاشة: {json.dumps(extracted_form_fields, ensure_ascii=False)}.\n"
+                f"أنت المساعد الذكي. أكّد للمستخدم بلباقة ووضوح أن بيانات العميل جاهزة للتعبئة في الشاشة الآن عبر زر التعبئة المتاح أدناه، "
+                f"وقدم له أي نصيحة إرشادية وتدريبية مفيدة مستفادة من المقاطع التعليمية المتاحة (مثل أهمية تحديد تصنيف العميل المناسب للحصول على السعر الصحيح أو التحقق من البيانات). "
+                f"لا تقل أبداً أن المقاطع لا تحتوي على هذه البيانات.]"
+            )
+        elif req.visible_fields:
+            fields_doc = ", ".join(req.visible_fields)
+            user_prompt_text += (
+                f"\n\n[توجيه تنفيذي لشاشة الـ ERP:\n"
+                f"الشاشة المفتوحة أمامك تحتوي على الحقول: {fields_doc}.\n"
+                f"المستخدم يقدم لك بيانات لتعبئتها في هذه الحقول. استخرج القيم من رسالته وطابقها مع أسماء الحقول الإنجليزية.\n"
+                f"يجب عليك إلزامياً كتابة بلوك التعبئة كالتالي:\n"
+                f"```form_fill\n{{\n  \"CustomerName\": \"...\",\n  \"Phone\": \"...\"\n}}\n```]"
+            )
+        gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_prompt_text)])]
 
         loop = asyncio.get_running_loop()
         stop_event = threading.Event()
@@ -817,6 +894,7 @@ class SearchService:
         first_token_received = False
         first_token_time: float | None = None
         token_count = 0
+        form_fill_detected = False
 
         try:
             while True:
@@ -846,6 +924,20 @@ class SearchService:
                         record_streaming_ttft(now - t0)
                     token_count += max(1, len(item) // 4)
                     accumulated_answer.append(item)
+
+                    # لا ترسل كود الـ form_fill للمستخدم كنص عادي مشوه
+                    if form_fill_detected:
+                        continue
+
+                    combined_text = "".join(accumulated_answer)
+                    if "```form_fill" in combined_text:
+                        form_fill_detected = True
+                        if "```form_fill" in item:
+                            prefix = item.split("```form_fill", 1)[0]
+                            if prefix:
+                                yield _format_sse("token", {"text": prefix})
+                        continue
+
                     yield _format_sse("token", {"text": item})
         finally:
             stop_event.set()
@@ -867,12 +959,32 @@ class SearchService:
             record_token_usage(prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)
 
         # ──────────────────────────────────────────────
-        # 4. Cache Accumulation & Terminal Done Event
+        # 4. Cache Accumulation, Form Fill Event & Terminal Done Event
         # ──────────────────────────────────────────────
         if not is_client_disconnected:
             full_answer = "".join(accumulated_answer)
-            if full_answer:
-                final_resp = SearchResponse(answer=full_answer, sources=sources, query_used=req.query)
+            clean_answer = full_answer
+
+            # بعد انتهاء الرد: افحص هل يوجد بلوك form_fill؟
+            if not form_fill_emitted:
+                match = re.search(r"```(?:form_fill|json)?\s*(\{[\s\S]*?\})\s*```", full_answer)
+                if match:
+                    try:
+                        fields_data = json.loads(match.group(1))
+                        payload = {
+                            "intent": "form_fill",
+                            "fields": fields_data,
+                            "screenKey": req.erp_key,
+                        }
+                        logger.info("Emitting form_fill SSE event", fields=list(fields_data.keys()), erp_key=req.erp_key)
+                        yield _format_sse("form_fill", payload)
+                        form_fill_emitted = True
+                    except Exception as e:
+                        logger.error("Failed to parse form_fill json", error=str(e))
+            clean_answer = re.sub(r"```form_fill\s*\{.*?\}\s*```", "", full_answer, flags=re.DOTALL).strip()
+
+            if clean_answer:
+                final_resp = SearchResponse(answer=clean_answer, sources=sources, query_used=req.query)
                 if settings.EXACT_CACHE_ENABLED:
                     exact_cache_service.store(
                         normalized_query,
@@ -880,7 +992,7 @@ class SearchService:
                         user_ctx,
                         req.scope_fingerprint,
                     )
-                if settings.SEMANTIC_CACHE_ENABLED:
+                if settings.SEMANTIC_CACHE_ENABLED and not req.visible_fields:
                     cache_task = asyncio.create_task(
                         semantic_cache_service.store(
                             query=req.query,

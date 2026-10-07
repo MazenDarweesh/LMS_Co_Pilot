@@ -129,7 +129,7 @@ _MULTI_LESSON_INSTRUCTIONS = """
 _RAW_RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي ومتخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى بدقة وأمانة علمية.
 
 ## التعليمات الصارمة للاستشهاد بالمصادر:
-1. أجب **حصراً** بناءً على المقاطع التعليمية المُقدَّمة أدناه، ولا تعتمد على أي معلومات خارجية غير موجودة بها.
+1. أجب **حصراً** بناءً على المقاطع التعليمية المُقدَّمة أدناه، ولا تعتمد على أي معلومات خارجية غير موجودة بها (باستثناء استخراج وتعبئة بيانات حقول الـ ERP عندما يطلب المستخدم إدخال بيانات).
 2. إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
 3. لديك في هذا السؤال بالضبط {num_sources} مصدر/مصادر مسترجعة مرقّمة من [1] إلى [{num_sources}].
 4. استشهد بالمصادر بوضع رقم المصدر مثل [1] في نهاية الجملة المستندة إليه مباشرة.
@@ -154,16 +154,56 @@ class _SafeRAGPrompt(str):
 RAG_SYSTEM_PROMPT = _SafeRAGPrompt(_RAW_RAG_SYSTEM_PROMPT)
 
 
-def get_rag_system_prompt(context_str: str, num_sources: int = 1, is_multi_lesson: bool = False) -> str:
-    """Helper to build RAG prompt with bounded citation numbers and optional multi-lesson instructions."""
+def get_rag_system_prompt(
+    context_str: str,
+    num_sources: int = 1,
+    is_multi_lesson: bool = False,
+    visible_fields: list[str] | None = None,
+    extracted_form_fields: dict | None = None,
+) -> str:
+    """Helper to build RAG prompt with bounded citation numbers, optional multi-lesson instructions, and ERP form filling rules."""
     safe_num = max(1, num_sources)
     multi_instr = _MULTI_LESSON_INSTRUCTIONS if is_multi_lesson else ""
-    return RAG_SYSTEM_PROMPT.format(
+    base_prompt = RAG_SYSTEM_PROMPT.format(
         context_str=context_str,
         num_sources=safe_num,
         forbidden_citation=safe_num + 1,
         multi_lesson_instructions=multi_instr,
     )
+
+    if extracted_form_fields:
+        import json
+        extracted_json_str = json.dumps(extracted_form_fields, ensure_ascii=False, indent=2)
+        form_fill_header = f"""## 🚨 وضع تعبئة نموذج الـ ERP (ERP Form Fill Mode):
+أنت مساعد ذكي مدمج في نظام Dynamic Pro ERP.
+قام النظام باستخراج وتجهيز بيانات النموذج التالية لتعبئتها في الشاشة:
+```json
+{extracted_json_str}
+```
+
+### دورك التنفيذي الآن:
+1. أكد للمستخدم بأسلوب مهني وواضح وموجز أن بيانات العميل أصبحت جاهزة للتعبئة في الشاشة الآن ويمكنه الضغط على زر التعبئة لإدراجها في النموذج.
+2. قدم له أي نصيحة إرشادية وتدريبية مفيدة مستفادة من المقاطع التعليمية المتاحة (مثل: أهمية تحديد تصنيف العميل المناسب للحصول على السعر الصحيح، أو التحقق من البيانات قبل الحفظ).
+3. حظر تام: إياك نهائياً أن تقول إن المقاطع لم تذكر اسم العميل أو أرقام الهاتف أو العنوان، لأن هذه بيانات مدخلة من المستخدم لغرض تسجيلها في شاشة النظام وليست موضوعاً للبحث في الفيديوهات.
+---
+"""
+        return f"{form_fill_header}\n{base_prompt}"
+
+    if visible_fields and len(visible_fields) > 0:
+        fields_list_str = ", ".join(visible_fields)
+        form_fill_header = f"""## 🚨 أولوية قصوى - تعبئة شاشة الـ ERP (Form Filling Mandate):
+أنت مساعد ذكي تنفيذي مدمج في شاشة نظام ERP حقيقي. الشاشة الحالية تحتوي على الحقول التالية: [{fields_list_str}].
+
+### تعليمات التعبئة الإلزامية:
+- إذا طلب المستخدم تسجيل أو إدخال بيانات (مثل: "سجل", "أدخل", "اكتب", "عميل جديد", أو ذكر بيانات فعلية كاسم أو رقم هاتف أو عنوان أو حد ائتماني):
+  1. استخرج هذه البيانات فوراً من نص رسالة المستخدم نفسها، وطابقها مع أسماء الحقول الإنجليزية من القائمة أعلاه.
+  2. لا تبحث عن اسم العميل أو أرقام الهواتف أو العناوين في مقاطع الفيديو! فالبيانات مقدمة من المستخدم لتسجيلها في الشاشة.
+  3. أخرج كود التعبئة كبلوك JSON تحت وسم ```form_fill.
+---
+"""
+        return f"{form_fill_header}\n{base_prompt}"
+
+    return base_prompt
 
 # ---------------------------------------------------------------------------
 # Fast Ingress Intent Responses (PR-3 & Clean Architecture)

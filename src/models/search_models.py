@@ -45,6 +45,16 @@ class SearchRequest(BaseModel):
         validation_alias=AliasChoices("skip_cache", "skipCache", "bypass_cache", "bypassCache", "retry", "is_retry"),
         description="تجاوز الكاش لإعادة المحاولة وتوليد إجابة جديدة طازجة"
     )
+    visible_fields: list[str] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("visible_fields", "visibleFields", "VisibleFields"),
+        description="قائمة أسماء وخانات الفورم المفتوحة في شاشة الـ ERP"
+    )
+    erp_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("erp_key", "erpKey", "ErpKey", "screen_key", "screenKey"),
+        description="كود شاشة الـ ERP الحالية"
+    )
 
     @property
     def scope_fingerprint(self) -> str:
@@ -75,6 +85,7 @@ class SearchRequest(BaseModel):
             self.type_id or "",
             self.playlist_id or "",
             self.video_id or "",
+            self.erp_key or "",
         ]
         return ":".join(parts)
 
