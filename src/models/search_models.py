@@ -50,6 +50,11 @@ class SearchRequest(BaseModel):
         validation_alias=AliasChoices("visible_fields", "visibleFields", "VisibleFields"),
         description="قائمة أسماء وخانات الفورم المفتوحة في شاشة الـ ERP"
     )
+    form_schema: list[dict] | None = Field(
+        default=None,
+        validation_alias=AliasChoices("form_schema", "formSchema", "FormSchema"),
+        description="مخطط حقول وخانات وجداول شاشة الـ ERP التفصيلي"
+    )
     erp_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("erp_key", "erpKey", "ErpKey", "screen_key", "screenKey"),

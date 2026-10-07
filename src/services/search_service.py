@@ -624,26 +624,35 @@ class SearchService:
         return final_response
 
     async def _extract_form_fields_if_needed(
-        self, query: str, visible_fields: list[str] | None
+        self, query: str, visible_fields: list[str] | None, form_schema: list[dict] | None = None
     ) -> dict[str, Any]:
-        if not visible_fields:
+        if not visible_fields and not form_schema:
             return {}
         try:
-            prompt = f"""You are an ERP form data extractor.
-Analyze the user's Arabic message and the list of available form fields.
-Extract any explicit values mentioned by the user for these fields.
+            fields_ctx = form_schema if form_schema else visible_fields
+            prompt = f"""You are an expert ERP Data Extraction Assistant for Dynamic Pro ERP.
+Analyze the user's Arabic message and the active ERP form structure.
+Extract all concrete data explicitly mentioned by the user into a structured JSON with two keys:
+1. "fields": Object mapping field names to user-provided values for header/form/footer fields (e.g. Supplier, Warehouse, Date, Payment).
+2. "rows": Array of objects for table line items (e.g. Items/Products, Quantity, Cost/Price, Unit).
 
-Available Fields:
-{json.dumps(visible_fields, ensure_ascii=False)}
+Available Form Context:
+{json.dumps(fields_ctx, ensure_ascii=False)}
 
 User Message:
 \"{query}\"
 
 Rules:
-1. Map values strictly to the English field key (e.g. CustomerName, Phone, Address, CreditLimit).
-2. ONLY include fields that the user explicitly provided actual values for.
-3. If the user is just asking an instructional question without providing concrete data (e.g. "how do I add a customer?"), return an empty JSON object: {{}}
-4. Return ONLY a valid JSON object."""
+1. Map values strictly to the matching field keys from the form context.
+2. If the user mentions paying in cash or paying the full cost/amount (e.g. "دفعت نقدي التكلفة كاملة", "سداد كامل", "دفع بالكامل"), set the cash payment field (e.g. "CashPaid", "المدفوع نقداً", "المدفوع") to "$TOTAL".
+3. For table items: each item mentioned by the user must be an object in the "rows" array with keys matching column names like {{"الصنف": "...", "الكمية": 10, "التكلفة": 100}}.
+4. Keep user values literal as spoken (e.g. Arabic names of suppliers, items, warehouses).
+5. If the user is only asking a generic question without providing data to input, return: {{"fields": {{}}, "rows": []}}
+6. Return ONLY valid JSON:
+{{
+  "fields": {{ ... }},
+  "rows": [ ... ]
+}}"""
 
             resp = await asyncio.to_thread(
                 self._gemini_client.models.generate_content,
@@ -656,11 +665,12 @@ Rules:
             )
             data = json.loads(resp.text)
             if isinstance(data, dict):
+                if "fields" not in data and "rows" not in data:
+                    return {"fields": data, "rows": []}
                 return data
         except Exception as e:
-            logger.error("Failed to extract ERP form fields", error=str(e))
+            logger.error("Failed to extract ERP form data", error=str(e))
         return {}
-
     async def search_stream(
         self, req: SearchRequest, user_ctx: UserContext, request: Request
     ) -> AsyncIterator[str]:
@@ -804,15 +814,18 @@ Rules:
         # 🚀 ERP Form Fill Early Extraction: Detect data and emit form_fill event immediately
         extracted_form_fields: dict[str, Any] = {}
         form_fill_emitted = False
-        if req.visible_fields:
-            extracted_form_fields = await self._extract_form_fields_if_needed(req.query, req.visible_fields)
+        if req.visible_fields or req.form_schema:
+            extracted_form_fields = await self._extract_form_fields_if_needed(req.query, req.visible_fields, req.form_schema)
             if extracted_form_fields:
+                fields_dict = extracted_form_fields.get("fields", {}) if isinstance(extracted_form_fields, dict) else {}
+                rows_list = extracted_form_fields.get("rows", []) if isinstance(extracted_form_fields, dict) else []
                 payload = {
                     "intent": "form_fill",
-                    "fields": extracted_form_fields,
+                    "fields": fields_dict,
+                    "rows": rows_list,
                     "screenKey": req.erp_key,
                 }
-                logger.info("Emitting early form_fill SSE event", fields=list(extracted_form_fields.keys()), erp_key=req.erp_key)
+                logger.info("Emitting early form_fill SSE event", fields=list(fields_dict.keys()), rows_count=len(rows_list), erp_key=req.erp_key)
                 yield _format_sse("form_fill", payload)
                 form_fill_emitted = True
 
