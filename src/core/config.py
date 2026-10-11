@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     METRICS_PATH: str = "/metrics"
     SEARCH_DEBUG_ENABLED: bool = False  # Set to True only for offline diagnostic traces
 
+    # ERP Navigation & Action Assistant Thresholds
+    ERP_NAV_GO_THRESHOLD: float = 0.80
+    ERP_NAV_GAP_THRESHOLD: float = 0.25
+    ERP_NAV_CLARIFY_THRESHOLD: float = 0.30
+
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] = [
         "http://localhost:3000",

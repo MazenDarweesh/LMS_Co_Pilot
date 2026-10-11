@@ -178,6 +178,11 @@ async def lifespan(app: FastAPI):
     feedback_service.initialize(app.state.db_pool)
     app.state.feedback_service = feedback_service
 
+    # ⑪ تهيئة ERP Service (DynamicPro Smart Assistant)
+    from src.services.erp_service import erp_service
+    erp_service.initialize()
+    app.state.erp_service = erp_service
+
     # تم اكتمال كافة النماذج والخدمات وجاهزية النظام للاستقبال
     startup_duration = round(time.time() - t_startup, 3)
     app.state.startup_duration = startup_duration
