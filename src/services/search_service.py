@@ -405,7 +405,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 1.1 Fast Ingress: Tier-1 Exact In-Memory Cache (< 2ms)
         # ──────────────────────────────────────────────
-        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_exact = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             exact_duration = time.time() - t_exact
@@ -446,7 +446,7 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 2.1 Tier-2 Semantic Cache (Qdrant Vector Cache)
         # ──────────────────────────────────────────────
-        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_cache = time.time()
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
@@ -632,42 +632,61 @@ class SearchService:
             fields_ctx = form_schema if form_schema else visible_fields
             prompt = f"""You are an expert ERP Data Extraction Assistant for Dynamic Pro ERP.
 Analyze the user's Arabic message and the active ERP form structure.
-Extract all concrete data explicitly mentioned by the user into a structured JSON with two keys:
-1. "fields": Object mapping field names to user-provided values for header/form/footer fields (e.g. Supplier, Warehouse, Date, Payment).
-2. "rows": Array of objects for table line items (e.g. Items/Products, Quantity, Cost/Price, Unit).
+Extract all concrete data explicitly mentioned by the user.
+
+CRITICAL INSTRUCTION - Detect Batch Mode:
+If the user asks to record multiple documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document.
+Otherwise, set "batch_mode": false.
+
+Return a JSON with:
+1. "batch_mode": true (if multiple documents/invoices) or false (if single).
+2. "batch_items": Array of items if batch_mode is true. Each element must be:
+   {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}]}}
+3. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode).
+4. "rows": Array of table line items (for single mode, or the first document in batch mode).
 
 Available Form Context:
 {json.dumps(fields_ctx, ensure_ascii=False)}
 
 User Message:
-\"{query}\"
+"{query}"
 
 Rules:
 1. Map values strictly to the matching field keys from the form context.
-2. If the user mentions paying in cash or paying the full cost/amount (e.g. "دفعت نقدي التكلفة كاملة", "سداد كامل", "دفع بالكامل"), set the cash payment field (e.g. "CashPaid", "المدفوع نقداً", "المدفوع") to "$TOTAL".
-3. For table items: each item mentioned by the user must be an object in the "rows" array with keys matching column names like {{"الصنف": "...", "الكمية": 10, "التكلفة": 100}}.
-4. Keep user values literal as spoken (e.g. Arabic names of suppliers, items, warehouses).
-5. If the user is only asking a generic question without providing data to input, return: {{"fields": {{}}, "rows": []}}
-6. Return ONLY valid JSON:
-{{
-  "fields": {{ ... }},
-  "rows": [ ... ]
-}}"""
+2. If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل"), set cash payment field (e.g. "CashPaid") to "$TOTAL".
+3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
+4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
+5. If the user is only asking a generic question with no form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
+"""
+            # Candidate models in order of priority (settings.GEMINI_MODEL first, then fallbacks)
+            candidate_models = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
+            # Deduplicate preserving order
+            candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
-            resp = await asyncio.to_thread(
-                self._gemini_client.models.generate_content,
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0,
-                ),
-            )
-            data = json.loads(resp.text)
-            if isinstance(data, dict):
-                if "fields" not in data and "rows" not in data:
-                    return {"fields": data, "rows": []}
-                return data
+            last_err = None
+            for model_name in candidate_models:
+                try:
+                    resp = await asyncio.to_thread(
+                        self._gemini_client.models.generate_content,
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            temperature=0.0,
+                        ),
+                    )
+                    data = json.loads(resp.text)
+                    if isinstance(data, dict):
+                        if "fields" not in data and "rows" not in data and "batch_items" not in data:
+                            return {"batch_mode": False, "fields": data, "rows": []}
+                        return data
+                except Exception as err:
+                    last_err = err
+                    logger.warning("Batch extraction attempt failed on model, trying next", model=model_name, error=str(err))
+                    continue
+
+            if last_err:
+                logger.error("All candidate models failed for ERP form extraction", error=str(last_err))
         except Exception as e:
             logger.error("Failed to extract ERP form data", error=str(e))
         return {}
@@ -715,7 +734,7 @@ Rules:
         normalized_query = normalize_arabic_text_leaderboard(req.query)
 
         # 1.1 Exact In-Memory Cache
-        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
+        if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_stage = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
             record_stage_duration("exact_cache", time.time() - t_stage)
@@ -741,7 +760,7 @@ Rules:
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
         record_stage_duration("embedding", time.time() - t_emb)
 
-        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields:
+        if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_sem = time.time()
             cached_resp = await semantic_cache_service.lookup(
                 query_vector=dense_vec,
@@ -819,11 +838,15 @@ Rules:
             if extracted_form_fields:
                 fields_dict = extracted_form_fields.get("fields", {}) if isinstance(extracted_form_fields, dict) else {}
                 rows_list = extracted_form_fields.get("rows", []) if isinstance(extracted_form_fields, dict) else []
+                batch_mode = bool(extracted_form_fields.get("batch_mode", False))
+                batch_items = extracted_form_fields.get("batch_items", [])
                 payload = {
                     "intent": "form_fill",
                     "fields": fields_dict,
                     "rows": rows_list,
                     "screenKey": req.erp_key,
+                    "batch_mode": batch_mode,
+                    "batch_items": batch_items,
                 }
                 logger.info("Emitting early form_fill SSE event", fields=list(fields_dict.keys()), rows_count=len(rows_list), erp_key=req.erp_key)
                 yield _format_sse("form_fill", payload)
@@ -983,13 +1006,20 @@ Rules:
                 match = re.search(r"```(?:form_fill|json)?\s*(\{[\s\S]*?\})\s*```", full_answer)
                 if match:
                     try:
-                        fields_data = json.loads(match.group(1))
+                        parsed_json = json.loads(match.group(1))
+                        is_batch = bool(parsed_json.get("batch_mode", False)) or bool(parsed_json.get("batch_items"))
+                        b_items = parsed_json.get("batch_items", [])
+                        f_data = parsed_json.get("fields", parsed_json if not is_batch else {})
+                        r_data = parsed_json.get("rows", [])
                         payload = {
                             "intent": "form_fill",
-                            "fields": fields_data,
+                            "fields": f_data,
+                            "rows": r_data,
                             "screenKey": req.erp_key,
+                            "batch_mode": is_batch,
+                            "batch_items": b_items,
                         }
-                        logger.info("Emitting form_fill SSE event", fields=list(fields_data.keys()), erp_key=req.erp_key)
+                        logger.info("Emitting late form_fill SSE event", batch_mode=is_batch, items_count=len(b_items), erp_key=req.erp_key)
                         yield _format_sse("form_fill", payload)
                         form_fill_emitted = True
                     except Exception as e:
