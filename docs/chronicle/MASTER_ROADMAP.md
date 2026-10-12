@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "85af704"
-last_updated: "2026-09-29T15:45:00Z"
-active_milestone: "M10"
-total_milestones: 10
-completed_milestones: 10
+last_synced_commit: "5408a7e"
+last_updated: "2026-10-12T14:05:00Z"
+active_milestone: "M11"
+total_milestones: 11
+completed_milestones: 11
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -26,19 +26,29 @@ completed_milestones: 10
 | **M08** | Canonical Integration Contract v3.0.0 & Pre-Production Hardening | ✅ COMPLETED | 2026-09-14 -> 2026-09-14 | Dual-Route Multiplexing (/v1 & /api), DTO Alignment, Alertmanager 9093, OWASP Headers & Finally Disk Cleanup | [M08 Dossier](milestones/M08_canonical_contract_hardening.md) |
 | **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-20 | Lifecycle States (None->Queued->Processing->Completed/Failed), HMAC-SHA256 Webhooks, Zero-Hop Claims RBAC, Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
 | **M10** | Process Once Reference & Multi-Lesson Search | ✅ COMPLETED | 2026-09-21 -> 2026-09-29 | Deduplication (0s Fast Path), asyncio.gather, Reference-Counting Deletion, Cross-Module Multi-Lesson Search, Comparative Prompting & ERP CORS | [M10 Dossier](milestones/M10_process_once_reference_and_multi_lesson.md) |
+| **M11** | Autonomous ERP Agent Navigation & Progressive Form-Fill | ✅ COMPLETED | 2026-10-06 -> 2026-10-12 | Intent Navigation (go/ask/clarify) + Cascading Form Fill + SSE Grid Streaming | [M11 Dossier](milestones/M11_autonomous_erp_navigation_form_filling.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
 ┌─────────────────────┬─────────┬─────────────┬────────────────────────┐
 │ Metric              │ Value   │ Target      │ Visual Bar             │
 ├─────────────────────┼─────────┼─────────────┼────────────────────────┤
-│ Milestones Complete │ 10 / 10 │ 10 (Target) │ [████████████████████] │ 100.0%
+│ Milestones Complete │ 11 / 11 │ 11 (Target) │ [████████████████████] │ 100.0%
 │ Evaluation Quality  │ 0.92    │ >= 0.80     │ [██████████████████░░] │ Passed
 │ Latency (Exact/Sem) │ <1ms    │ <= 25ms     │ [████████████████████] │ Production
 │ Streaming TTFT      │ <300ms  │ <= 500ms    │ [████████████████████] │ Production
 │ SLA Alert Coverage  │ 4/4     │ 4 rules     │ [████████████████████] │ Production
 └─────────────────────┴─────────┴─────────────┴────────────────────────┘
 ```
+
+---
+
+## 🎯 Milestone Deliverables (M11 Completed)
+
+* **Autonomous ERP Navigation Engine (`POST /v1/erp/navigation/resolve`):** Agentic screen destination resolver combining candidate fuzzy lexical pre-filtering with Gemini structured reranking. Evaluates deterministic decision thresholds (`ERP_NAV_GO_THRESHOLD = 0.80`, `GAP = 0.25`, `CLARIFY = 0.30`) to output tri-state decisions: `go` for instant screen navigation, `ask` for disambiguating between top 2-3 screens with user-friendly reasons, and `clarify` for ambiguous or off-topic prompts. Enforces strict anti-hallucination ID boundaries.
+* **Progressive Cascading Leftover Form-Fill (`POST /v1/erp/form-fill/resolve-leftover`):** Progressive resolution engine matching newly exposed dynamic fields against previously extracted AI context and original user message. Skips disabled/read-only inputs and enforces strict options list verification, safely diverting unknown values to `ask_user` rather than corrupting ERP state.
+* **Real-Time AI Form & Table Grid Streaming (`event: form_fill` in `POST /v1/search/stream`):** Integrated early extraction heuristic and LLM fallback into SSE stream. Emits structured `event: form_fill` with scalar `fields` and multi-row table line items (`rows`) ahead of answer tokens, with cash shorthand (`$TOTAL`) heuristics and cache bypass capability for instant Angular UI form rendering.
+* **Docker Packaging & PyTorch CPU-Only Footprint Optimization:** Streamlined Docker container leveraging PyTorch CPU-only wheels (`--extra-index-url https://download.pytorch.org/whl/cpu`), eliminating GPU dependencies, trimming container footprint, and routing via the external shared bridge `lms-network`.
 
 ---
 

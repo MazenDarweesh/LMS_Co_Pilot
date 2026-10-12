@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     ERP_NAV_CLARIFY_THRESHOLD: float = 0.30
 
     # CORS Allowed Origins
-    CORS_ORIGINS: list[str] = [
+    CORS_ORIGINS: list[str] | str = [
         "http://localhost:3000",
         "http://localhost:4200",
         "http://localhost:5173",
@@ -102,9 +102,27 @@ class Settings(BaseSettings):
     ]
 
     # Trusted Host Security
-    ALLOWED_HOSTS: list[str] = [
+    ALLOWED_HOSTS: list[str] | str = [
         "*",
     ]
+
+    @field_validator("CORS_ORIGINS", "ALLOWED_HOSTS", mode="after")
+    @classmethod
+    def ensure_list(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            import json
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    pass
+            return [item.strip() for item in v.split(",") if item.strip()]
+        return v
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

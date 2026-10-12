@@ -1,4 +1,4 @@
-<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "85af704", "last_synced_at": "2026-09-29T15:45:00Z", "documented_endpoints": 20} -->
+<!-- STATE_TRACKING_ANCHOR: {"last_synced_commit": "5408a7e", "last_synced_at": "2026-10-12T14:05:00Z", "documented_endpoints": 22} -->
 
 # 🎓 LMS AI Co-Pilot
 
@@ -19,6 +19,9 @@
 
 ## ✨ Key Features
 
+- 🧭 **Autonomous ERP Screen Navigation & Intent Resolution Engine** — `POST /v1/erp/navigation/resolve` intelligently navigates enterprise ERP screen hierarchies. Combines fuzzy lexical prefiltering with Gemini structured reranking and strict confidence thresholds (`ERP_NAV_GO_THRESHOLD = 0.80`, `GAP = 0.25`, `CLARIFY = 0.30`) to output deterministic tri-state navigation decisions (`go` for instant redirection, `ask` for disambiguation between top 2-3 screens, `clarify` on low relevance) with strict anti-hallucination candidate constraints
+- 📝 **Progressive Cascading Form-Fill & Real-Time Grid Item Extraction** — `POST /v1/erp/form-fill/resolve-leftover` and enhanced `POST /v1/search/stream` deliver real-time AI form and table autofill for complex ERP screens. Emits structured SSE `event: form_fill` payloads with scalar `fields` and multi-row table `rows` ahead of answer tokens, progressively resolves cascading dynamic form fields against extracted AI context, enforces strict options list verification, filters disabled fields, and handles cash shorthand (`$TOTAL`) heuristics
+- 🐳 **Optimized Docker Engine with CPU-Only PyTorch & Shared LMS Bridge Network** — Container build optimized with PyTorch CPU-only wheels (`--extra-index-url https://download.pytorch.org/whl/cpu`), drastically trimming image size and memory footprint, with seamless zero-latency inter-service routing across the external shared bridge `lms-network`
 - 🔁 **"Process Once, Reference Everywhere" Deduplication & Linking** — Content-addressable video chunk hashing (`vid::{video_id}::chunk::{i}`) eliminates 100% of duplicate Whisper transcription and BGE-M3 embedding costs across courses. Pre-indexed videos link to new modules in **0 seconds (Fast Path)**, updates execute in `<15ms` via `asyncio.gather`, and shared vectors are protected via reference-counting deletion
 - 🔀 **Cross-Module Multi-Lesson Search & Comparative RAG** — Enables cross-lesson inquiries across different modules (`lesson_ids: list[str]`), matching points in Qdrant with `MatchAny` filters, isolating exact/semantic caches deterministically via sorted `scope_fingerprint`, and guiding Gemini with comparative system prompts
 - 🛡️ **Stripe-Standard HMAC-SHA256 Webhook Security** — Digital signature verification (`X-Signature-256`, `X-Timestamp`) calculated over raw UTF-8 binary request bytes matching .NET 10 `WebhookDispatcher`, enforced via constant-time comparison (`hmac.compare_digest`), a strict 300-second anti-replay window, and zero reliance on static tokens
@@ -122,7 +125,9 @@
 | Method | Endpoint | Auth / Protection | Description |
 |:------:|:---------|:-----------------:|:------------|
 | `POST` | `/v1/search` | JWT · 30 req/min | Two-tier cached & hybrid RAG search with role-scoped vector filtering |
-| `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, multi-lesson comparative querying (`lesson_ids`), heartbeat, and backpressure |
+| `POST` | `/v1/search/stream` | JWT · 30 req/min | Real-time token streaming search (SSE) with citation-first ordering, AI ERP form/table streaming (`event: form_fill`), multi-lesson comparative querying (`lesson_ids`), heartbeat, and backpressure |
+| `POST` | `/v1/erp/navigation/resolve` | Rate Limited · 60 req/min | Autonomous ERP navigation screen resolver with lexical pre-filtering, Gemini ranking, and tri-state decisions (`go`/`ask`/`clarify`) |
+| `POST` | `/v1/erp/form-fill/resolve-leftover` | Rate Limited · 60 req/min | Resolves cascading dynamic form fields, matching extracted AI context against form signatures with strict options validation |
 | `POST` | `/v1/search/feedback` | JWT · 30 req/min | Student answer feedback (thumbs up/down) with 24h deduplication, async PostgreSQL persistence, and Prometheus metrics |
 | `GET` | `/v1/admin/feedback` | JWT Admin/Teacher · 60 req/min | Tenant-isolated feedback analytics & satisfaction rates with instant Ragas evaluation dataset export (`?format=ragas&limit=100`) |
 | `POST` | `/v1/admin/cache/clear` | JWT Admin · 10 req/min | Purges both Tier-1 Exact LRU Cache (in-memory) and Tier-2 Semantic Vector Cache (Qdrant) |
@@ -357,6 +362,7 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 | `tests/unit/test_dotnet_compatibility.py` | Cross-stack DTO compatibility, dual-prefix routing multiplexing, and error resilience | 8 | ✅ 100% Passed |
 | `tests/unit/test_process_once_reference.py` | "Process Once, Reference Everywhere" video deduplication, 0s Fast Path, asyncio.gather multi-linking, and reference-counting deletion | 8 | ✅ 100% Passed |
 | `tests/unit/test_multi_lesson_search.py` | Cross-module multi-lesson search request parsing, deterministic cache fingerprinting, MatchAny filtering, and comparative prompt generation | 6 | ✅ 100% Passed |
+| `tests/unit/test_erp_endpoints.py` | Autonomous ERP screen navigation decisions (go/ask/clarify), progressive form filling, and leftover field matching | 8 | ✅ 100% Passed |
 | `tests/load/locustfile.py` | Concurrent stress testing (70% Cache / 20% Cold RAG / 10% Health) | Multi-User | ✅ 0% Error Rate |
 | `.github/workflows/ci.yml` | Multi-container CI pipeline (PostgreSQL 16 + Qdrant + Pytest + Docker) | CI Gate | ✅ Passed |
 
@@ -413,6 +419,10 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Deterministic `scope_fingerprint` cache partitioning for permutation-invariant multi-lesson caching
 - [x] Production Docker healthcheck probe (`HEALTHCHECK`) and background task lifecycle bindings
 - [x] Permissive ERP Web Component preflight CORS (`allow_origins=["*"]`, `allow_credentials=True`)
+- [x] Autonomous ERP screen navigation & destination resolution (`POST /v1/erp/navigation/resolve`, tri-state `go`/`ask`/`clarify`)
+- [x] Progressive cascading leftover form-fill resolution (`POST /v1/erp/form-fill/resolve-leftover`)
+- [x] Real-time AI ERP form filling and multi-row grid item extraction (`event: form_fill` in `POST /v1/search/stream`)
+- [x] PyTorch CPU-only Docker image optimization & integration with external shared `lms-network`
 - [ ] PDF ingestion via Marker / MinerU (Week 9)
 - [ ] Multi-pod deployment with PostgreSQL lease table or Redis lock (Post-MVP / Swarm / Kubernetes)
 
@@ -452,4 +462,4 @@ Building production AI systems at the intersection of Arabic NLP, vector search,
 
 ---
 
-*Last updated by `readme-updater` skill — 2026-09-20*
+*Last updated by `readme-updater` skill — 2026-10-12*

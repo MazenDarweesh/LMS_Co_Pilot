@@ -49,7 +49,7 @@ jobs:
       FLASHRANK_MODEL_NAME: miniReranker_arabic_v1
       SEMANTIC_CACHE_ENABLED: true
       SEMANTIC_CACHE_THRESHOLD: 0.92
-      CORS_ORIGINS: http://localhost:3000,http://localhost:8080
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8080"]'
 
     steps:
       - name: Checkout repository
