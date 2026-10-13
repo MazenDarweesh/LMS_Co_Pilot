@@ -1,3 +1,4 @@
+import re
 import aiofiles
 from groq import AsyncGroq
 from src.core.config import settings
@@ -24,10 +25,11 @@ class TranscriptionService:
         structured_text = []
         # Whisper returns segments with timestamps
         for segment in transcription.segments:
+            clean_text = re.sub(r"[\u0E00-\u0E7F]", "", segment["text"])
             structured_text.append({
                 "start": segment["start"],
                 "end": segment["end"],
-                "text": segment["text"]
+                "text": clean_text
             })
         
         return structured_text

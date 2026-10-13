@@ -28,6 +28,8 @@ def normalize_arabic_text_leaderboard(text: str) -> str:
     if not text:
         return ""
     
+    # 0. Strip exotic non-Arabic blocks (Thai, etc.)
+    text = re.sub(r"[\u0E00-\u0E7F]", "", text)
     # 1. Strip diacritics
     text = ARABIC_DIACRITICS.sub("", text)
     

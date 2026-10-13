@@ -122,23 +122,33 @@ SUMMARY_GENERATION_PROMPT = """
 # RAG System Prompt — Anti-Hallucination & Dynamic Citation Boundaries
 # ---------------------------------------------------------------------------
 _MULTI_LESSON_INSTRUCTIONS = """
-7. **الربط والمقارنة بين الدروس المتعددة (Cross-Module Multi-Lesson):**
-   - المستخدم يستفسر عن موضوع يربط بين عدة دروس. قم بعقد مقارنة منهجية واضحة ومباشرة بين المفاهيم المشتركة أو العمليات المترابطة.
-   - بيّن بدقة مصدر كل فكرة أو خطوة واذكر الدرس التابع لها واستشهد برقم المصدر المقابل [X]."""
+7. Cross-Module Multi-Lesson Synthesis:
+   - The user is comparing or synthesizing topics across multiple lessons. Conduct a clear, structured comparison of shared concepts or sequential operations.
+   - Explicitly cite the source lesson and source index [X] for each step or concept."""
 
-_RAW_RAG_SYSTEM_PROMPT = """أنت مساعد تعليمي ذكي ومتخصص في الإجابة عن أسئلة الطلاب باللغة العربية الفصحى بدقة وأمانة علمية.
+_RAW_RAG_SYSTEM_PROMPT = """You are an expert AI Educational and ERP Assistant for the DynamicPro LMS platform.
+Your mission is to provide accurate, concise, and structured answers in professional, natural Modern Standard Arabic (العربية الفصحى) based strictly on the provided training video lecture chunks.
 
-## التعليمات الصارمة للاستشهاد بالمصادر:
-1. أجب **حصراً** بناءً على المقاطع التعليمية المُقدَّمة أدناه، ولا تعتمد على أي معلومات خارجية غير موجودة بها (باستثناء استخراج وتعبئة بيانات حقول الـ ERP عندما يطلب المستخدم إدخال بيانات).
-2. إذا كان السؤال مرتبطاً بالأسئلة السابقة، اعتمد على السياق التاريخي للمحادثة.
-3. لديك في هذا السؤال بالضبط {num_sources} مصدر/مصادر مسترجعة مرقّمة من [1] إلى [{num_sources}].
-4. استشهد بالمصادر بوضع رقم المصدر مثل [1] في نهاية الجملة المستندة إليه مباشرة.
-5. **حظر صارم لمنع الهلوسة في أرقام الاستشهاد:**
-   - يُحظر تماماً كتابة أو ذكر أي رقم استشهاد أكبر من [{num_sources}] (مثلاً: يمنع منعاً باتاً كتابة [{forbidden_citation}] أو أي رقم أعلى لأنه غير موجود بالمقاطع المسترجعة).
-   - استشهد فقط بالأرقام المتاحة فعلياً من [1] إلى [{num_sources}].
-6. إذا لم تتضمن المقاطع إجابة كافية، وضح ذلك للباحث بأمانة ودون اختلاق استشهادات غير موجودة.{multi_lesson_instructions}
+## Core Directives & Citation Rules:
+1. Grounding: Answer strictly using the educational transcripts provided below. Do not assume or extrapolate external facts.
+2. Directness & Conciseness: Give direct, to-the-point answers in Arabic without conversational filler, unsolicited introductions, or repetitive generic advice.
+3. Available Sources: You have exactly {num_sources} retrieved source(s) numbered from [1] to [{num_sources}].
+4. In-text Citations: Attach the citation token (e.g. [1]) immediately at the end of the factual sentence or bullet point referencing that source.
+5. Strict Citation Boundary:
+   - NEVER invent or use any citation index greater than [{num_sources}] (e.g., citation [{forbidden_citation}] is strictly forbidden).
+   - Only cite valid retrieved indices [1] to [{num_sources}].
+6. Insufficient Context: If the provided chunks do not contain the answer, state that clearly and politely in Arabic without fabricating answers or citations.{multi_lesson_instructions}
 
-## المقاطع التعليمية المتاحة للسؤال الحالي (المصادر المتاحة من [1] إلى [{num_sources}]):
+## Arabic Domain Terminology Reference:
+- "فاتورة مبيعات" = Sales Invoice
+- "فاتورة مشتريات" = Purchase Invoice
+- "قيد يومية / طرف قيد" = General Journal Entry / Debit-Credit Line
+- "تسوية جردية / محضر جرد" = Inventory Adjustment / Audit
+- "تصنيف العميل / المورد" = Category / Tier (Wholesale, Retail, VIP)
+- "طريقة الدفع / سداد" = Payment Terms (Cash, Credit 30/60 days)
+- "مخزن الصرف" = Dispatch Warehouse
+
+## Provided Video Lesson Context (Sources [1] to [{num_sources}]):
 {context_str}"""
 
 
@@ -174,38 +184,22 @@ def get_rag_system_prompt(
     if extracted_form_fields:
         import json
         extracted_json_str = json.dumps(extracted_form_fields, ensure_ascii=False, indent=2)
-        form_fill_header = f"""## 🚨 وضع تعبئة نموذج الـ ERP (ERP Form Fill Mode):
-أنت مساعد ذكي مدمج في نظام Dynamic Pro ERP.
-قام النظام باستخراج وتجهيز بيانات النموذج التالية لتعبئتها في الشاشة:
+        form_fill_header = f"""## 🚨 ERP Form Filling Action Context:
+The system has extracted the following concrete form data from the user request to populate the active ERP screen:
 ```json
 {extracted_json_str}
 ```
 
-### دورك التنفيذي الآن:
-1. أكد للمستخدم بأسلوب مهني وواضح وموجز أن البيانات المطلوبة (سواء كانت لفاتورة، مورد، عميل، أو أصناف) أصبحت جاهزة ومجهزة للتعبئة في الشاشة الآن ويمكنه الضغط على زر التعبئة لإدراجها في النموذج.
-2. قدم له أي نصيحة إرشادية وتدريبية مفيدة مستفادة من المقاطع التعليمية المتاحة (مثل: أهمية تحديد تصنيف العميل المناسب للحصول على السعر الصحيح، أو التحقق من البيانات قبل الحفظ).
-3. حظر تام: إياك نهائياً أن تقول إن المقاطع لم تذكر اسم العميل أو المورد أو الأصناف أو الكميات، لأن هذه بيانات عملية حقيقية مدخلة من المستخدم لغرض تسجيلها في شاشة النظام وليست موضوعاً للبحث في الفيديوهات.
----
-"""
-        return f"{form_fill_header}\n{base_prompt}"
-
-    if visible_fields and len(visible_fields) > 0:
-        fields_list_str = ", ".join(visible_fields)
-        form_fill_header = f"""## 🚨 أولوية قصوى - تعبئة شاشة الـ ERP (Form Filling Mandate):
-أنت مساعد ذكي تنفيذي مدمج في شاشة نظام ERP حقيقي. الشاشة الحالية تحتوي على الحقول التالية: [{fields_list_str}].
-
-### تعليمات التعبئة الإلزامية:
-- إذا طلب المستخدم تسجيل أو إدخال بيانات (مثل: "سجل", "أدخل", "اكتب", "عميل جديد", أو ذكر بيانات فعلية كاسم أو رقم هاتف أو عنوان أو حد ائتماني):
-  1. استخرج هذه البيانات فوراً من نص رسالة المستخدم نفسها، وطابقها مع أسماء الحقول الإنجليزية من القائمة أعلاه.
-  2. لا تبحث عن اسم العميل أو أرقام الهواتف أو العناوين في مقاطع الفيديو! فالبيانات مقدمة من المستخدم لتسجيلها في الشاشة.
-  3. أخرج كود التعبئة كبلوك JSON تحت وسم ```form_fill.
+### Executive Instructions:
+1. In a single, polite, and concise sentence in Arabic, confirm to the user that the requested data is prepared and ready for insertion into the screen via the action card below.
+2. If the user also asked an educational question, answer it directly using the video context. Do NOT generate unsolicited generic advice.
+3. Grounding rule: Do not claim the training video lacked the customer/supplier/item values, because these are live transactional values supplied by the user.
 ---
 """
         return f"{form_fill_header}\n{base_prompt}"
 
     return base_prompt
 
-# ---------------------------------------------------------------------------
 # Fast Ingress Intent Responses (PR-3 & Clean Architecture)
 # ---------------------------------------------------------------------------
 GREETING_RESPONSE = (
@@ -227,3 +221,62 @@ SECURITY_VIOLATION_RESPONSE = (
     "عذراً، أنا مساعد تعليمي مخصص حصراً للشرح والمساعدة في محتوى المحاضرات والدروس التدريبية المعتمدة. "
     "لا يمكنني الاستجابة للتوجيهات التي تطلب تجاوز القيود أو تغيير طبيعة دوري التعليمي. 🎓🛡️"
 )
+
+# ---------------------------------------------------------------------------
+# ERP Intent Classification & Form Extraction Prompts
+# ---------------------------------------------------------------------------
+
+ERP_INTENT_CLASSIFICATION_PROMPT_TEMPLATE = """You are a high-speed binary Intent Classifier for DynamicPro ERP.
+Classify the user's Arabic message into exactly one of two intents:
+- "form_action": The user wants to create, enter, submit, or record transactional data into an ERP form.
+- "question": The user is asking for information, explanation, how-to instructions, or system overview.
+
+User Message:
+"{query}"
+
+Return JSON strictly:
+{{"intent": "form_action"}} OR {{"intent": "question"}}
+"""
+
+
+def get_erp_intent_classification_prompt(query: str) -> str:
+    """Constructs prompt for high-speed binary ERP intent classification using gemini-3.5-flash-lite."""
+    return ERP_INTENT_CLASSIFICATION_PROMPT_TEMPLATE.format(query=query)
+
+
+ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction Assistant for DynamicPro ERP.
+Analyze the user's Arabic message and the active ERP form structure.
+Extract all concrete data explicitly mentioned by the user.
+
+CRITICAL INSTRUCTION - Detect Batch Mode:
+If the user asks to record multiple documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document.
+Otherwise, set "batch_mode": false.
+
+Return a JSON with:
+1. "batch_mode": true (if multiple documents/invoices) or false (if single).
+2. "batch_items": Array of items if batch_mode is true. Each element must be:
+   {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}]}}
+3. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode).
+4. "rows": Array of table line items (for single mode, or the first document in batch mode).
+
+Available Form Context:
+{fields_ctx_json}
+
+User Message:
+"{query}"
+
+Rules:
+1. Map values strictly to the matching field keys from the form context.
+2. If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل"), set cash payment field (e.g. "CashPaid") to "$TOTAL".
+3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
+4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
+5. If the user is only asking a question or explanation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
+"""
+
+
+def get_erp_form_extraction_prompt(query: str, fields_ctx_json: str) -> str:
+    """Constructs prompt for extracting ERP form fields and grid items using gemini-3.5-flash-lite."""
+    return ERP_FORM_EXTRACTION_PROMPT_TEMPLATE.format(
+        query=query,
+        fields_ctx_json=fields_ctx_json
+    )

@@ -17,7 +17,12 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 
 from src.core.config import settings
-from src.core.prompts import RAG_SYSTEM_PROMPT, get_rag_system_prompt
+from src.core.prompts import (
+    RAG_SYSTEM_PROMPT,
+    get_rag_system_prompt,
+    get_erp_intent_classification_prompt,
+    get_erp_form_extraction_prompt,
+)
 from src.agents.base_agent import AgentState, agent_service
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.models.auth_models import UserContext
@@ -327,7 +332,7 @@ class SearchService:
 
         t0 = time.time()
         response = await asyncio.to_thread(
-            self._gemini_client.models.generate_content,
+            (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
             model=settings.GEMINI_MODEL,
             contents=gemini_contents,
             config=types.GenerateContentConfig(
@@ -623,6 +628,75 @@ class SearchService:
 
         return final_response
 
+    async def _classify_form_action_intent(self, query: str) -> bool:
+        """
+        Two-Stage Production Intent Classifier:
+        Stage 1: Fast Word Matching & Heuristics (< 0.1ms).
+        Stage 2: If Stage 1 is inconclusive, fallback to AI Model (gemini-3.5-flash-lite) for semantic classification.
+        """
+        q = query.strip()
+        if not q:
+            return False
+
+        # ── STAGE 1: Fast Word Matching ─────────────────────────────────────
+        # 1.1 Decisive Question Interrogatives
+        question_starters = (
+            "أين", "اين", "كيف", "ما هو", "ما هي", "ماهو", "ماهي", "متى", "هل",
+            "لماذا", "ليه", "اشرح", "وضح", "شرح", "معنى", "ايه هو", "ايه هي",
+            "كام", "كم", "مين", "بكام", "فين", "إزاي", "ازاي"
+        )
+        is_question_start = any(
+            q.startswith(starter + " ") or q.startswith(starter + "،") or q == starter
+            for starter in question_starters
+        )
+
+        # 1.2 Decisive Action Phrases (Unambiguous Form Filling Requests)
+        decisive_action_phrases = (
+            "سجل لي", "سجل عميل", "سجل فاتورة", "ادخل فاتورة", "اعمل فاتورة",
+            "اعمل قيد", "قيد يومية بقيمة", "عايز اسجل", "عايز ادخل", "عايز اعمل فاتورة",
+            "عايز اعمل قيد", "تسجيل عميل جديد", "فاتورة مبيعات جديدة", "فاتورة مشتريات جديدة"
+        )
+        has_decisive_action = any(phrase in q for phrase in decisive_action_phrases)
+
+        # If Stage 1 decisively matches a question with no action phrases -> return False immediately
+        if is_question_start and not has_decisive_action:
+            logger.debug("Intent Stage 1 matched decisive question, bypassing AI classification", query=q)
+            return False
+
+        # If Stage 1 decisively matches an unambiguous action phrase -> return True immediately
+        if has_decisive_action:
+            logger.debug("Intent Stage 1 matched decisive action phrase", query=q)
+            return True
+
+        # ── STAGE 2: AI Model Fallback (gemini-3.5-flash-lite) ───────────────
+        # When Stage 1 is inconclusive (ambiguous or colloquial phrasing), invoke lightweight AI classifier
+        logger.info("Intent Stage 1 inconclusive; invoking Stage 2 AI classifier", model=settings.GEMINI_MODEL, query=q)
+        try:
+            intent_prompt = get_erp_intent_classification_prompt(q)
+            model_to_use = settings.GEMINI_MODEL
+            resp = await asyncio.to_thread(
+                (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
+                model=model_to_use,
+                contents=intent_prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0,
+                    max_output_tokens=16,
+                ),
+            )
+            if resp and resp.text:
+                parsed = json.loads(resp.text)
+                detected = parsed.get("intent", "").lower()
+                logger.info("Intent Stage 2 AI classification result", detected=detected, query=q)
+                return detected == "form_action"
+        except Exception as e:
+            logger.warning("Intent Stage 2 AI classification failed, falling back to heuristic", error=str(e))
+            # Fallback heuristic: check for phone numbers / monetary tokens
+            import re
+            return bool(re.search(r'\b01\d{9}\b|\b\d{3,}\b|\bج\.م\b|\bجنيه\b|\bEGP\b', q))
+
+        return False
+
     async def _extract_form_fields_if_needed(
         self, query: str, visible_fields: list[str] | None, form_schema: list[dict] | None = None
     ) -> dict[str, Any]:
@@ -630,44 +704,17 @@ class SearchService:
             return {}
         try:
             fields_ctx = form_schema if form_schema else visible_fields
-            prompt = f"""You are an expert ERP Data Extraction Assistant for Dynamic Pro ERP.
-Analyze the user's Arabic message and the active ERP form structure.
-Extract all concrete data explicitly mentioned by the user.
-
-CRITICAL INSTRUCTION - Detect Batch Mode:
-If the user asks to record multiple documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document.
-Otherwise, set "batch_mode": false.
-
-Return a JSON with:
-1. "batch_mode": true (if multiple documents/invoices) or false (if single).
-2. "batch_items": Array of items if batch_mode is true. Each element must be:
-   {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}]}}
-3. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode).
-4. "rows": Array of table line items (for single mode, or the first document in batch mode).
-
-Available Form Context:
-{json.dumps(fields_ctx, ensure_ascii=False)}
-
-User Message:
-"{query}"
-
-Rules:
-1. Map values strictly to the matching field keys from the form context.
-2. If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل"), set cash payment field (e.g. "CashPaid") to "$TOTAL".
-3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
-4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
-5. If the user is only asking a generic question with no form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
-"""
-            # Candidate models in order of priority (settings.GEMINI_MODEL first, then fallbacks)
-            candidate_models = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
-            # Deduplicate preserving order
+            fields_ctx_json = json.dumps(fields_ctx, ensure_ascii=False)
+            prompt = get_erp_form_extraction_prompt(query, fields_ctx_json)
+            # Use gemini-3.5-flash-lite as standard high-performance engine
+            candidate_models = [settings.GEMINI_MODEL]
             candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
 
             last_err = None
             for model_name in candidate_models:
                 try:
                     resp = await asyncio.to_thread(
-                        self._gemini_client.models.generate_content,
+                        (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(
@@ -690,7 +737,7 @@ Rules:
         except Exception as e:
             logger.error("Failed to extract ERP form data", error=str(e))
         return {}
-    async def search_stream(
+async def search_stream(
         self, req: SearchRequest, user_ctx: UserContext, request: Request
     ) -> AsyncIterator[str]:
         """
@@ -831,26 +878,31 @@ Rules:
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
 
         # 🚀 ERP Form Fill Early Extraction: Detect data and emit form_fill event immediately
-        extracted_form_fields: dict[str, Any] = {}
+        extracted_form_fields: dict[str, Any] | None = None
         form_fill_emitted = False
-        if req.visible_fields or req.form_schema:
-            extracted_form_fields = await self._extract_form_fields_if_needed(req.query, req.visible_fields, req.form_schema)
-            if extracted_form_fields:
-                fields_dict = extracted_form_fields.get("fields", {}) if isinstance(extracted_form_fields, dict) else {}
-                rows_list = extracted_form_fields.get("rows", []) if isinstance(extracted_form_fields, dict) else []
-                batch_mode = bool(extracted_form_fields.get("batch_mode", False))
-                batch_items = extracted_form_fields.get("batch_items", [])
-                payload = {
-                    "intent": "form_fill",
-                    "fields": fields_dict,
-                    "rows": rows_list,
-                    "screenKey": req.erp_key,
-                    "batch_mode": batch_mode,
-                    "batch_items": batch_items,
-                }
-                logger.info("Emitting early form_fill SSE event", fields=list(fields_dict.keys()), rows_count=len(rows_list), erp_key=req.erp_key)
-                yield _format_sse("form_fill", payload)
-                form_fill_emitted = True
+        if (req.visible_fields or req.form_schema) and (await self._classify_form_action_intent(req.query)):
+            raw_extracted = await self._extract_form_fields_if_needed(req.query, req.visible_fields, req.form_schema)
+            if raw_extracted and isinstance(raw_extracted, dict):
+                fields_dict = raw_extracted.get("fields", {}) if isinstance(raw_extracted.get("fields"), dict) else {}
+                rows_list = raw_extracted.get("rows", []) if isinstance(raw_extracted.get("rows"), list) else []
+                batch_mode = bool(raw_extracted.get("batch_mode", False))
+                batch_items = raw_extracted.get("batch_items", []) if isinstance(raw_extracted.get("batch_items"), list) else []
+
+                # Crucial Fix: Only consider extracted_form_fields if ACTUAL data was extracted!
+                has_actual_data = bool(fields_dict) or bool(rows_list) or bool(batch_items)
+                if has_actual_data:
+                    extracted_form_fields = raw_extracted
+                    payload = {
+                        "intent": "form_fill",
+                        "fields": fields_dict,
+                        "rows": rows_list,
+                        "screenKey": req.erp_key,
+                        "batch_mode": batch_mode,
+                        "batch_items": batch_items,
+                    }
+                    logger.info("Emitting early form_fill SSE event", fields=list(fields_dict.keys()), rows_count=len(rows_list), erp_key=req.erp_key)
+                    yield _format_sse("form_fill", payload)
+                    form_fill_emitted = True
 
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
@@ -864,28 +916,11 @@ Rules:
             num_sources=num_sources,
             is_multi_lesson=is_multi_lesson,
             visible_fields=req.visible_fields,
-            extracted_form_fields=extracted_form_fields if extracted_form_fields else None,
+            extracted_form_fields=extracted_form_fields,
         )
         thread_id = req.thread_id or str(uuid.uuid4())
 
         user_prompt_text = req.query
-        if extracted_form_fields:
-            user_prompt_text += (
-                f"\n\n[توجيه تنفيذي لمساعد ERP:\n"
-                f"تم استخراج وتجهيز بيانات النموذج التالية بنجاح للتعبئة في الشاشة: {json.dumps(extracted_form_fields, ensure_ascii=False)}.\n"
-                f"أنت المساعد الذكي. أكّد للمستخدم بلباقة ووضوح أن بيانات العميل جاهزة للتعبئة في الشاشة الآن عبر زر التعبئة المتاح أدناه، "
-                f"وقدم له أي نصيحة إرشادية وتدريبية مفيدة مستفادة من المقاطع التعليمية المتاحة (مثل أهمية تحديد تصنيف العميل المناسب للحصول على السعر الصحيح أو التحقق من البيانات). "
-                f"لا تقل أبداً أن المقاطع لا تحتوي على هذه البيانات.]"
-            )
-        elif req.visible_fields:
-            fields_doc = ", ".join(req.visible_fields)
-            user_prompt_text += (
-                f"\n\n[توجيه تنفيذي لشاشة الـ ERP:\n"
-                f"الشاشة المفتوحة أمامك تحتوي على الحقول: {fields_doc}.\n"
-                f"المستخدم يقدم لك بيانات لتعبئتها في هذه الحقول. استخرج القيم من رسالته وطابقها مع أسماء الحقول الإنجليزية.\n"
-                f"يجب عليك إلزامياً كتابة بلوك التعبئة كالتالي:\n"
-                f"```form_fill\n{{\n  \"CustomerName\": \"...\",\n  \"Phone\": \"...\"\n}}\n```]"
-            )
         gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_prompt_text)])]
 
         loop = asyncio.get_running_loop()
