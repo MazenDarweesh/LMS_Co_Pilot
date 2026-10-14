@@ -898,12 +898,14 @@ class SearchService:
                     q_lower = req.query.lower()
                     fields_keys_lower = [str(k).lower() for k in fields_dict.keys()]
 
-                    if "مشتريات" in q_lower or "مورد" in q_lower or "supplier" in fields_keys_lower:
-                        target_screen_key = "PURCHASE_INVOICE"
-                    elif "مبيعات" in q_lower or ("عميل" in q_lower and ("فاتورة" in q_lower or "صنف" in q_lower or rows_list)):
-                        target_screen_key = "SALES_INVOICE"
-                    elif "عميل جديد" in q_lower or "تسجيل عميل" in q_lower or ("customername" in fields_keys_lower and not rows_list):
+                    if "عميل جديد" in q_lower or "تسجيل عميل" in q_lower or "سجل عميل" in q_lower or "commercialreg" in fields_keys_lower or "taxid" in fields_keys_lower:
                         target_screen_key = "NEW_CUSTOMER"
+                    elif "مشتريات" in q_lower or "مورد" in q_lower or "supplier" in fields_keys_lower:
+                        target_screen_key = "PURCHASE_INVOICE"
+                    elif "مبيعات" in q_lower or ("عميل" in q_lower and ("فاتورة" in q_lower or "صنف" in q_lower)):
+                        target_screen_key = "SALES_INVOICE"
+                    elif "customername" in fields_keys_lower:
+                        target_screen_key = "NEW_CUSTOMER" if "branch" in str(rows_list).lower() or not rows_list else "SALES_INVOICE"
                     elif "قيد" in q_lower or "مدين" in q_lower or "دائن" in q_lower:
                         target_screen_key = "JOURNAL_ENTRY"
                     elif "جرد" in q_lower or "تسوية مخزنية" in q_lower:
