@@ -282,6 +282,34 @@ def _format_sse(event_type: str, data: dict) -> str:
     return f"event: {event_type}\n{data_lines}\n\n"
 
 
+_FORM_FILL_CONFIRMATION = (
+    "تم تجهيز البيانات المطلوبة وهي جاهزة للإدخال في الشاشة النشطة عبر بطاقة الإجراء أدناه."
+)
+
+
+def _build_form_fill_payload(raw_extracted: Any, screen_key: str | None) -> dict | None:
+    """
+    Normalizes the AI extraction result into the `form_fill` SSE payload.
+    Returns None when nothing concrete was extracted (so the request falls back to plain RAG).
+    The target screen is ALWAYS the active screen chosen by the AI router (no keyword inference).
+    """
+    if not raw_extracted or not isinstance(raw_extracted, dict):
+        return None
+    fields_dict = raw_extracted.get("fields") if isinstance(raw_extracted.get("fields"), dict) else {}
+    rows_list = raw_extracted.get("rows") if isinstance(raw_extracted.get("rows"), list) else []
+    batch_items = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
+    if not (fields_dict or rows_list or batch_items):
+        return None
+    return {
+        "intent": "form_fill",
+        "fields": fields_dict,
+        "rows": rows_list,
+        "screenKey": screen_key,
+        "batch_mode": bool(raw_extracted.get("batch_mode", False)),
+        "batch_items": batch_items,
+    }
+
+
 class SearchService:
 
     def __init__(self):
@@ -628,73 +656,38 @@ class SearchService:
 
         return final_response
 
-    async def _classify_form_action_intent(self, query: str) -> bool:
+    async def _classify_form_action_intent(self, query: str, erp_intent: str | None = None) -> bool:
         """
-        Two-Stage Production Intent Classifier:
-        Stage 1: Fast Word Matching & Heuristics (< 0.1ms).
-        Stage 2: If Stage 1 is inconclusive, fallback to AI Model (gemini-3.5-flash-lite) for semantic classification.
+        AI-only intent resolution (no keyword / regex lists):
+        - If the AI navigation router already classified the message (`erp_intent`), reuse it — zero extra LLM calls.
+        - Otherwise ask the lightweight AI classifier. On AI failure we do NOT guess: the message is treated as a
+          plain question (no auto-fill), and the failure is logged.
         """
+        if erp_intent in ("question", "navigate", "action"):
+            return erp_intent == "action"
+
         q = query.strip()
         if not q:
             return False
 
-        # ── STAGE 1: Fast Word Matching ─────────────────────────────────────
-        # 1.1 Decisive Question Interrogatives
-        question_starters = (
-            "أين", "اين", "كيف", "ما هو", "ما هي", "ماهو", "ماهي", "متى", "هل",
-            "لماذا", "ليه", "اشرح", "وضح", "شرح", "معنى", "ايه هو", "ايه هي",
-            "كام", "كم", "مين", "بكام", "فين", "إزاي", "ازاي"
-        )
-        is_question_start = any(
-            q.startswith(starter + " ") or q.startswith(starter + "،") or q == starter
-            for starter in question_starters
-        )
-
-        # 1.2 Decisive Action Phrases (Unambiguous Form Filling Requests)
-        decisive_action_phrases = (
-            "سجل لي", "سجل عميل", "سجل فاتورة", "ادخل فاتورة", "اعمل فاتورة",
-            "اعمل قيد", "قيد يومية بقيمة", "عايز اسجل", "عايز ادخل", "عايز اعمل فاتورة",
-            "عايز اعمل قيد", "تسجيل عميل جديد", "فاتورة مبيعات جديدة", "فاتورة مشتريات جديدة"
-        )
-        has_decisive_action = any(phrase in q for phrase in decisive_action_phrases)
-
-        # If Stage 1 decisively matches a question with no action phrases -> return False immediately
-        if is_question_start and not has_decisive_action:
-            logger.debug("Intent Stage 1 matched decisive question, bypassing AI classification", query=q)
-            return False
-
-        # If Stage 1 decisively matches an unambiguous action phrase -> return True immediately
-        if has_decisive_action:
-            logger.debug("Intent Stage 1 matched decisive action phrase", query=q)
-            return True
-
-        # ── STAGE 2: AI Model Fallback (gemini-3.5-flash-lite) ───────────────
-        # When Stage 1 is inconclusive (ambiguous or colloquial phrasing), invoke lightweight AI classifier
-        logger.info("Intent Stage 1 inconclusive; invoking Stage 2 AI classifier", model=settings.GEMINI_MODEL, query=q)
         try:
             intent_prompt = get_erp_intent_classification_prompt(q)
-            model_to_use = settings.GEMINI_MODEL
             resp = await asyncio.to_thread(
                 (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
-                model=model_to_use,
+                model=settings.GEMINI_MODEL,
                 contents=intent_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=0.0,
-                    max_output_tokens=16,
+                    max_output_tokens=32,
                 ),
             )
             if resp and resp.text:
-                parsed = json.loads(resp.text)
-                detected = parsed.get("intent", "").lower()
-                logger.info("Intent Stage 2 AI classification result", detected=detected, query=q)
+                detected = json.loads(resp.text).get("intent", "").lower()
+                logger.info("AI intent classification result", detected=detected, query=q)
                 return detected == "form_action"
         except Exception as e:
-            logger.warning("Intent Stage 2 AI classification failed, falling back to heuristic", error=str(e))
-            # Fallback heuristic: check for phone numbers / monetary tokens
-            import re
-            return bool(re.search(r'\b01\d{9}\b|\b\d{3,}\b|\bج\.م\b|\bجنيه\b|\bEGP\b', q))
-
+            logger.warning("AI intent classification failed; treating message as a plain question", error=str(e))
         return False
 
     async def _extract_form_fields_if_needed(
@@ -802,6 +795,37 @@ class SearchService:
             else:
                 record_exact_cache_lookup(hit=False)
 
+        # ──────────────────────────────────────────────
+        # 1.1b ERP Action Fast-Path: AI-routed data-entry commands never need RAG retrieval
+        # ──────────────────────────────────────────────
+        if (req.visible_fields or req.form_schema) and (
+            await self._classify_form_action_intent(req.query, req.erp_intent)
+        ):
+            raw_extracted = await self._extract_form_fields_if_needed(
+                req.query, req.visible_fields, req.form_schema
+            )
+            form_payload = _build_form_fill_payload(raw_extracted, req.erp_key)
+            if form_payload is not None:
+                record_stage_duration("total", time.time() - t0)
+                latency_ms = round((time.time() - t0) * 1000, 2)
+                logger.info(
+                    "Emitting form_fill SSE event (action fast-path)",
+                    fields=list(form_payload["fields"].keys()),
+                    rows_count=len(form_payload["rows"]),
+                    erp_key=req.erp_key,
+                )
+                yield _format_sse("sources", {"sources": []})
+                yield _format_sse("form_fill", form_payload)
+                yield _format_sse("token", {"text": _FORM_FILL_CONFIRMATION})
+                yield _format_sse("done", {
+                    "thread_id": req.thread_id or str(uuid.uuid4()),
+                    "provenance": "ERP_FORM_FILL",
+                    "cache_hit": False,
+                    "latency_ms": latency_ms,
+                    "metrics": {"total_latency_ms": latency_ms},
+                })
+                return
+
         # 1.2 Embedding & Semantic Cache
         t_emb = time.time()
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
@@ -877,51 +901,9 @@ class SearchService:
         # Yield sources event first for immediate citation rendering in frontend
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
 
-        # 🚀 ERP Form Fill Early Extraction: Detect data and emit form_fill event immediately
+        # ERP form-fill is fully handled by the action fast-path above (AI-routed, no keyword inference).
         extracted_form_fields: dict[str, Any] | None = None
         form_fill_emitted = False
-        if (req.visible_fields or req.form_schema) and (await self._classify_form_action_intent(req.query)):
-            raw_extracted = await self._extract_form_fields_if_needed(req.query, req.visible_fields, req.form_schema)
-            if raw_extracted and isinstance(raw_extracted, dict):
-                fields_dict = raw_extracted.get("fields", {}) if isinstance(raw_extracted.get("fields"), dict) else {}
-                rows_list = raw_extracted.get("rows", []) if isinstance(raw_extracted.get("rows"), list) else []
-                batch_mode = bool(raw_extracted.get("batch_mode", False))
-                batch_items = raw_extracted.get("batch_items", []) if isinstance(raw_extracted.get("batch_items"), list) else []
-
-                # Crucial Fix: Only consider extracted_form_fields if ACTUAL data was extracted!
-                has_actual_data = bool(fields_dict) or bool(rows_list) or bool(batch_items)
-                if has_actual_data:
-                    extracted_form_fields = raw_extracted
-
-                    # Target screen inference: if query or extracted fields explicitly match a specific screen
-                    target_screen_key = req.erp_key
-                    q_lower = req.query.lower()
-                    fields_keys_lower = [str(k).lower() for k in fields_dict.keys()]
-
-                    if "عميل جديد" in q_lower or "تسجيل عميل" in q_lower or "سجل عميل" in q_lower or "commercialreg" in fields_keys_lower or "taxid" in fields_keys_lower:
-                        target_screen_key = "NEW_CUSTOMER"
-                    elif "مشتريات" in q_lower or "مورد" in q_lower or "supplier" in fields_keys_lower:
-                        target_screen_key = "PURCHASE_INVOICE"
-                    elif "مبيعات" in q_lower or ("عميل" in q_lower and ("فاتورة" in q_lower or "صنف" in q_lower)):
-                        target_screen_key = "SALES_INVOICE"
-                    elif "customername" in fields_keys_lower:
-                        target_screen_key = "NEW_CUSTOMER" if "branch" in str(rows_list).lower() or not rows_list else "SALES_INVOICE"
-                    elif "قيد" in q_lower or "مدين" in q_lower or "دائن" in q_lower:
-                        target_screen_key = "JOURNAL_ENTRY"
-                    elif "جرد" in q_lower or "تسوية مخزنية" in q_lower:
-                        target_screen_key = "INVENTORY_AUDIT"
-
-                    payload = {
-                        "intent": "form_fill",
-                        "fields": fields_dict,
-                        "rows": rows_list,
-                        "screenKey": target_screen_key,
-                        "batch_mode": batch_mode,
-                        "batch_items": batch_items,
-                    }
-                    logger.info("Emitting early form_fill SSE event", fields=list(fields_dict.keys()), rows_count=len(rows_list), erp_key=req.erp_key)
-                    yield _format_sse("form_fill", payload)
-                    form_fill_emitted = True
 
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard

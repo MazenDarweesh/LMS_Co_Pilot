@@ -60,6 +60,11 @@ class SearchRequest(BaseModel):
         validation_alias=AliasChoices("erp_key", "erpKey", "ErpKey", "screen_key", "screenKey"),
         description="كود شاشة الـ ERP الحالية"
     )
+    erp_intent: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("erp_intent", "erpIntent", "ErpIntent"),
+        description="نية المستخدم كما حددها موجّه الذكاء الاصطناعي (question / navigate / action)"
+    )
 
     @property
     def scope_fingerprint(self) -> str:

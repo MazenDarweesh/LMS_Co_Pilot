@@ -1,4 +1,4 @@
-from src.core.prompts import get_erp_navigation_prompt
+from src.core.prompts import get_erp_control_roles_prompt, get_erp_navigation_prompt
 import asyncio
 import json
 import re
@@ -9,6 +9,8 @@ from google.genai import types
 
 from src.core.config import settings
 from src.models.erp_models import (
+    ControlRolesRequest,
+    ControlRolesResponse,
     FieldSignatureIn,
     LeftoverRequest,
     LeftoverResponse,
@@ -16,6 +18,11 @@ from src.models.erp_models import (
     NavRequest,
     NavResolution,
     NavScored,
+)
+from src.services.erp_decision_memory_service import (
+    candidate_fingerprint,
+    erp_decision_memory_service,
+    navigation_fingerprint,
 )
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
@@ -102,153 +109,224 @@ class ErpService:
             logger.error("Failed to initialize Gemini Client in ErpService", error=str(e))
             self._gemini_client = None
 
-    async def resolve_navigation(self, req: NavRequest) -> NavResolution:
+    async def _generate_json(self, prompt: str, timeout: float = 12.0) -> Any:
+        """Single Gemini JSON call shared by every ERP routing prompt (DRY)."""
+        resp = await asyncio.wait_for(
+            asyncio.to_thread(
+                self._gemini_client.models.generate_content,
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.0,
+                ),
+            ),
+            timeout=timeout,
+        )
+        raw_text = resp.text if hasattr(resp, "text") and resp.text else ""
+        return json.loads(raw_text)
+
+    @staticmethod
+    def _parse_router_output(
+        parsed: Any, candidates_map: dict[str, NavCandidateIn]
+    ) -> tuple[str, list[NavScored]]:
+        """Parses the AI router output (object with intent, or legacy list) with strict id validation."""
+        intent = "unknown"
+        items: Any = parsed
+        if isinstance(parsed, dict):
+            raw_intent = str(parsed.get("intent", "")).strip().lower()
+            intent = raw_intent if raw_intent in ("question", "navigate", "action") else "unknown"
+            items = parsed.get("candidates", [])
+
+        scored: list[NavScored] = []
+        for item in items if isinstance(items, list) else []:
+            if not isinstance(item, dict):
+                continue
+            c_id = str(item.get("id", "")).strip()
+            # Strict validation: منع الهلوسة في الـ id
+            if c_id not in candidates_map:
+                continue
+            try:
+                conf = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
+            except (ValueError, TypeError):
+                conf = 0.0
+            reason = str(item.get("reason", "")).strip() or "مطابقة دلالية بناءً على محتوى الشاشة"
+            scored.append(NavScored(id=c_id, confidence=conf, reason=reason))
+
+        if intent == "question":
+            scored = [s.model_copy(update={"confidence": 0.0}) for s in scored]
+        return intent, scored
+
+    @staticmethod
+    def _decide(top_candidates: list[NavScored]) -> str:
+        """Applies the server-side go / ask / clarify thresholds."""
+        if not top_candidates:
+            return "clarify"
+        top1 = top_candidates[0]
+        top2_conf = top_candidates[1].confidence if len(top_candidates) > 1 else 0.0
+        gap = round(top1.confidence - top2_conf, 4)
+        if top1.confidence >= settings.ERP_NAV_GO_THRESHOLD and gap >= settings.ERP_NAV_GAP_THRESHOLD:
+            return "go"
+        if top1.confidence < settings.ERP_NAV_CLARIFY_THRESHOLD:
+            return "clarify"
+        return "ask"
+
+    async def resolve_navigation(
+        self,
+        req: NavRequest,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> NavResolution:
         """
-        ترتيب الشاشات المرشحة واختيار القرار المناسب (go, ask, clarify)
-        وفقاً للعتبات المعرفة بالسيرفر.
+        ترتيب الشاشات المرشحة وتحديد نية المستخدم (سؤال / تنقل / إجراء) بالكامل عبر الذكاء الاصطناعي:
+        0. ذاكرة القرارات المؤكدة (Qdrant) — تتجاوز استدعاء الـ LLM عند وجود تطابق دلالي موثّق.
+        1. موجّه الذكاء الاصطناعي (قرار واحد: intent + درجات الشاشات).
+        2. fallback معجمي فقط عند تعذر الـ LLM (بدون تخمين النية).
         """
         user_msg = req.user_message.strip()
         candidates_map = {c.id: c for c in req.candidates}
-        total_candidates = len(req.candidates)
 
         logger.info(
             "ERP Navigation resolve requested",
             query_len=len(user_msg),
-            candidates_count=total_candidates,
+            candidates_count=len(req.candidates),
             current_path=req.current_path,
         )
 
-        # 0. Fast-Path Gating: إذا كان الاستعلام استفساراً معرفياً أو سؤالاً نظرياً بحتاً بدون أمر تنقل صريح
-        sanitized_msg = re.sub(r'\b(كمية|كميات|بكمية)\b', '', user_msg)
-        question_patterns = [
-            r'\bما الذي\b', r'\bماذا\b', r'\bما هو\b', r'\bما هي\b', r'\bماهو\b', r'\bماهي\b',
-            r'\bما الفرق\b', r'\bكيف\b', r'\bلماذا\b', r'\bاشرح\b', r'\bوضح\b', r'\bهل\b',
-            r'\bأين\b', r'\bاين\b', r'\bمتى\b', r'\bكم\b', r'\bليه\b', r'\bازاي\b', r'\bإزاي\b',
-            r'\bطريقة عمل\b', r'\bآلية عمل\b', r'\bممكن تفهمني\b', r'\bعرفني\b'
-        ]
-        is_question = any(re.search(pat, sanitized_msg) for pat in question_patterns)
+        fingerprint = navigation_fingerprint(req.candidates)
+        memory_active = bool(tenant_id and user_id) and erp_decision_memory_service.ready
 
-        explicit_nav_markers = (
-            "افتح", "روح", "وديني", "انتقل", "شاشة", "صفحة", "حولني", "وجهني",
-            "ادخل على", "عايز أسجل", "سجل لي", "سجل", "اعمل", "أنشئ", "انشئ",
-            "فاتورة مشتريات", "فاتورة مبيعات", "قيد يومية", "تسجيل عميل", "تسوية جردية", "محضر جرد"
-        )
-        has_nav_cmd = any(m in user_msg for m in explicit_nav_markers)
+        # 0. Verified-decision memory
+        if memory_active:
+            hit = await erp_decision_memory_service.lookup_navigation(user_msg, tenant_id, fingerprint)
+            if hit is not None:
+                remembered, matched_point_id = hit
+                if all(c.id in candidates_map for c in remembered.candidates):
+                    remembered.decision_id = await erp_decision_memory_service.record_navigation(
+                        tenant_id, user_id, user_msg, fingerprint, remembered, matched_point_id
+                    )
+                    return remembered
 
-        if is_question and not has_nav_cmd:
-            logger.info("Fast-path bypass: Query is purely educational/question, returning clarify", query=user_msg)
-            return NavResolution(decision="clarify", candidates=[])
-
-        # 1. حساب الدرجات المعجمية (Lexical Baseline) كـ Fallback سريع
-        lexical_scores: dict[str, float] = {}
-        for c in req.candidates:
-            lexical_scores[c.id] = _compute_lexical_similarity(user_msg, c.label, c.path)
-
+        # 1. AI router
+        intent = "unknown"
         scored_candidates: list[NavScored] = []
-        llm_succeeded = False
-
-        # 2. محاولة استدعاء الـ LLM Reranker إذا كان عميل Gemini مهيأ
+        source = "ai"
         if self._gemini_client:
             try:
                 candidates_payload = [
-                    {"id": c.id, "label": c.label, "path": c.path}
-                    for c in req.candidates
+                    {"id": c.id, "label": c.label, "path": c.path} for c in req.candidates
                 ]
-
                 prompt = get_erp_navigation_prompt(
                     user_msg=user_msg,
                     current_path_json=json.dumps(req.current_path, ensure_ascii=False),
                     candidates_json=json.dumps(candidates_payload, ensure_ascii=False, indent=2),
                 )
-
-                resp = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        self._gemini_client.models.generate_content,
-                        model=settings.GEMINI_MODEL,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            temperature=0.0,
-                        ),
-                    ),
-                    timeout=12.0,
-                )
-
-                raw_text = resp.text if hasattr(resp, "text") and resp.text else ""
-                parsed = json.loads(raw_text)
-
-                if isinstance(parsed, list):
-                    for item in parsed:
-                        if not isinstance(item, dict):
-                            continue
-                        c_id = str(item.get("id", "")).strip()
-                        # Strict validation: منع الهلوسة في الـ id
-                        if c_id not in candidates_map:
-                            continue
-                        try:
-                            conf = float(item.get("confidence", 0.0))
-                            conf = max(0.0, min(1.0, conf))
-                        except (ValueError, TypeError):
-                            conf = 0.0
-                        reason = str(item.get("reason", "")).strip() or "مطابقة دلالية بناءً على محتوى الشاشة"
-                        scored_candidates.append(NavScored(id=c_id, confidence=conf, reason=reason))
-                    if scored_candidates:
-                        llm_succeeded = True
+                parsed = await self._generate_json(prompt, timeout=12.0)
+                intent, scored_candidates = self._parse_router_output(parsed, candidates_map)
             except Exception as e:
                 logger.warning(
-                    "LLM Navigation rerank failed or timed out, falling back to lexical scoring",
+                    "AI navigation router failed or timed out, falling back to lexical scoring",
                     error=str(e),
                 )
+                intent, scored_candidates = "unknown", []
 
-        # 3. Fallback إلى الـ Lexical Scoring في حال فشل الـ LLM أو عدم تغطيته
-        if not llm_succeeded or not scored_candidates:
-            scored_candidates = []
+        # 2. Lexical fallback (outage only): never guesses intent
+        if not scored_candidates:
+            source = "lexical"
+            intent = "unknown"
             for c in req.candidates:
-                score = lexical_scores.get(c.id, 0.0)
+                score = _compute_lexical_similarity(user_msg, c.label, c.path)
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
 
-        # 4. تصفية صارمة وترتيب النتائج
-        # التحقق من أن كل id ينتمي حصراً للمرشحات المدخلة
-        valid_scored = [s for s in scored_candidates if s.id in candidates_map]
-        # إزالة التكرارات إن وُجدت مع الاحتفاظ بأعلى درجة
+        # 3. Dedupe, sort, top-3
         unique_scored: dict[str, NavScored] = {}
-        for s in valid_scored:
+        for s in scored_candidates:
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
+        top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
 
-        sorted_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)
-
-        # اقتطاع القائمة لأعلى 3 مرشحين فقط
-        top_candidates = sorted_candidates[:3]
-
-        # 5. تطبيق منطق اتخاذ القرار الصارم
-        go_threshold = settings.ERP_NAV_GO_THRESHOLD
-        gap_threshold = settings.ERP_NAV_GAP_THRESHOLD
-        clarify_threshold = settings.ERP_NAV_CLARIFY_THRESHOLD
-
-        if not top_candidates:
-            decision = "clarify"
+        # 4. Decision
+        if source == "ai" and intent == "question":
+            resolution = NavResolution(decision="clarify", candidates=[], intent="question", source="ai")
         else:
-            top1 = top_candidates[0]
-            top2_conf = top_candidates[1].confidence if len(top_candidates) > 1 else 0.0
-            gap = round(top1.confidence - top2_conf, 4)
-
-            if top1.confidence >= go_threshold and gap >= gap_threshold:
-                decision = "go"
-            elif top1.confidence < clarify_threshold:
-                decision = "clarify"
-            else:
-                decision = "ask"
+            resolution = NavResolution(
+                decision=self._decide(top_candidates),
+                candidates=top_candidates,
+                intent=intent,
+                source=source,
+            )
 
         logger.info(
             "ERP Navigation decision resolved",
-            decision=decision,
+            decision=resolution.decision,
+            intent=resolution.intent,
+            source=resolution.source,
             top1_id=top_candidates[0].id if top_candidates else None,
             top1_conf=top_candidates[0].confidence if top_candidates else 0.0,
         )
 
-        return NavResolution(decision=decision, candidates=top_candidates)
+        if memory_active:
+            resolution.decision_id = await erp_decision_memory_service.record_navigation(
+                tenant_id, user_id, user_msg, fingerprint, resolution
+            )
+        return resolution
+
+    async def resolve_controls(
+        self,
+        req: ControlRolesRequest,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ) -> ControlRolesResponse:
+        """
+        يحدد الذكاء الاصطناعي دور أزرار الشاشة (add_row / new_form) من الأزرار الظاهرة فعلياً،
+        ويُحفظ القرار في قاعدة البيانات (مفتاح: tenant + screen + بصمة تسميات الأزرار).
+        """
+        controls_by_id = {c.id: c for c in req.controls}
+        fingerprint = candidate_fingerprint([("", c.label) for c in req.controls])
+        memory_active = bool(tenant_id and user_id) and erp_decision_memory_service.ready
+
+        def _ids_from_labels(roles_by_label: dict[str, str]) -> dict[str, str]:
+            label_to_id: dict[str, str] = {}
+            for c in req.controls:
+                label_to_id.setdefault(c.label, c.id)
+            return {r: label_to_id[lbl] for r, lbl in roles_by_label.items() if lbl in label_to_id}
+
+        if memory_active:
+            cached = await erp_decision_memory_service.lookup_controls(tenant_id, req.screen_id, fingerprint)
+            if cached:
+                roles = _ids_from_labels(cached)
+                if roles:
+                    return ControlRolesResponse(roles=roles, source="memory")
+
+        if not self._gemini_client:
+            logger.warning("Control roles requested but Gemini client is unavailable", screen_id=req.screen_id)
+            return ControlRolesResponse(roles={}, source="ai")
+
+        try:
+            payload = [{"id": c.id, "label": c.label} for c in req.controls]
+            prompt = get_erp_control_roles_prompt(
+                screen_id=req.screen_id,
+                controls_json=json.dumps(payload, ensure_ascii=False, indent=2),
+            )
+            parsed = await self._generate_json(prompt, timeout=12.0)
+        except Exception as e:
+            logger.warning("AI control roles resolution failed", error=str(e), screen_id=req.screen_id)
+            return ControlRolesResponse(roles={}, source="ai")
+
+        roles: dict[str, str] = {}
+        if isinstance(parsed, dict):
+            for role in ("add_row", "new_form"):
+                btn_id = str(parsed.get(role) or "").strip()
+                if btn_id in controls_by_id:  # strict anti-hallucination validation
+                    roles[role] = btn_id
+
+        if roles and memory_active:
+            await erp_decision_memory_service.save_controls(
+                tenant_id, user_id, req.screen_id, fingerprint,
+                {r: controls_by_id[i].label for r, i in roles.items()},
+            )
+        return ControlRolesResponse(roles=roles, source="ai")
 
     async def resolve_leftover(self, req: LeftoverRequest) -> LeftoverResponse:
         """

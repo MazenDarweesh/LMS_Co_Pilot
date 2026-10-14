@@ -84,6 +84,31 @@ CREATE INDEX IF NOT EXISTS idx_search_feedback_created_at
     ON search_feedback(created_at DESC);
 """
 
+# جدول تدقيق قرارات التوجيه الذكي لشاشات الـ ERP (ذاكرة القرارات + أدوار الأزرار)
+CREATE_ERP_AUDIT_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS erp_routing_audit (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    query_text TEXT,
+    screen_id VARCHAR(128),
+    fingerprint VARCHAR(64) NOT NULL,
+    intent VARCHAR(16),
+    source VARCHAR(16) NOT NULL,
+    decision JSONB NOT NULL DEFAULT '{}'::jsonb,
+    outcome VARCHAR(16) NOT NULL DEFAULT 'pending',
+    matched_point_id VARCHAR(64),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_erp_routing_audit_lookup
+    ON erp_routing_audit(tenant_id, kind, screen_id, fingerprint, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_erp_routing_audit_tenant_time
+    ON erp_routing_audit(tenant_id, created_at DESC);
+"""
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -105,6 +130,7 @@ async def lifespan(app: FastAPI):
     async with app.state.db_pool.acquire() as conn:
         await conn.execute(CREATE_EVENTS_TABLE_SQL)
         await conn.execute(CREATE_FEEDBACK_TABLE_SQL)
+        await conn.execute(CREATE_ERP_AUDIT_TABLE_SQL)
     logger.info("Database pool ready ✅")
 
     # ② تحميل نماذج الـ Embedding مرة واحدة عند بدء التشغيل
@@ -182,6 +208,14 @@ async def lifespan(app: FastAPI):
     from src.services.erp_service import erp_service
     erp_service.initialize()
     app.state.erp_service = erp_service
+
+    # ⑪.1 تهيئة ذاكرة قرارات التوجيه (Qdrant للبحث + PostgreSQL للتدقيق)
+    from src.services.erp_decision_memory_service import erp_decision_memory_service
+    try:
+        await erp_decision_memory_service.initialize(app.state.db_pool)
+    except Exception as e:
+        logger.error("ERP decision memory initialization failed; routing continues without memory", error=str(e))
+    app.state.erp_decision_memory_service = erp_decision_memory_service
 
     # تم اكتمال كافة النماذج والخدمات وجاهزية النظام للاستقبال
     startup_duration = round(time.time() - t_startup, 3)

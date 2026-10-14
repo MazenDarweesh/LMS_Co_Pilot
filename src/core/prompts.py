@@ -228,7 +228,7 @@ SECURITY_VIOLATION_RESPONSE = (
 
 ERP_INTENT_CLASSIFICATION_PROMPT_TEMPLATE = """You are a high-speed binary Intent Classifier for DynamicPro ERP.
 Classify the user's Arabic message into exactly one of two intents:
-- "form_action": The user wants to create, enter, submit, or record transactional data into an ERP form.
+- "form_action": The user wants to create, enter, submit, or record transactional data into an ERP form (documents, entries, registrations, counts, adjustments), even if the message mentions products, warehouses or amounts.
 - "question": The user is asking for information, explanation, how-to instructions, or system overview.
 
 User Message:
@@ -286,26 +286,50 @@ def get_erp_form_extraction_prompt(query: str, fields_ctx_json: str) -> str:
 # Autonomous ERP Navigation Prompt (Single Source of Truth)
 # ---------------------------------------------------------------------------
 
-ERP_NAVIGATION_PROMPT_TEMPLATE = """You are an expert ERP Navigation Intent Classifier for Dynamic Pro ERP.
-A user said:
+ERP_NAVIGATION_PROMPT_TEMPLATE = """You are the routing brain of an ERP assistant (Dynamic Pro ERP).
+A user said (Arabic, may be colloquial):
 \"{user_msg}\"
 
 Current User Path: {current_path_json}
 
-Available Screens/Navigation Candidates:
+Available screens (the ONLY valid ids, taken live from the user's interface):
 {candidates_json}
 
-CRITICAL RULES (Intent Boundaries):
-1. IF the user's message is an educational, conceptual, theoretical, or explanatory question (e.g., asking how things work, what happens in inventory/accounts, explaining mechanics, asking "ما الذي يحدث", "كيف", "لماذا", "ما الفرق", "اشرح", or has no imperative command to navigate/open/enter data):
-   -> YOU MUST ASSIGN A CONFIDENCE OF 0.00 TO ALL CANDIDATES. The user is asking a knowledge question, NOT requesting navigation.
-2. ONLY assign high confidence (>= 0.80) if the user is explicitly requesting to navigate to, open, view, or enter data in that specific screen (e.g. "افتح شاشة", "انتقل إلى", "سجل في شاشة").
-3. If the user explicitly asks to perform an action but it is ambiguous between multiple screens, assign proportional scores.
+STEP 1 - Classify the user's intent:
+- "action": the user wants to create / record / enter / post transactional data (a document, an entry, a registration, a count, an adjustment, a payment...). This holds even when the message mentions products, warehouses, partners or amounts, and even when no screen is named.
+- "navigate": the user only wants to open / go to / view a screen and gives no data to enter.
+- "question": the user asks for knowledge (how / why / what happens / explain / difference) and gives no command to open a screen or enter data.
 
-Return ONLY a valid JSON list of objects:
-[
-  {{"id": "candidate_id", "confidence": 0.0, "reason": "استفسار معرفي وليس طلب تنقل"}}
-]
+STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label, NOT by word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
+- If the intent is "question", every confidence MUST be 0.0.
+- If two screens are equally plausible, give them close proportional scores.
+
+Return ONLY a valid JSON object:
+{{"intent": "action|navigate|question", "candidates": [{{"id": "candidate_id", "confidence": 0.0, "reason": "short reason in Arabic"}}]}}
 """
+
+
+ERP_CONTROL_ROLES_PROMPT_TEMPLATE = """You inspect the buttons visible on one ERP screen and assign functional roles.
+Screen id: {screen_id}
+
+Visible buttons (the ONLY valid ids):
+{controls_json}
+
+Roles:
+- "add_row": the button that appends a NEW line / row to the main data grid of this form.
+- "new_form": the button that clears / resets the form to start a brand-new document.
+
+Rules:
+- Use ONLY ids from the list. Omit a role if no button clearly fits it.
+- Never choose navigation tabs, save, print, undo, or approve buttons for these roles.
+
+Return ONLY a valid JSON object, for example: {{"add_row": "btn_1", "new_form": "btn_2"}}
+"""
+
+
+def get_erp_control_roles_prompt(screen_id: str, controls_json: str) -> str:
+    """Constructs prompt asking the AI to assign add_row / new_form roles to on-screen buttons."""
+    return ERP_CONTROL_ROLES_PROMPT_TEMPLATE.format(screen_id=screen_id, controls_json=controls_json)
 
 
 def get_erp_navigation_prompt(user_msg: str, current_path_json: str, candidates_json: str) -> str:

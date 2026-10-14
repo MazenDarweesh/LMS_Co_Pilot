@@ -89,6 +89,12 @@ class Settings(BaseSettings):
     ERP_NAV_GAP_THRESHOLD: float = 0.25
     ERP_NAV_CLARIFY_THRESHOLD: float = 0.30
 
+    # ERP Decision Memory (verified AI routing decisions: Qdrant lookup + PostgreSQL audit)
+    ERP_DECISION_MEMORY_ENABLED: bool = True
+    ERP_DECISION_COLLECTION: str = "erp_decisions"
+    ERP_DECISION_MIN_SCORE: float = 0.92  # cosine similarity required to reuse a verified decision
+    ERP_DECISION_TTL_DAYS: int = 90
+
     # CORS Allowed Origins
     CORS_ORIGINS: list[str] | str = [
         "http://localhost:3000",

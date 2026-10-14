@@ -40,6 +40,9 @@ class NavScored(BaseModel):
     reason: str = Field(..., description="سبب اختيار أو ترجيح هذه الشاشة")
 
 
+ErpIntent = Literal["question", "navigate", "action", "unknown"]
+
+
 class NavResolution(BaseModel):
     """قرار الملاحة النهائي"""
     decision: Literal["go", "ask", "clarify"] = Field(
@@ -50,6 +53,51 @@ class NavResolution(BaseModel):
         default_factory=list,
         description="أعلى المرشحين (بحد أقصى 3) مرتبين تنازلياً"
     )
+    intent: ErpIntent = Field(
+        default="unknown",
+        description="نية المستخدم كما حددها الذكاء الاصطناعي: سؤال معرفي / تنقل / إجراء إدخال بيانات"
+    )
+    source: Literal["ai", "memory", "lexical"] = Field(
+        default="ai",
+        description="مصدر القرار: الذكاء الاصطناعي، ذاكرة القرارات المؤكدة، أو المطابقة المعجمية الاحتياطية"
+    )
+    decision_id: str | None = Field(
+        default=None,
+        description="معرف سجل القرار لإرسال التغذية الراجعة (applied/rejected) لاحقاً"
+    )
+
+
+class ControlIn(BaseModel):
+    """زر أو عنصر تحكم ظاهر في شاشة الـ ERP"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: str = Field(..., description="معرف العنصر الفريد داخل الصفحة")
+    label: str = Field(..., min_length=1, max_length=120, description="النص الظاهر على الزر")
+
+
+class ControlRolesRequest(BaseModel):
+    """طلب تحديد أدوار الأزرار (إضافة سطر / مستند جديد) في شاشة محددة"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    screen_id: str = Field(..., min_length=1, max_length=128, description="كود الشاشة النشطة")
+    controls: list[ControlIn] = Field(..., min_length=1, max_length=80, description="الأزرار الظاهرة في الشاشة")
+
+
+class ControlRolesResponse(BaseModel):
+    """أدوار الأزرار كما حددها الذكاء الاصطناعي (معرفات من المدخلات فقط)"""
+    roles: dict[str, str] = Field(
+        default_factory=dict,
+        description="خريطة الدور إلى معرف الزر: add_row / new_form"
+    )
+    source: Literal["ai", "memory"] = Field(default="ai")
+
+
+class NavFeedbackRequest(BaseModel):
+    """تغذية راجعة على قرار ملاحة لتأكيده (applied) أو إلغائه (rejected)"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    decision_id: str = Field(..., min_length=8, max_length=64)
+    outcome: Literal["applied", "rejected"]
 
 
 class FieldSignatureIn(BaseModel):

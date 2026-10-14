@@ -1,45 +1,112 @@
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import structlog
 
 from src.core.middleware import limiter
 from src.models.erp_models import (
+    ControlRolesRequest,
+    ControlRolesResponse,
     LeftoverRequest,
     LeftoverResponse,
+    NavFeedbackRequest,
     NavRequest,
     NavResolution,
 )
+from src.services.auth_service import UserContext, get_current_user
+from src.services.erp_decision_memory_service import erp_decision_memory_service
 from src.services.erp_service import erp_service
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/v1/erp", tags=["ERP Assistant"])
 
+_optional_bearer = HTTPBearer(auto_error=False)
+
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
+) -> UserContext | None:
+    """
+    Resolves the caller when a valid token is present. Routing stays public (as before),
+    but decision memory / audit are only used when a tenant can be identified — never cross-tenant.
+    """
+    if credentials is None:
+        return None
+    try:
+        return await get_current_user(credentials)
+    except HTTPException as e:
+        logger.warning("ERP routing request carried an invalid token; decision memory disabled", status=e.status_code)
+        return None
+
 
 @router.post(
     "/navigation/resolve",
     response_model=NavResolution,
     status_code=status.HTTP_200_OK,
-    summary="Resolve ERP Navigation Destination",
+    summary="Resolve ERP Navigation Destination & Intent",
 )
 @limiter.limit("60/minute")
 async def resolve_erp_navigation(
     request: Request,
     payload: NavRequest,
+    user: UserContext | None = Depends(get_optional_user),
 ) -> NavResolution:
     """
-    🔍 الملاحة الذكية وحل التباس شاشات الـ ERP:
-    - استقبال طلب المستخدم وقائمة الشاشات المرشحة المعروضة.
-    - ترتيب الشاشات باستخدام التطابق المعجمي ثم إعادة الترتيب بالـ LLM.
-    - تقييم عتبات القرار (go للتوجيه المباشر، ask للتخيير، clarify للتوضيح).
-    - حظر الهلوسة وقصر المخرجات على أعلى 3 مرشحين من القائمة المتاحة فقط.
+    🔍 الموجّه الذكي لشاشات الـ ERP (AI-only):
+    - تحديد نية المستخدم (سؤال / تنقل / إجراء) واختيار الشاشة من القائمة الحية المرسلة فقط.
+    - الاستعانة بذاكرة القرارات المؤكدة (Qdrant) لتجاوز الـ LLM عند التطابق.
+    - تقييم عتبات القرار (go / ask / clarify) وحظر الهلوسة في المعرفات.
     """
     logger.info(
         "Received ERP navigation request",
         candidates_count=len(payload.candidates),
         msg_len=len(payload.user_message),
         current_path=payload.current_path,
+        tenant_known=user is not None,
     )
-    return await erp_service.resolve_navigation(payload)
+    return await erp_service.resolve_navigation(
+        payload,
+        tenant_id=user.tenant_id if user else None,
+        user_id=user.user_id if user else None,
+    )
+
+
+@router.post(
+    "/navigation/feedback",
+    status_code=status.HTTP_200_OK,
+    summary="Confirm or reject a routing decision (feeds the decision memory)",
+)
+@limiter.limit("120/minute")
+async def feedback_erp_navigation(
+    request: Request,
+    payload: NavFeedbackRequest,
+    user: UserContext = Depends(get_current_user),
+) -> dict[str, str]:
+    """applied → القرار يُحفظ في الذاكرة الدلالية. rejected → يُحذف ويُسجل في التدقيق."""
+    found = await erp_decision_memory_service.apply_feedback(
+        tenant_id=user.tenant_id, decision_id=payload.decision_id, outcome=payload.outcome
+    )
+    return {"status": "recorded" if found else "ignored"}
+
+
+@router.post(
+    "/controls/resolve",
+    response_model=ControlRolesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Resolve functional roles (add_row / new_form) of on-screen buttons",
+)
+@limiter.limit("60/minute")
+async def resolve_erp_controls(
+    request: Request,
+    payload: ControlRolesRequest,
+    user: UserContext | None = Depends(get_optional_user),
+) -> ControlRolesResponse:
+    """🔘 يحدد الذكاء الاصطناعي الزر المسؤول عن إضافة سطر وعن بدء مستند جديد من الأزرار الظاهرة فقط."""
+    return await erp_service.resolve_controls(
+        payload,
+        tenant_id=user.tenant_id if user else None,
+        user_id=user.user_id if user else None,
+    )
 
 
 @router.post(
