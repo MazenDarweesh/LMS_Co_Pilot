@@ -1,3 +1,4 @@
+from src.core.prompts import get_erp_navigation_prompt
 import asyncio
 import json
 import re
@@ -117,6 +118,27 @@ class ErpService:
             current_path=req.current_path,
         )
 
+        # 0. Fast-Path Gating: إذا كان الاستعلام استفساراً معرفياً أو سؤالاً نظرياً بحتاً بدون أمر تنقل صريح
+        sanitized_msg = re.sub(r'\b(كمية|كميات|بكمية)\b', '', user_msg)
+        question_patterns = [
+            r'\bما الذي\b', r'\bماذا\b', r'\bما هو\b', r'\bما هي\b', r'\bماهو\b', r'\bماهي\b',
+            r'\bما الفرق\b', r'\bكيف\b', r'\bلماذا\b', r'\bاشرح\b', r'\bوضح\b', r'\bهل\b',
+            r'\bأين\b', r'\bاين\b', r'\bمتى\b', r'\bكم\b', r'\bليه\b', r'\bازاي\b', r'\bإزاي\b',
+            r'\bطريقة عمل\b', r'\bآلية عمل\b', r'\bممكن تفهمني\b', r'\bعرفني\b'
+        ]
+        is_question = any(re.search(pat, sanitized_msg) for pat in question_patterns)
+
+        explicit_nav_markers = (
+            "افتح", "روح", "وديني", "انتقل", "شاشة", "صفحة", "حولني", "وجهني",
+            "ادخل على", "عايز أسجل", "سجل لي", "سجل", "اعمل", "أنشئ", "انشئ",
+            "فاتورة مشتريات", "فاتورة مبيعات", "قيد يومية", "تسجيل عميل", "تسوية جردية", "محضر جرد"
+        )
+        has_nav_cmd = any(m in user_msg for m in explicit_nav_markers)
+
+        if is_question and not has_nav_cmd:
+            logger.info("Fast-path bypass: Query is purely educational/question, returning clarify", query=user_msg)
+            return NavResolution(decision="clarify", candidates=[])
+
         # 1. حساب الدرجات المعجمية (Lexical Baseline) كـ Fallback سريع
         lexical_scores: dict[str, float] = {}
         for c in req.candidates:
@@ -133,25 +155,11 @@ class ErpService:
                     for c in req.candidates
                 ]
 
-                prompt = f"""You are an expert ERP Navigation Intent Classifier for Dynamic Pro ERP.
-A user asked:
-\"{user_msg}\"
-
-Current User Path: {json.dumps(req.current_path, ensure_ascii=False)}
-
-Available Screens/Navigation Candidates:
-{json.dumps(candidates_payload, ensure_ascii=False, indent=2)}
-
-Task:
-Evaluate each candidate's relevance to the user request.
-Assign a confidence score strictly between 0.00 and 1.00 and a concise reason in Arabic.
-If a candidate is completely irrelevant or the user's message is gibberish/unrelated, assign a low confidence (< 0.25).
-Only recommend screens from the provided list.
-
-Return ONLY a valid JSON list of objects:
-[
-  {{"id": "candidate_id", "confidence": 0.95, "reason": "ذكر كذا وكذا بالتفصيل"}}
-]"""
+                prompt = get_erp_navigation_prompt(
+                    user_msg=user_msg,
+                    current_path_json=json.dumps(req.current_path, ensure_ascii=False),
+                    candidates_json=json.dumps(candidates_payload, ensure_ascii=False, indent=2),
+                )
 
                 resp = await asyncio.wait_for(
                     asyncio.to_thread(
@@ -163,7 +171,7 @@ Return ONLY a valid JSON list of objects:
                             temperature=0.0,
                         ),
                     ),
-                    timeout=5.0,
+                    timeout=12.0,
                 )
 
                 raw_text = resp.text if hasattr(resp, "text") and resp.text else ""

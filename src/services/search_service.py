@@ -737,7 +737,7 @@ class SearchService:
         except Exception as e:
             logger.error("Failed to extract ERP form data", error=str(e))
         return {}
-async def search_stream(
+    async def search_stream(
         self, req: SearchRequest, user_ctx: UserContext, request: Request
     ) -> AsyncIterator[str]:
         """
@@ -892,11 +892,28 @@ async def search_stream(
                 has_actual_data = bool(fields_dict) or bool(rows_list) or bool(batch_items)
                 if has_actual_data:
                     extracted_form_fields = raw_extracted
+
+                    # Target screen inference: if query or extracted fields explicitly match a specific screen
+                    target_screen_key = req.erp_key
+                    q_lower = req.query.lower()
+                    fields_keys_lower = [str(k).lower() for k in fields_dict.keys()]
+
+                    if "مشتريات" in q_lower or "مورد" in q_lower or "supplier" in fields_keys_lower:
+                        target_screen_key = "PURCHASE_INVOICE"
+                    elif "مبيعات" in q_lower or ("عميل" in q_lower and ("فاتورة" in q_lower or "صنف" in q_lower or rows_list)):
+                        target_screen_key = "SALES_INVOICE"
+                    elif "عميل جديد" in q_lower or "تسجيل عميل" in q_lower or ("customername" in fields_keys_lower and not rows_list):
+                        target_screen_key = "NEW_CUSTOMER"
+                    elif "قيد" in q_lower or "مدين" in q_lower or "دائن" in q_lower:
+                        target_screen_key = "JOURNAL_ENTRY"
+                    elif "جرد" in q_lower or "تسوية مخزنية" in q_lower:
+                        target_screen_key = "INVENTORY_AUDIT"
+
                     payload = {
                         "intent": "form_fill",
                         "fields": fields_dict,
                         "rows": rows_list,
-                        "screenKey": req.erp_key,
+                        "screenKey": target_screen_key,
                         "batch_mode": batch_mode,
                         "batch_items": batch_items,
                     }
@@ -930,33 +947,49 @@ async def search_stream(
         recorded_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         def _produce_tokens():
-            try:
-                stream_res = self._gemini_client.models.generate_content_stream(
-                    model=settings.GEMINI_MODEL,
-                    contents=gemini_contents,
-                    config=types.GenerateContentConfig(
-                        temperature=0.2,
-                        max_output_tokens=1024,
-                        system_instruction=system_instruction,
-                    ),
-                )
-                for chunk in stream_res:
-                    if stop_event.is_set():
-                        break
-                    if getattr(chunk, "usage_metadata", None):
-                        meta = chunk.usage_metadata
-                        recorded_usage["prompt_tokens"] = getattr(meta, "prompt_token_count", 0) or 0
-                        recorded_usage["completion_tokens"] = getattr(meta, "candidates_token_count", 0) or 0
-                        recorded_usage["total_tokens"] = getattr(meta, "total_token_count", 0) or 0
-                    if chunk.text:
-                        # Thread-safe put with backpressure: blocks worker thread if queue reaches maxsize
-                        future = asyncio.run_coroutine_threadsafe(queue.put(chunk.text), loop)
-                        future.result(timeout=30.0)
-                if not stop_event.is_set():
-                    asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=5.0)
-            except Exception as e:
-                if not stop_event.is_set():
-                    asyncio.run_coroutine_threadsafe(queue.put(e), loop).result(timeout=5.0)
+            candidate_models = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
+            candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
+            last_err = None
+            gemini_client = self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)
+
+            for model_name in candidate_models:
+                try:
+                    stream_res = gemini_client.models.generate_content_stream(
+                        model=model_name,
+                        contents=gemini_contents,
+                        config=types.GenerateContentConfig(
+                            temperature=0.2,
+                            max_output_tokens=1024,
+                            system_instruction=system_instruction,
+                        ),
+                    )
+                    for chunk in stream_res:
+                        if stop_event.is_set():
+                            break
+                        if getattr(chunk, "usage_metadata", None):
+                            meta = chunk.usage_metadata
+                            recorded_usage["prompt_tokens"] = getattr(meta, "prompt_token_count", 0) or 0
+                            recorded_usage["completion_tokens"] = getattr(meta, "candidates_token_count", 0) or 0
+                            recorded_usage["total_tokens"] = getattr(meta, "total_token_count", 0) or 0
+                        chunk_text = None
+                        try:
+                            chunk_text = chunk.text
+                        except Exception:
+                            pass
+                        if chunk_text:
+                            # Thread-safe put with backpressure: blocks worker thread if queue reaches maxsize
+                            future = asyncio.run_coroutine_threadsafe(queue.put(chunk_text), loop)
+                            future.result(timeout=30.0)
+                    if not stop_event.is_set():
+                        asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=5.0)
+                    return
+                except Exception as e:
+                    last_err = e
+                    logger.warning("Gemini streaming attempt failed on model, attempting fallback", model=model_name, error=str(e))
+                    continue
+
+            if not stop_event.is_set() and last_err:
+                asyncio.run_coroutine_threadsafe(queue.put(last_err), loop).result(timeout=5.0)
 
         producer_task = asyncio.create_task(asyncio.to_thread(_produce_tokens))
 
@@ -985,7 +1018,7 @@ async def search_stream(
                     break
                 elif isinstance(item, Exception):
                     logger.error("Error during Gemini stream generation", error=str(item))
-                    yield _format_sse("error", {"message": "حدث خطأ أثناء معالجة الرد."})
+                    yield _format_sse("error", {"message": f"حدث خطأ أثناء معالجة الرد: {type(item).__name__}: {str(item)}"})
                     break
                 else:
                     now = time.time()

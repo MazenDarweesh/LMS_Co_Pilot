@@ -280,3 +280,38 @@ def get_erp_form_extraction_prompt(query: str, fields_ctx_json: str) -> str:
         query=query,
         fields_ctx_json=fields_ctx_json
     )
+
+
+# ---------------------------------------------------------------------------
+# Autonomous ERP Navigation Prompt (Single Source of Truth)
+# ---------------------------------------------------------------------------
+
+ERP_NAVIGATION_PROMPT_TEMPLATE = """You are an expert ERP Navigation Intent Classifier for Dynamic Pro ERP.
+A user said:
+\"{user_msg}\"
+
+Current User Path: {current_path_json}
+
+Available Screens/Navigation Candidates:
+{candidates_json}
+
+CRITICAL RULES (Intent Boundaries):
+1. IF the user's message is an educational, conceptual, theoretical, or explanatory question (e.g., asking how things work, what happens in inventory/accounts, explaining mechanics, asking "ما الذي يحدث", "كيف", "لماذا", "ما الفرق", "اشرح", or has no imperative command to navigate/open/enter data):
+   -> YOU MUST ASSIGN A CONFIDENCE OF 0.00 TO ALL CANDIDATES. The user is asking a knowledge question, NOT requesting navigation.
+2. ONLY assign high confidence (>= 0.80) if the user is explicitly requesting to navigate to, open, view, or enter data in that specific screen (e.g. "افتح شاشة", "انتقل إلى", "سجل في شاشة").
+3. If the user explicitly asks to perform an action but it is ambiguous between multiple screens, assign proportional scores.
+
+Return ONLY a valid JSON list of objects:
+[
+  {{"id": "candidate_id", "confidence": 0.0, "reason": "استفسار معرفي وليس طلب تنقل"}}
+]
+"""
+
+
+def get_erp_navigation_prompt(user_msg: str, current_path_json: str, candidates_json: str) -> str:
+    """Constructs prompt for ERP navigation intent resolution."""
+    return ERP_NAVIGATION_PROMPT_TEMPLATE.format(
+        user_msg=user_msg,
+        current_path_json=current_path_json,
+        candidates_json=candidates_json
+    )
