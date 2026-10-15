@@ -44,7 +44,14 @@ from src.models.search_models import (
     FeedbackAnalyticsResponse,
 )
 from src.models.auth_models import LessonFullContext
-from src.services.auth_service import UserContext, get_current_user, require_role, verify_webhook_signature
+from src.services.auth_service import (
+    UserContext,
+    get_current_user,
+    get_optional_user,
+    get_guest_user_context,
+    require_role,
+    verify_webhook_signature,
+)
 from src.services.lesson_content_service import lesson_content_service
 
 from src.services.lms_client import lms_client_service
@@ -73,14 +80,14 @@ _SOURCE_FIELDS: frozenset[str] = frozenset({"type", "url", "title", "start", "en
 async def search(
     request: Request,
     req: SearchRequest,
-    user_ctx: UserContext = Depends(get_current_user)
+    user_ctx: UserContext | None = Depends(get_optional_user),
 ):
     """
     🔍 Hybrid RAG Search
-    Fully protected by JWT & precise Role/Level filtering.
+    Supports authenticated LMS users as well as ERP Guest assistant sessions.
     """
-    # We pass the entire UserContext to enable precise Qdrant filtering
-    return await search_service.search(req, user_ctx=user_ctx)
+    effective_user = user_ctx or get_guest_user_context()
+    return await search_service.search(req, user_ctx=effective_user)
 
 
 # In-memory deduplication cache for feedback (24h TTL)
@@ -92,16 +99,18 @@ _feedback_cache: TTLCache[str, bool] = TTLCache(maxsize=10_000, ttl=86400)
 async def search_stream_endpoint(
     request: Request,
     req: SearchRequest,
-    user_ctx: UserContext = Depends(get_current_user),
+    user_ctx: UserContext | None = Depends(get_optional_user),
 ) -> StreamingResponse:
     """
     ⚡ Real-time Token Streaming Search via Server-Sent Events (SSE).
+    - Supports authenticated LMS students as well as host ERP embedded sessions (Guest Mode).
     - Emits sources event first for instant video citation rendering.
     - Streams tokens with heartbeat pings (: heartbeat\n\n) to defeat proxy timeouts.
     - Listens for client disconnects to abort upstream token generation immediately.
     """
+    effective_user = user_ctx or get_guest_user_context()
     return StreamingResponse(
-        search_service.search_stream(req, user_ctx, request),
+        search_service.search_stream(req, effective_user, request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

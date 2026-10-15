@@ -12,31 +12,13 @@ from src.models.erp_models import (
     NavRequest,
     NavResolution,
 )
-from src.services.auth_service import UserContext, get_current_user
+from src.services.auth_service import UserContext, get_optional_user
 from src.services.erp_decision_memory_service import erp_decision_memory_service
 from src.services.erp_service import erp_service
 
 logger = structlog.get_logger()
 
 router = APIRouter(prefix="/v1/erp", tags=["ERP Assistant"])
-
-_optional_bearer = HTTPBearer(auto_error=False)
-
-
-async def get_optional_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
-) -> UserContext | None:
-    """
-    Resolves the caller when a valid token is present. Routing stays public (as before),
-    but decision memory / audit are only used when a tenant can be identified — never cross-tenant.
-    """
-    if credentials is None:
-        return None
-    try:
-        return await get_current_user(credentials)
-    except HTTPException as e:
-        logger.warning("ERP routing request carried an invalid token; decision memory disabled", status=e.status_code)
-        return None
 
 
 @router.post(

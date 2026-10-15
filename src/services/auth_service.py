@@ -106,6 +106,29 @@ async def get_current_user(
     entities = _build_user_entities(claims, perms)
     return UserContext(claims=claims, permissions=perms, user_entities=entities)
 
+_optional_bearer = HTTPBearer(auto_error=False)
+
+def get_guest_user_context() -> UserContext:
+    """Fallback UserContext for ERP assistant operations and anonymous queries."""
+    claims = TokenClaims(user_id="guest_erp_user", role="Guest", company_id="default")
+    entities = ["role:Guest", "role:Student"]
+    return UserContext(claims=claims, permissions=None, user_entities=entities)
+
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_optional_bearer),
+) -> UserContext | None:
+    """
+    Resolves caller when valid JWT is present. If missing, invalid, or expired,
+    logs a warning and safely returns None (enabling guest fallback without 401).
+    """
+    if credentials is None:
+        return None
+    try:
+        return await get_current_user(credentials)
+    except HTTPException as e:
+        logger.warning("Request carried an invalid/expired token; falling back to guest mode", status=e.status_code)
+        return None
+
 def require_role(*roles: str):
     """Dependency to restrict API routes to certain roles (e.g. Admin only)."""
     async def _check(ctx: UserContext = Depends(get_current_user)) -> UserContext:
