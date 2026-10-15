@@ -12,7 +12,7 @@ from src.models.erp_models import (
     NavRequest,
     NavResolution,
 )
-from src.services.auth_service import UserContext, get_optional_user
+from src.services.auth_service import UserContext, get_current_user, get_optional_user
 from src.services.erp_decision_memory_service import erp_decision_memory_service
 from src.services.erp_service import erp_service
 
