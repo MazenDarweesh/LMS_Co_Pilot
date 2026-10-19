@@ -141,3 +141,24 @@ class LeftoverResponse(BaseModel):
         default_factory=list,
         description="الحقول التي تحتاج سؤال وتأكيد المستخدم لعدم وضوح قيمتها أو عدم مطابقة الخيارات"
     )
+
+
+class TelemetryEvent(BaseModel):
+    """حدث تليميتري فردي تم رصده في المتصفح"""
+    model_config = ConfigDict(extra="ignore")
+
+    timestamp: str = Field(default="", description="ISO timestamp")
+    level: str = Field(default="INFO", description="DEBUG, INFO, WARN, ERROR")
+    stage: str = Field(default="GENERAL", description="USER_QUERY, BRIDGE, SCAN, AI_EXTRACT, FILL, GRID, ERROR")
+    event: str = Field(description="وصف سريع للحدث")
+    details: dict[str, Any] | None = Field(default=None, description="تفاصيل وسياق الحدث")
+
+
+class TelemetryBatchRequest(BaseModel):
+    """حزمة أحداث التليميتري لجلسة الشات"""
+    model_config = ConfigDict(extra="ignore")
+
+    session_id: str = Field(description="معرف جلسة الشات الفريد")
+    screen_key: str | None = Field(default=None, description="اسم الشاشة النشطة")
+    events: list[TelemetryEvent] = Field(description="قائمة الأحداث الزمنية")
+

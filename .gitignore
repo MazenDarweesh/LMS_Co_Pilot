@@ -48,3 +48,10 @@ coverage.xml
 # Archived & Historical Documentation
 docs/archive/
 
+# Application Logs & Telemetry Sessions
+logs/
+*.log
+*.jsonl
+shared_logs/
+
+

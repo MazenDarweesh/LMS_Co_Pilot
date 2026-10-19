@@ -1,3 +1,6 @@
+import json
+import re
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import structlog
@@ -11,6 +14,7 @@ from src.models.erp_models import (
     NavFeedbackRequest,
     NavRequest,
     NavResolution,
+    TelemetryBatchRequest,
 )
 from src.services.auth_service import UserContext, get_current_user, get_optional_user
 from src.services.erp_decision_memory_service import erp_decision_memory_service
@@ -114,3 +118,63 @@ async def resolve_erp_leftover_fields(
         extracted_keys_count=len(payload.extracted_data),
     )
     return await erp_service.resolve_leftover(payload)
+
+
+ERP_LOGS_DIR = Path("logs/erp_sessions")
+SHARED_LOGS_DIR = Path("e:/Mazen/shared_logs/erp_sessions")
+
+
+@router.post(
+    "/telemetry",
+    status_code=status.HTTP_200_OK,
+    summary="Record ERP Live Session Telemetry Events (Unified Blackbox)",
+)
+@limiter.limit("300/minute")
+async def record_erp_telemetry(
+    request: Request,
+    payload: TelemetryBatchRequest,
+) -> dict:
+    """
+    📦 الصندوق الأسود الموحد لكل جلسة ERP:
+    - استقبال أحداث التشغيل الميداني من الكوبيلوت في المتصفح.
+    - كتابة الأحداث في ملف الجلسة الموحد (session_<session_id>.log).
+    - مشاركة السجل بين المشاريع في مجلد logs/erp_sessions.
+    """
+    if not payload.events:
+        return {"status": "empty", "written": 0}
+
+    clean_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", payload.session_id)
+    filename = f"session_{clean_id}.log"
+
+    targets = [ERP_LOGS_DIR]
+    try:
+        SHARED_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        targets.append(SHARED_LOGS_DIR)
+    except Exception:
+        pass
+
+    ERP_LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    formatted_lines = []
+    for ev in payload.events:
+        details_str = json.dumps(ev.details, ensure_ascii=False) if ev.details else ""
+        screen_tag = f"[{payload.screen_key}] " if payload.screen_key else ""
+        line = f"[{ev.timestamp}] [{ev.level.upper()}] [{ev.stage.upper()}] {screen_tag}{ev.event} | {details_str}\n"
+        formatted_lines.append(line)
+
+    payload_text = "".join(formatted_lines)
+
+    for target_dir in targets:
+        try:
+            file_path = target_dir / filename
+            with open(file_path, "a", encoding="utf-8") as f:
+                f.write(payload_text)
+        except Exception as e:
+            logger.warn("Failed to write erp telemetry to path", path=str(target_dir), error=str(e))
+
+    return {
+        "status": "recorded",
+        "session_id": payload.session_id,
+        "written": len(payload.events),
+    }
+
