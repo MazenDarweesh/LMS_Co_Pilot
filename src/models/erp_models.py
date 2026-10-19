@@ -24,7 +24,7 @@ class NavRequest(BaseModel):
     candidates: list[NavCandidateIn] = Field(
         ...,
         min_length=1,
-        max_length=60,
+        max_length=500,
         description="قائمة الشاشات المرشحة المعروضة حالياً"
     )
     current_path: list[str] = Field(
