@@ -57,7 +57,9 @@ BILINGUAL_SCREEN_MAP: dict[str, list[str]] = {
 
 DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
     "total", "details", "detail", "report", "log", "inquiry",
-    "اجمالي", "إجمالي", "تفاصيل", "تقرير", "استعلام", "ارصدة", "أرصدة"
+    "setting", "settings", "setup", "config", "configuration",
+    "اجمالي", "إجمالي", "تفاصيل", "تقرير", "استعلام", "ارصدة", "أرصدة",
+    "إعدادات", "اعدادات", "تهيئة", "تهيئه"
 ]
 
 
@@ -196,11 +198,14 @@ class ErpService:
         if intent == "question":
             scored = [s.model_copy(update={"confidence": 0.0}) for s in scored]
         elif intent == "action":
-            # Demote secondary details/report screens so they never hijack transactional entry
+            # Demote secondary details/report/setting screens so they never hijack transactional entry
             for i, s in enumerate(scored):
                 s_lower = s.id.lower()
-                if any(kw in s_lower for kw in ("details", "detail", "تقرير", "report", "تفاصيل", "استعلام", "inquiry")):
-                    scored[i] = s.model_copy(update={"confidence": min(s.confidence, 0.15)})
+                if any(kw in s_lower for kw in (
+                    "details", "detail", "تقرير", "report", "تفاصيل", "استعلام", "inquiry",
+                    "total", "اجمالي", "إجمالي", "setting", "إعدادات", "اعدادات", "setup", "config", "تهيئة"
+                )):
+                    scored[i] = s.model_copy(update={"confidence": 0.0})
         return intent, scored
 
     @staticmethod
@@ -307,10 +312,11 @@ class ErpService:
                 label_lower = (cand_obj.label if cand_obj else s.id).lower()
                 id_lower = s.id.lower()
                 if any(k in id_lower or k in label_lower for k in [
-                    "detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log", "total", "اجمالي", "إجمالي"
+                    "detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log", "total", "اجمالي", "إجمالي",
+                    "setting", "settings", "setup", "config", "configuration", "إعدادات", "اعدادات", "تهيئة", "تهيئه"
                 ]):
                     s.confidence = 0.0
-                    s.reason = "شاشة تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
+                    s.reason = "شاشة إعدادات/تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
