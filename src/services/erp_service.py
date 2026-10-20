@@ -245,9 +245,16 @@ class ErpService:
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
 
-        # 3. Dedupe, sort, top-3
+        # 3. Dedupe, penalize detail screens for action intent, sort, top-3
         unique_scored: dict[str, NavScored] = {}
         for s in scored_candidates:
+            if intent == "action":
+                cand_obj = candidates_map.get(s.id)
+                label_lower = (cand_obj.label if cand_obj else s.id).lower()
+                id_lower = s.id.lower()
+                if any(k in id_lower or k in label_lower for k in ["detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log"]):
+                    s.confidence = 0.0
+                    s.reason = "شاشة تفاصيل/تقرير غير صالحة لتسجيل أو إنشاء المعاملات"
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]

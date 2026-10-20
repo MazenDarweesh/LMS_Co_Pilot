@@ -303,8 +303,8 @@ STEP 1 - Classify the user's intent:
 - "question": the user asks for knowledge (how / why / what happens / explain / difference) and gives no command to open a screen or enter data.
 
 STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label, NOT by word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
-- ACTION SCREENS VS DETAIL/REPORT SCREENS: If the intent is "action" (recording or creating a document such as purchasing invoice, sales order, payment), strictly prioritize the PRIMARY transactional entry screen (e.g. "Purchases", "Sales") over secondary read-only report, detail, or log screens (e.g. "Details purchases", "تقرير المشتريات"). Secondary detail screens must receive a low score (< 0.20) for "action" intent.
-- CURRENT SCREEN RETENTION: If Current User Path shows the user is ALREADY inside an appropriate screen for this task (e.g. currently on "Purchases"), score that current screen highest (>= 0.90) to prevent disruptive jumping.
+- STRICT DISQUALIFICATION FOR ACTION INTENT: If the intent is "action" (creating, recording, or entering documents, transactions, invoices, entries, or counts), secondary read-only report, detail, inquiry, or log screens (e.g. any screen starting with or containing "Details", "تفاصيل", "تقرير", "Report", "Log", "Inquiry", "استعلام", such as "Details purchases") MUST receive 0.0 confidence! They can NEVER be chosen for recording or creating transactions. You MUST strictly select the PRIMARY transactional entry screen (e.g. "Purchases", "Sales", "CustomerOrder", "General Journal").
+- CURRENT SCREEN RETENTION: If Current User Path shows the user is ALREADY inside an appropriate screen for this task (e.g. currently on "Purchases" and user wants to record a purchase invoice), score that current screen highest (1.0) and NEVER suggest switching to a secondary detail screen of the same domain.
 - If the intent is "question", every confidence MUST be 0.0.
 - If two screens are equally plausible, give them close proportional scores.
 
