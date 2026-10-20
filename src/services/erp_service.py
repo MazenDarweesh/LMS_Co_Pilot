@@ -45,13 +45,54 @@ def _stem_arabic_token(token: str) -> str:
     return t
 
 
+BILINGUAL_SCREEN_MAP: dict[str, list[str]] = {
+    "purchases": ["مشتريات", "شراء", "فاتورة مشتريات", "فاتوره مشتريات"],
+    "sales": ["مبيعات", "بيع", "فاتورة مبيعات", "فاتوره مبيعات", "salesdetails"],
+    "entry": ["قيد", "قيود", "يومية", "journal"],
+    "productprocess": ["تحويل", "اذن", "صرف", "اضافة", "مخزن"],
+    "suppliers": ["موردين", "مورد"],
+    "customers": ["عملاء", "عميل"],
+    "items": ["اصناف", "صنف", "منتجات", "منتج"],
+}
+
+DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
+    "total", "details", "detail", "report", "log", "inquiry",
+    "اجمالي", "إجمالي", "تفاصيل", "تقرير", "استعلام", "ارصدة", "أرصدة"
+]
+
+
 def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> float:
     """
     حساب درجة التطابق المعجمي واللفظي بين رسالة المستخدم وعنوان ومسار الشاشة.
-    يُرجع درجة بين 0.0 و 0.95.
+    يدعم المطابقة الثنائية (عربي/إنجليزي) واستبعاد شاشات التقارير للإجراءات.
     """
+    user_lower = user_text.lower()
+    full_cand_text = f"{label} {' '.join(path)}".lower()
+
+    # فحص نية الإجراء لتصفير شاشات التقارير والإجماليات
+    is_action = any(w in user_lower for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن"])
+    if is_action:
+        if any(bad in full_cand_text for bad in DISQUALIFIED_ACTION_KEYWORDS):
+            return 0.0
+
+    # مطابقة المصطلحات الثنائية (Bilingual domain matching)
+    has_invoice_intent = any(w in user_lower for w in ["فاتورة", "فاتوره", "سجل", "انشئ", "أنشئ"])
+    bilingual_bonus = 0.0
+    for en_key, ar_terms in BILINGUAL_SCREEN_MAP.items():
+        if en_key in full_cand_text:
+            for term in ar_terms:
+                if term in user_lower:
+                    if has_invoice_intent and en_key in ("purchases", "sales", "entry", "productprocess"):
+                        bilingual_bonus = max(bilingual_bonus, 0.96)
+                    elif has_invoice_intent and en_key in ("suppliers", "customers"):
+                        bilingual_bonus = max(bilingual_bonus, 0.55)
+                    else:
+                        bilingual_bonus = max(bilingual_bonus, 0.90)
+
+    if bilingual_bonus > 0.0:
+        return bilingual_bonus
+
     user_norm = normalize_arabic_text_leaderboard(user_text)
-    full_cand_text = f"{label} {' '.join(path)}"
     cand_norm = normalize_arabic_text_leaderboard(full_cand_text)
 
     if not user_norm or not cand_norm:
@@ -85,7 +126,6 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
         return 0.35 if has_partial else 0.05
 
     overlap_score = len(common_stems) / max(1, len(cand_stems))
-    # تقييم الثقة المعجمية
     confidence = min(0.85, 0.40 + (overlap_score * 0.45))
     return round(confidence, 2)
 
@@ -219,15 +259,26 @@ class ErpService:
         source = "ai"
         if self._gemini_client:
             try:
+                # If candidate catalog is large (e.g. all 50 ERP screens), pre-filter to top 15
+                # to eliminate LLM timeouts and ensure fast sub-2-second response
+                candidates_to_score = req.candidates
+                if len(candidates_to_score) > 15:
+                    scored_pre = sorted(
+                        candidates_to_score,
+                        key=lambda c: _compute_lexical_similarity(user_msg, c.label or c.id, c.path),
+                        reverse=True
+                    )
+                    candidates_to_score = scored_pre[:15]
+
                 candidates_payload = [
-                    {"id": c.id, "label": c.label, "path": c.path} for c in req.candidates
+                    {"id": c.id, "label": c.label, "path": c.path} for c in candidates_to_score
                 ]
                 prompt = get_erp_navigation_prompt(
                     user_msg=user_msg,
                     current_path_json=json.dumps(req.current_path, ensure_ascii=False),
                     candidates_json=json.dumps(candidates_payload, ensure_ascii=False, indent=2),
                 )
-                parsed = await self._generate_json(prompt, timeout=12.0)
+                parsed = await self._generate_json(prompt, timeout=16.0)
                 intent, scored_candidates = self._parse_router_output(parsed, candidates_map)
             except Exception as e:
                 logger.warning(
@@ -236,25 +287,30 @@ class ErpService:
                 )
                 intent, scored_candidates = "unknown", []
 
-        # 2. Lexical fallback (outage only): never guesses intent
+        # 2. Lexical fallback (outage only)
         if not scored_candidates:
             source = "lexical"
-            intent = "unknown"
+            # Infer intent from action signals in query
+            is_action_msg = any(w in user_msg.lower() for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن"])
+            intent = "action" if is_action_msg else "unknown"
+
             for c in req.candidates:
                 score = _compute_lexical_similarity(user_msg, c.label, c.path)
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
 
-        # 3. Dedupe, penalize detail screens for action intent, sort, top-3
+        # 3. Dedupe, penalize detail/report/total screens for action intent, sort, top-3
         unique_scored: dict[str, NavScored] = {}
         for s in scored_candidates:
             if intent == "action":
                 cand_obj = candidates_map.get(s.id)
                 label_lower = (cand_obj.label if cand_obj else s.id).lower()
                 id_lower = s.id.lower()
-                if any(k in id_lower or k in label_lower for k in ["detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log"]):
+                if any(k in id_lower or k in label_lower for k in [
+                    "detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log", "total", "اجمالي", "إجمالي"
+                ]):
                     s.confidence = 0.0
-                    s.reason = "شاشة تفاصيل/تقرير غير صالحة لتسجيل أو إنشاء المعاملات"
+                    s.reason = "شاشة تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
