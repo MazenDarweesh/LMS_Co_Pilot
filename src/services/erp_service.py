@@ -155,6 +155,12 @@ class ErpService:
 
         if intent == "question":
             scored = [s.model_copy(update={"confidence": 0.0}) for s in scored]
+        elif intent == "action":
+            # Demote secondary details/report screens so they never hijack transactional entry
+            for i, s in enumerate(scored):
+                s_lower = s.id.lower()
+                if any(kw in s_lower for kw in ("details", "detail", "تقرير", "report", "تفاصيل", "استعلام", "inquiry")):
+                    scored[i] = s.model_copy(update={"confidence": min(s.confidence, 0.15)})
         return intent, scored
 
     @staticmethod

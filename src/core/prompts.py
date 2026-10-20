@@ -267,7 +267,9 @@ User Message:
 
 Rules:
 1. Map values strictly to the matching field keys from the form context.
-2. If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل"), set cash payment field (e.g. "CashPaid") to "$TOTAL".
+2. Payment & Treasury Rules:
+   - "SafeAccounId" or treasury fields (الخزينة / الصندوق) are dropdowns for the bank or safe account name (e.g. "الخزينة الرئيسية"). NEVER set "$TOTAL" on "SafeAccounId" or any account dropdown.
+   - If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً"), assign "$TOTAL" to a numeric payment field like "CashPaid", "Paid", or "المدفوع نقداً".
 3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
 4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
 5. If the user is only asking a question or explanation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
@@ -301,6 +303,8 @@ STEP 1 - Classify the user's intent:
 - "question": the user asks for knowledge (how / why / what happens / explain / difference) and gives no command to open a screen or enter data.
 
 STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label, NOT by word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
+- ACTION SCREENS VS DETAIL/REPORT SCREENS: If the intent is "action" (recording or creating a document such as purchasing invoice, sales order, payment), strictly prioritize the PRIMARY transactional entry screen (e.g. "Purchases", "Sales") over secondary read-only report, detail, or log screens (e.g. "Details purchases", "تقرير المشتريات"). Secondary detail screens must receive a low score (< 0.20) for "action" intent.
+- CURRENT SCREEN RETENTION: If Current User Path shows the user is ALREADY inside an appropriate screen for this task (e.g. currently on "Purchases"), score that current screen highest (>= 0.90) to prevent disruptive jumping.
 - If the intent is "question", every confidence MUST be 0.0.
 - If two screens are equally plausible, give them close proportional scores.
 
