@@ -191,38 +191,216 @@ class CdpAgentService:
         except Exception:
             pass
 
+    async def get_interactive_elements(self, ws_url: str) -> list[dict[str, Any]]:
+        """
+        استخراج قائمة العناصر التفاعلية الظاهرة حالياً في الصفحة (أزرار، قوائم، روابط، حقول إدخال)
+        مع إحداثياتها الدقيقة في الـ DOM (getBoundingClientRect).
+        """
+        scanner_script = """
+        (function() {
+            const results = [];
+            const selectors = [
+                'button', 'a', '[role="button"]', '[role="tab"]', '[role="menuitem"]',
+                '.dp-hdr__tab', '.dp-pgs__tile', '.dp-pgs__mod', '.dp-mods__card', '.dp-rise',
+                '.dp-btn', '.nav-link', '.menu-item',
+                'input:not([type="hidden"])', 'select', 'ng-select', '.ng-select',
+                '[data-screen]', '[routerlink]', 'td.clickable', '.btn'
+            ];
+
+            const elements = document.querySelectorAll(selectors.join(','));
+            for (const el of elements) {
+                // استبعاد أي عناصر تخص نافذة محادثة المساعد الذكي (LMS Copilot) حتى لا يضغط العميل على نفسه
+                if (el.closest('lms-copilot-chat, .copilot-window, .ai-chat-window, .chat-panel')) {
+                    continue;
+                }
+
+                // فحص الرؤية الحقيقية
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                    continue;
+                }
+                const rect = el.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) continue;
+                // التأكد من وجود العنصر داخل نافذة العرض
+                if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) {
+                    continue;
+                }
+
+                const rawText = (el.innerText || el.textContent || el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('placeholder') || '').trim();
+                const cleanText = rawText.replace(/\\s+/g, ' ').substring(0, 100);
+
+                results.push({
+                    tag: el.tagName.toLowerCase(),
+                    text: cleanText,
+                    x: Math.round(rect.left + rect.width / 2),
+                    y: Math.round(rect.top + rect.height / 2),
+                    rect: {
+                        left: Math.round(rect.left),
+                        top: Math.round(rect.top),
+                        width: Math.round(rect.width),
+                        height: Math.round(rect.height)
+                    }
+                });
+            }
+            return results;
+        })();
+        """
+        try:
+            items = await self.evaluate_script(ws_url, scanner_script)
+            return items if isinstance(items, list) else []
+        except Exception as e:
+            logger.warn("Failed to extract interactive elements over CDP", error=str(e))
+            return []
+
     async def click_at(self, ws_url: str, x: int, y: int) -> None:
         """
-        تنفيذ نقرة ماوس موثوقة على مستوى العتاد (Hardware-Level Mouse Click) عند الإحداثيات [x, y].
-        تتجاوز حماية الـ PointerEvents وتفعّل الأحداث الداخلية للمتصفح.
+        تنفيذ نقرة ماوس موثوقة ومزدوجة:
+        1. إظهار المؤشر البصري للنقرة (Visual Ripple).
+        2. تشغيل تسلسل الأحداث المباشر على العنصر في الـ DOM عبر elementFromPoint (لتجاوز أي مشاكل في معالجة أحداث العتاد في Angular/Chromium).
+        3. إرسال أحداث ماوس عتادية كاملة عبر بروتوكول CDP (Input.dispatchMouseEvent).
         """
         # 0. إظهار المؤشر البصري للنقرة
         await self.show_click_ripple(ws_url, x, y)
         await asyncio.sleep(0.04)
 
-        # 1. تحريك الماوس
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.dispatchMouseEvent",
-            {"type": "mouseMoved", "x": x, "y": y},
-        )
-        await asyncio.sleep(0.05)
+        # 1. نقر مباشر للعنصر عبر JavaScript DOM Dispatch (يحاكي ضغطة المستخدم تماماً داخل Angular)
+        dom_click_script = f"""
+        (function() {{
+            const el = document.elementFromPoint({x}, {y});
+            if (el) {{
+                try {{ el.focus(); }} catch(_) {{}}
+                const opts = {{ bubbles: true, cancelable: true, view: window, clientX: {x}, clientY: {y} }};
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.dispatchEvent(new MouseEvent('click', opts));
+                if (typeof el.click === 'function') {{
+                    el.click();
+                }}
+                // إذا كان العنصر ابن لرابط أو زر أو tile، اضغط الأب أيضاً
+                const parentInteractive = el.closest('button, a, [role="button"], .dp-mods__card, .dp-rise, .dp-btn, .dp-pgs__tile, .dp-pgs__mod, .dp-hdr__tab, [routerlink]');
+                if (parentInteractive && parentInteractive !== el) {{
+                    parentInteractive.dispatchEvent(new MouseEvent('click', opts));
+                    if (typeof parentInteractive.click === 'function') {{
+                        parentInteractive.click();
+                    }}
+                }}
+                return el.tagName;
+            }}
+            return null;
+        }})();
+        """
+        try:
+            hit_tag = await self.evaluate_script(ws_url, dom_click_script)
+            logger.info("DOM element click dispatched via elementFromPoint", tag=hit_tag, x=x, y=y)
+        except Exception as e:
+            logger.warn("DOM elementFromPoint click failed", error=str(e))
 
-        # 2. ضغط زر الماوس الأيسر
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.dispatchMouseEvent",
-            {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
-        )
-        await asyncio.sleep(0.08)
+        # 2. إرسال أحداث العتاد عبر CDP (Hardware-Level Mouse Event)
+        try:
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mouseMoved", "x": x, "y": y},
+            )
+            await asyncio.sleep(0.05)
 
-        # 3. إفلات زر الماوس
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.dispatchMouseEvent",
-            {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
-        )
-        logger.info("CDP Mouse Click dispatched", x=x, y=y)
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
+            )
+            await asyncio.sleep(0.08)
+
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
+            )
+            logger.info("CDP Mouse Click dispatched", x=x, y=y)
+        except Exception as e:
+            logger.error("CDP hardware mouse click failed", error=str(e))
+
+    async def click_element_or_coordinate(
+        self,
+        ws_url: str,
+        x: int,
+        y: int,
+        target_text: Optional[str] = None,
+        interactive_elements: Optional[list[dict[str, Any]]] = None,
+    ) -> tuple[int, int, bool]:
+        """
+        تنفيذ نقرة ذكية منجذبة ذاتياً (DOM-Anchored Snapped Click):
+        1. إذا وجد تطابق لنص العنصر المستهدف (target_text) مع عنصر تفاعلي حقيقي في الصفحة،
+           تنجذب النقرة مباشرة إلى مركز العنصر الحقيقي بدقة 100%.
+        2. إذا لم يوجد تطابق نصي، يتم فحص أقرب عنصر تفاعلي ضمن نطاق مسافة قريبة (Radius Snapping 35px).
+        3. إذا لم يوجد، يتم النقر عند الإحداثيات [x, y] كـ Fallback.
+        ترجع: (final_x, final_y, was_snapped)
+        """
+        elements = interactive_elements
+        if elements is None and target_text:
+            elements = await self.get_interactive_elements(ws_url)
+
+        snapped = False
+        target_x, target_y = x, y
+
+        if elements:
+            # محاولة 1: المطابقة بالنص (Semantic Arabic Normalized Match)
+            if target_text:
+                import re
+
+                def normalize_ar(s: str) -> str:
+                    s = re.sub(r"[أإآ]", "ا", s)
+                    s = re.sub(r"ة", "ه", s)
+                    s = re.sub(r"[\s_\-و]+", "", s).lower()
+                    return s
+
+                clean_target = target_text.strip().lower()
+                for prefix in ["زر", "أيقونة", "قائمة", "خيار", "تبويب", "انقر على", "اضغط على", "الانتقال الى", "اذهب الى"]:
+                    if clean_target.startswith(prefix):
+                        clean_target = clean_target[len(prefix):].strip()
+
+                norm_target = normalize_ar(clean_target)
+
+                # البحث عن أفضل مطابقة مع تفضيل العناصر غير الفارغة والأقرب
+                candidates = []
+                for el in elements:
+                    el_raw = el.get("text") or ""
+                    norm_el = normalize_ar(el_raw)
+                    # شرط أساسي: أن يكون النص غير تافه (أطول من حرفين)
+                    if len(norm_el) >= 2 and len(norm_target) >= 2:
+                        if norm_target in norm_el or norm_el in norm_target:
+                            dist = ((el["x"] - x) ** 2 + (el["y"] - y) ** 2) ** 0.5
+                            # مطابقة تامة للنص تحظى بأعلى أولوية
+                            score = 0 if norm_target == norm_el else 1
+                            candidates.append((score, dist, el))
+
+                if candidates:
+                    candidates.sort(key=lambda c: (c[0], c[1]))
+                    best_el = candidates[0][2]
+                    target_x = best_el["x"]
+                    target_y = best_el["y"]
+                    snapped = True
+                    logger.info("DOM-Anchor snapped click by semantic text match", target=clean_target, matched_text=best_el.get("text"), x=target_x, y=target_y)
+
+            # محاولة 2: إذا لم يتطابق النص ولكن الإحداثيات قريبة جداً من عنصر تفاعلي (Proximity Snap < 40px)
+            if not snapped:
+                best_dist = 40.0
+                best_el = None
+                for el in elements:
+                    dist = ((el["x"] - x) ** 2 + (el["y"] - y) ** 2) ** 0.5
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_el = el
+
+                if best_el:
+                    target_x = best_el["x"]
+                    target_y = best_el["y"]
+                    snapped = True
+                    logger.info("DOM-Anchor snapped click by proximity", dist=best_dist, element=best_el.get("text"), x=target_x, y=target_y)
+
+        # تنفيذ النقر الفعلي عند الإحداثيات المنجذبة
+        await self.click_at(ws_url, target_x, target_y)
+        return target_x, target_y, snapped
 
     async def type_text(self, ws_url: str, text: str, delay_ms: float = 30) -> None:
         """

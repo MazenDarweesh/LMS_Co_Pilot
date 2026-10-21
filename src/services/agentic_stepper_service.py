@@ -119,8 +119,16 @@ class AgenticStepperService:
                     }
                     break
 
-                # استخراج أبعاد الشاشة ومعدل الـ DPI
-                viewport_metrics = await cdp_agent_service.get_viewport_metrics(ws_url)
+                # استخراج أبعاد الشاشة والعناصر التفاعلية الحقيقية في الـ DOM بالتوازي
+                viewport_metrics, interactive_elements = await asyncio.gather(
+                    cdp_agent_service.get_viewport_metrics(ws_url),
+                    cdp_agent_service.get_interactive_elements(ws_url),
+                    return_exceptions=True
+                )
+                if isinstance(viewport_metrics, Exception) or not isinstance(viewport_metrics, dict):
+                    viewport_metrics = {"width": 1280.0, "height": 720.0, "dpr": 1.0}
+                if isinstance(interactive_elements, Exception) or not isinstance(interactive_elements, list):
+                    interactive_elements = []
 
                 # استنتاج الخطوة عبر Gemini Multimodal
                 prediction = await vision_grounding_service.predict_next_action(
@@ -134,6 +142,7 @@ class AgenticStepperService:
                 action = prediction.get("action", "wait")
                 thought = prediction.get("thought", "")
                 coord = prediction.get("coordinate")
+                target_text = prediction.get("target_text")
                 text = prediction.get("text")
                 key = prediction.get("key")
                 is_terminal = prediction.get("is_terminal", False)
@@ -143,6 +152,7 @@ class AgenticStepperService:
                     "action": action,
                     "thought": thought,
                     "coordinate": coord,
+                    "target_text": target_text,
                     "text": text,
                     "key": key,
                     "is_terminal": is_terminal
@@ -168,10 +178,23 @@ class AgenticStepperService:
                     }
                     break
 
-                # تنفيذ الإجراء الفيزيائي عبر CDP
+                # تنفيذ الإجراء الفيزيائي عبر CDP (مع الجذب الذكي للعنصر الحقيقي)
                 if action == "click" and coord and len(coord) == 2:
-                    await cdp_agent_service.click_at(ws_url, int(coord[0]), int(coord[1]))
-                    history.append({"step": step_idx, "action": "click", "coord": coord, "thought": thought})
+                    fx, fy, was_snapped = await cdp_agent_service.click_element_or_coordinate(
+                        ws_url=ws_url,
+                        x=int(coord[0]),
+                        y=int(coord[1]),
+                        target_text=target_text or thought,
+                        interactive_elements=interactive_elements
+                    )
+                    history.append({
+                        "step": step_idx,
+                        "action": "click",
+                        "coord": [fx, fy],
+                        "snapped": was_snapped,
+                        "target_text": target_text,
+                        "thought": thought
+                    })
 
                 elif action == "type" and text:
                     await cdp_agent_service.type_text(ws_url, str(text))

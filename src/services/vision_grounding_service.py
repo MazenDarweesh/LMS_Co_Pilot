@@ -44,6 +44,7 @@ COORDINATE SPECIFICATION:
 - Return physical pixel coordinates [x, y] strictly within [0..{viewport_width}] for x and [0..{viewport_height}] for y.
 - Target the visual CENTER of the clickable button, input field, or menu item.
 - Do NOT click on static labels or empty background margins.
+- Provide the exact visible text of the button/menu item in "target_text" whenever clicking a labeled element.
 
 OUTPUT FORMAT:
 Return ONLY a valid JSON object matching this schema:
@@ -51,6 +52,7 @@ Return ONLY a valid JSON object matching this schema:
   "thought": "شرح موجز بالعربية لما تراه في الشاشة والخطوة التالية التي ستقوم بها",
   "action": "click" | "type" | "press_key" | "wait" | "done",
   "coordinate": [x, y],
+  "target_text": "اسم أو نص الزر أو العنصر المراد النقر عليه بالعربية (مثل: الموردين والمشتريات، فواتير المشتريات، اضافة جديد)، أو null",
   "text": "text to type if action is type, else null",
   "key": "Enter|Tab|Escape if action is press_key, else null",
   "is_terminal": true or false
