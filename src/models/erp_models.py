@@ -162,3 +162,15 @@ class TelemetryBatchRequest(BaseModel):
     screen_key: str | None = Field(default=None, description="اسم الشاشة النشطة")
     events: list[TelemetryEvent] = Field(description="قائمة الأحداث الزمنية")
 
+
+class AgentGoalRequest(BaseModel):
+    """طلب تشغيل العميل البصري المستقل لتحقيق هدف في الـ ERP"""
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    goal: str = Field(..., min_length=1, max_length=1000, description="الهدف أو العملية المطلوب إنجازها في الـ ERP")
+    cdp_port: int = Field(default=9222, description="منفذ تصحيح أخطاء المتصفح CDP")
+    cdp_host: str = Field(default="127.0.0.1", description="عنوان IP لمتصفح الـ CDP")
+    session_id: str | None = Field(default=None, description="معرف الجلسة لربط الأحداث بالصندوق الأسود")
+    max_steps: int = Field(default=15, ge=1, le=30, description="الحد الأقصى لعدد الخطوات")
+
+

@@ -7,6 +7,7 @@ import structlog
 
 from src.core.middleware import limiter
 from src.models.erp_models import (
+    AgentGoalRequest,
     ControlRolesRequest,
     ControlRolesResponse,
     LeftoverRequest,
@@ -16,6 +17,8 @@ from src.models.erp_models import (
     NavResolution,
     TelemetryBatchRequest,
 )
+from sse_starlette.sse import EventSourceResponse
+from src.services.agentic_stepper_service import agentic_stepper_service
 from src.services.auth_service import UserContext, get_current_user, get_optional_user
 from src.services.erp_decision_memory_service import erp_decision_memory_service
 from src.services.erp_service import erp_service
@@ -177,4 +180,27 @@ async def record_erp_telemetry(
         "session_id": payload.session_id,
         "written": len(payload.events),
     }
+
+
+@router.post("/agent/stream", summary="تشغيل العميل البصري المستقل مع بث خطوات التنفيذ الحية عبر SSE")
+async def stream_agent_execution(req: AgentGoalRequest):
+    """
+    يشغل حلقة الأتمتة البصرية المستقلة (Path 2) عبر بروتوكول CDP.
+    يبث خطوات الرصد والتحليل البصري والتنفيذ لحظياً للواجهة عبر Server-Sent Events.
+    """
+    async def event_generator():
+        async for step_update in agentic_stepper_service.execute_goal_stream(
+            goal=req.goal,
+            cdp_port=req.cdp_port,
+            cdp_host=req.cdp_host,
+            session_id=req.session_id,
+            max_steps=req.max_steps,
+        ):
+            yield {
+                "event": "step",
+                "data": json.dumps(step_update, ensure_ascii=False)
+            }
+
+    return EventSourceResponse(event_generator())
+
 
