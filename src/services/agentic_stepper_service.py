@@ -98,54 +98,123 @@ class AgenticStepperService:
         }
 
         history: list[dict[str, Any]] = []
+        import time
+
+        # استخراج الكلمات المفتاحية للهدف لاستخدامها في التحقق الاستباقي (Goal-Reached Pre-check)
+        norm_goal = cdp_agent_service.normalize_ar(goal)
+        for prefix in ["اذهب الى", "اذهب ل", "افتح", "انتقل الى", "عرض"]:
+            norm_prefix = cdp_agent_service.normalize_ar(prefix)
+            if norm_goal.startswith(norm_prefix):
+                norm_goal = norm_goal[len(norm_prefix):].strip()
 
         # 3. حلقة التنفيذ التلقائي (Agentic Loop)
         for step_idx in range(1, limit_steps + 1):
+            t_step_start = time.perf_counter()
+            timings: dict[str, float] = {}
+
             yield {
                 "step": step_idx,
                 "status": "observing",
-                "message": f"خطوة {step_idx}/{limit_steps}: جاري التقاط لقطة الشاشة وتحليل العناصر بصرياً...",
+                "message": f"خطوة {step_idx}/{limit_steps}: جاري فحص حالة الصفحة والعناصر التفاعلية...",
             }
 
             try:
-                # التقاط لقطة الشاشة
-                screenshot_b64 = await cdp_agent_service.capture_screenshot(ws_url, quality=75)
-                if not screenshot_b64:
-                    _append_session_event(session_id, "ERROR", "VISION_AGENT", f"Step {step_idx}: Failed to capture screenshot")
-                    yield {
-                        "step": step_idx,
-                        "status": "error",
-                        "message": "فشل التقاط صورة من المتصفح.",
-                    }
-                    break
-
-                # استخراج أبعاد الشاشة والعناصر التفاعلية الحقيقية في الـ DOM بالتوازي
-                viewport_metrics, interactive_elements = await asyncio.gather(
+                # أ. استخراج حالة الصفحة ومقاييس الشاشة والعناصر التفاعلية في طلب واحد متزامن (Parallel Gathering)
+                t_gather_start = time.perf_counter()
+                page_state, viewport_metrics, interactive_elements = await asyncio.gather(
+                    cdp_agent_service.get_page_state(ws_url),
                     cdp_agent_service.get_viewport_metrics(ws_url),
                     cdp_agent_service.get_interactive_elements(ws_url),
                     return_exceptions=True
                 )
+                timings["gather_ms"] = round((time.perf_counter() - t_gather_start) * 1000, 1)
+
+                if isinstance(page_state, Exception) or not isinstance(page_state, dict):
+                    page_state = {"url": "", "title": "", "headings": []}
                 if isinstance(viewport_metrics, Exception) or not isinstance(viewport_metrics, dict):
                     viewport_metrics = {"width": 1280.0, "height": 720.0, "dpr": 1.0}
                 if isinstance(interactive_elements, Exception) or not isinstance(interactive_elements, list):
                     interactive_elements = []
 
-                # استنتاج الخطوة عبر Gemini Multimodal
-                prediction = await vision_grounding_service.predict_next_action(
-                    screenshot_b64=screenshot_b64,
+                # ب. التحقق الاستباقي: هل الصفحة الحالية تحقق الهدف بالفعل؟ (Goal-Reached Pre-check)
+                curr_url = page_state.get("url", "")
+                curr_title = page_state.get("title", "")
+                curr_headings = page_state.get("headings", [])
+                curr_text = " ".join([curr_url, curr_title] + curr_headings)
+                norm_curr = cdp_agent_service.normalize_ar(curr_text)
+
+                # فحص تطابق الهدف كاملاً أو الكلمات الأساسية البارزة (مثل المشتريات أو الموردين)
+                goal_tokens = [cdp_agent_service.normalize_ar(t) for t in goal.split() if len(t) >= 4 and t not in ("اذهب", "افتح", "انتقل", "شاشة", "صفحة")]
+                has_full_match = norm_goal and len(norm_goal) >= 4 and norm_goal in norm_curr
+                has_token_match = any(token in norm_curr for token in goal_tokens) if goal_tokens else False
+
+                if has_full_match or has_token_match:
+                    _append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx}: Target screen already reached (Title/Heading match)!", {
+                        "url": curr_url, "title": curr_title, "headings": curr_headings, "timings_ms": timings
+                    })
+                    yield {
+                        "step": step_idx,
+                        "status": "completed",
+                        "message": f"✅ تم الوصول إلى شاشة الهدف بنجاح! ({curr_headings[0] if curr_headings else curr_url})",
+                    }
+                    break
+
+                # ج. وضع القرار الأولي: DOM-First (نصي فائق السرعة وبدون نقل صور)
+                t_llm_start = time.perf_counter()
+                use_vision_fallback = False
+                prediction = await vision_grounding_service.predict_from_elements(
                     goal=goal,
+                    elements=interactive_elements,
+                    page_state=page_state,
                     history=history,
-                    viewport_metrics=viewport_metrics,
-                    timeout=14.0,
+                    timeout=8.0
                 )
 
+                chosen_id = prediction.get("element_id")
                 action = prediction.get("action", "wait")
                 thought = prediction.get("thought", "")
-                coord = prediction.get("coordinate")
-                target_text = prediction.get("target_text")
-                text = prediction.get("text")
-                key = prediction.get("key")
                 is_terminal = prediction.get("is_terminal", False)
+                coord = None
+                target_text = None
+
+                # إذا اختار النموذج عنصر برقم محدد، نحسب مركزه الفيزيائي الدقيق فوراً
+                if action == "click" and chosen_id is not None and isinstance(chosen_id, int) and 0 <= chosen_id < len(interactive_elements):
+                    target_el = interactive_elements[chosen_id]
+                    coord = [target_el["x"], target_el["y"]]
+                    target_text = target_el.get("text", "")
+                    timings["decision_mode"] = "dom_first"
+                elif action != "done":
+                    # د. خطة الطوارئ البصرية (Vision Fallback): تلتقط صورة مع إخفاء الشات فقط إذا لم يجد العنصر في القائمة
+                    use_vision_fallback = True
+                    timings["decision_mode"] = "vision_fallback"
+                    screenshot_b64 = await cdp_agent_service.capture_screenshot(ws_url, quality=75, mask_chat=True)
+                    if screenshot_b64:
+                        prediction = await vision_grounding_service.predict_next_action(
+                            screenshot_b64=screenshot_b64,
+                            goal=goal,
+                            history=history,
+                            viewport_metrics=viewport_metrics,
+                            timeout=12.0
+                        )
+                        action = prediction.get("action", "wait")
+                        thought = prediction.get("thought", "")
+                        coord = prediction.get("coordinate")
+                        target_text = prediction.get("target_text")
+                        is_terminal = prediction.get("is_terminal", False)
+
+                timings["llm_ms"] = round((time.perf_counter() - t_llm_start) * 1000, 1)
+
+                # حارس التكرار (Loop Guard): إذا كرر نفس الإجراء مرتين متتاليتين في نفس الصفحة
+                if history and len(history) >= 2:
+                    last_h = history[-1]
+                    if last_h.get("action") == action and last_h.get("coord") == coord and last_h.get("url") == curr_url:
+                        _append_session_event(session_id, "WARN", "VISION_AGENT", "Loop Guard triggered: repeated identical click without navigation. Stopping.")
+                        yield {
+                            "step": step_idx,
+                            "status": "completed",
+                            "message": "تم التوقف عند الشاشة الحالية لتفادي تكرار النقر دون تغيير.",
+                        }
+                        break
 
                 _append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx}: Action='{action}'", {
                     "step": step_idx,
@@ -153,9 +222,8 @@ class AgenticStepperService:
                     "thought": thought,
                     "coordinate": coord,
                     "target_text": target_text,
-                    "text": text,
-                    "key": key,
-                    "is_terminal": is_terminal
+                    "mode": timings.get("decision_mode", "dom_first"),
+                    "timings_ms": timings
                 })
 
                 # بث الملاحظة والتفكير للمستخدم
@@ -174,11 +242,12 @@ class AgenticStepperService:
                     yield {
                         "step": step_idx,
                         "status": "completed",
-                        "message": "✅ تم إنجاز إعداد المعاملة وتعبئة البيانات بنجاح! راجع الفاتورة على الشاشة واضغط حفظ.",
+                        "message": "✅ تم إنجاز المطلوب والوصول للوجهة بنجاح!",
                     }
                     break
 
-                # تنفيذ الإجراء الفيزيائي عبر CDP (مع الجذب الذكي للعنصر الحقيقي)
+                # هـ. تنفيذ الإجراء الفيزيائي
+                t_exec_start = time.perf_counter()
                 if action == "click" and coord and len(coord) == 2:
                     fx, fy, was_snapped = await cdp_agent_service.click_element_or_coordinate(
                         ws_url=ws_url,
@@ -187,29 +256,36 @@ class AgenticStepperService:
                         target_text=target_text or thought,
                         interactive_elements=interactive_elements
                     )
+                    timings["click_ms"] = round((time.perf_counter() - t_exec_start) * 1000, 1)
+
+                    # و. انتظار ذكي بدلاً من sleep ثابت (Settle Detection)
+                    settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=0.7)
+                    timings["settle_ms"] = round(settle_ms, 1)
+
                     history.append({
                         "step": step_idx,
                         "action": "click",
                         "coord": [fx, fy],
                         "snapped": was_snapped,
                         "target_text": target_text,
-                        "thought": thought
+                        "thought": thought,
+                        "url": curr_url
                     })
 
-                elif action == "type" and text:
-                    await cdp_agent_service.type_text(ws_url, str(text))
-                    history.append({"step": step_idx, "action": "type", "text": text, "thought": thought})
+                elif action == "type" and prediction.get("text"):
+                    await cdp_agent_service.type_text(ws_url, str(prediction["text"]))
+                    history.append({"step": step_idx, "action": "type", "text": prediction["text"], "thought": thought, "url": curr_url})
 
-                elif action == "press_key" and key:
-                    await cdp_agent_service.press_key(ws_url, str(key))
-                    history.append({"step": step_idx, "action": "press_key", "key": key, "thought": thought})
+                elif action == "press_key" and prediction.get("key"):
+                    await cdp_agent_service.press_key(ws_url, str(prediction["key"]))
+                    history.append({"step": step_idx, "action": "press_key", "key": prediction["key"], "thought": thought, "url": curr_url})
 
                 elif action == "wait":
-                    await asyncio.sleep(0.8)
-                    history.append({"step": step_idx, "action": "wait", "thought": thought})
+                    await asyncio.sleep(0.4)
+                    history.append({"step": step_idx, "action": "wait", "thought": thought, "url": curr_url})
 
-                # إتاحة مهلة قصيرة للـ Angular للرندرة والتفاعل
-                await asyncio.sleep(0.4)
+                timings["total_step_ms"] = round((time.perf_counter() - t_step_start) * 1000, 1)
+                _append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx} timings", timings)
 
             except Exception as step_err:
                 logger.error("Error during agent step execution", step=step_idx, error=str(step_err))
@@ -219,7 +295,7 @@ class AgenticStepperService:
                     "status": "step_error",
                     "message": f"تنبيه أثناء الخطوة {step_idx}: {str(step_err)} (جاري المتابعة...)",
                 }
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
 
         else:
             _append_session_event(session_id, "WARN", "VISION_AGENT", f"Max steps reached ({limit_steps}). Safety stop.")

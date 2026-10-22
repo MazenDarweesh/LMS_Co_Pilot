@@ -115,17 +115,72 @@ class CdpAgentService:
                         raise RuntimeError(f"CDP command {method} failed: {data['error']}")
                     return data.get("result", {})
 
-    async def capture_screenshot(self, ws_url: str, quality: int = 80) -> str:
+    async def capture_screenshot(self, ws_url: str, quality: int = 80, mask_chat: bool = True) -> str:
         """
         التقاط لقطة شاشة للتبويب وإرجاعها كـ Base64 JPEG مضغوطة وسريعة للرؤية البصرية.
+        مع إخفاء نافذة المساعد الذكي لحظياً أثناء اللقطة حتى لا تشتت الرؤية وتسبب محاولات إغلاق وهمية.
         """
-        res = await self.execute_cdp_command(
-            ws_url,
-            "Page.captureScreenshot",
-            {"format": "jpeg", "quality": quality, "captureBeyondViewport": False},
-            timeout=8.0,
-        )
-        return res.get("data", "")
+        if mask_chat:
+            try:
+                await self.evaluate_script(
+                    ws_url,
+                    """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = 'hidden');"""
+                )
+            except Exception:
+                pass
+
+        try:
+            res = await self.execute_cdp_command(
+                ws_url,
+                "Page.captureScreenshot",
+                {"format": "jpeg", "quality": quality, "captureBeyondViewport": False},
+                timeout=8.0,
+            )
+            return res.get("data", "")
+        finally:
+            if mask_chat:
+                try:
+                    await self.evaluate_script(
+                        ws_url,
+                        """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = '');"""
+                    )
+                except Exception:
+                    pass
+
+    @staticmethod
+    def normalize_ar(s: str) -> str:
+        """تطبيع النصوص العربية لإزالة فروق الهمزات والتاء المربوطة وحروف العطف والمسافات"""
+        import re
+        if not s:
+            return ""
+        s = re.sub(r"[أإآ]", "ا", s)
+        s = re.sub(r"ة", "ه", s)
+        s = re.sub(r"[\s_\-و]+", "", s).lower()
+        return s
+
+    async def get_page_state(self, ws_url: str) -> dict[str, Any]:
+        """استخراج حالة الصفحة الحالية: الرابط، العنوان، والنصوص البارزة في الترويسات"""
+        script = """
+        (function() {
+            const headings = [];
+            document.querySelectorAll('h1, h2, h3, .dp-list__ttl, .dp-hdr__tab--active, .active').forEach(el => {
+                const txt = (el.innerText || el.textContent || '').trim();
+                if (txt && txt.length < 100) headings.push(txt);
+            });
+            return {
+                url: window.location.href,
+                title: document.title,
+                headings: headings.slice(0, 5)
+            };
+        })()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script)
+            if isinstance(res, dict):
+                return res
+        except Exception as e:
+            logger.warn("Failed to get page state", error=str(e))
+        return {"url": "", "title": "", "headings": []}
 
     async def get_viewport_metrics(self, ws_url: str) -> dict[str, float]:
         """
@@ -320,6 +375,28 @@ class CdpAgentService:
         except Exception as e:
             logger.error("CDP hardware mouse click failed", error=str(e))
 
+    async def wait_for_settle(self, ws_url: str, initial_url: str = "", max_wait_sec: float = 0.8) -> float:
+        """
+        انتظار ذكي لاستقرار الصفحة وتغير المسار أو جاهزية الـ DOM بدلاً من فترات الانتظار الثابتة (sleep).
+        يتحقق كل 50ms ويعود فور تغير الرابط أو اكتمال التحميل لتقليل الـ Latency إلى الحد الأدنى.
+        """
+        import time
+        start = time.perf_counter()
+        deadline = start + max_wait_sec
+
+        while time.perf_counter() < deadline:
+            await asyncio.sleep(0.05)
+            try:
+                curr_url = await self.evaluate_script(ws_url, "window.location.href")
+                if initial_url and curr_url and curr_url != initial_url:
+                    break
+                is_ready = await self.evaluate_script(ws_url, "document.readyState === 'complete'")
+                if is_ready and (time.perf_counter() - start) >= 0.15:
+                    break
+            except Exception:
+                pass
+        return (time.perf_counter() - start) * 1000
+
     async def click_element_or_coordinate(
         self,
         ws_url: str,
@@ -346,26 +423,18 @@ class CdpAgentService:
         if elements:
             # محاولة 1: المطابقة بالنص (Semantic Arabic Normalized Match)
             if target_text:
-                import re
-
-                def normalize_ar(s: str) -> str:
-                    s = re.sub(r"[أإآ]", "ا", s)
-                    s = re.sub(r"ة", "ه", s)
-                    s = re.sub(r"[\s_\-و]+", "", s).lower()
-                    return s
-
                 clean_target = target_text.strip().lower()
                 for prefix in ["زر", "أيقونة", "قائمة", "خيار", "تبويب", "انقر على", "اضغط على", "الانتقال الى", "اذهب الى"]:
                     if clean_target.startswith(prefix):
                         clean_target = clean_target[len(prefix):].strip()
 
-                norm_target = normalize_ar(clean_target)
+                norm_target = self.normalize_ar(clean_target)
 
                 # البحث عن أفضل مطابقة مع تفضيل العناصر غير الفارغة والأقرب
                 candidates = []
                 for el in elements:
                     el_raw = el.get("text") or ""
-                    norm_el = normalize_ar(el_raw)
+                    norm_el = self.normalize_ar(el_raw)
                     # شرط أساسي: أن يكون النص غير تافه (أطول من حرفين)
                     if len(norm_el) >= 2 and len(norm_target) >= 2:
                         if norm_target in norm_el or norm_el in norm_target:

@@ -141,6 +141,82 @@ class VisionGroundingService:
                 "is_terminal": False,
             }
 
+    async def predict_from_elements(
+        self,
+        goal: str,
+        elements: list[dict[str, Any]],
+        page_state: dict[str, Any],
+        history: list[dict[str, Any]],
+        timeout: float = 8.0,
+    ) -> dict[str, Any]:
+        """
+        الوضع النصي السريع (DOM-First): اختيار العنصر التفاعلي من قائمة نصية مرقمة
+        دون الحاجة لنقل أو معالجة صور لتقليل زمن الاستجابة (Latency) وتفادي أخطاء الإحداثيات.
+        """
+        if not self._client:
+            self.initialize()
+
+        if not self._client:
+            return {"thought": "فشل تهيئة عميل الذكاء الاصطناعي", "action": "wait"}
+
+        # تحضير قائمة العناصر المرقمة
+        elements_text = []
+        for idx, el in enumerate(elements[:60]):
+            txt = (el.get("text") or "").strip()
+            tag = el.get("tag", "btn")
+            if txt:
+                elements_text.append(f"[{idx}] {tag}: \"{txt}\"")
+
+        dom_prompt = f"""You are an ERP Navigation Operator for DynamicPro ERP.
+GOAL: "{goal}"
+CURRENT PAGE: URL="{page_state.get('url', '')}", Title="{page_state.get('title', '')}", Headings={json.dumps(page_state.get('headings', []), ensure_ascii=False)}
+
+RECENT ACTIONS:
+{json.dumps(history[-4:], ensure_ascii=False, indent=1) if history else "[]"}
+
+INTERACTIVE ELEMENTS ON SCREEN:
+{chr(10).join(elements_text) if elements_text else "No elements found"}
+
+TASK:
+Decide the next action to achieve the user's goal.
+- If the current screen/page ALREADY fulfills the goal, return action="done" and is_terminal=true.
+- To click an element, choose its EXACT integer [ID] from the list above.
+- If the element you need is NOT in the list, return element_id=null so vision fallback will handle it.
+
+OUTPUT FORMAT (JSON only):
+{{
+  "thought": "شرح موجز بالعربية للإجراء",
+  "action": "click" | "done" | "wait",
+  "element_id": integer ID from list or null,
+  "is_terminal": true or false
+}}
+"""
+        try:
+            resp = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self._client.models.generate_content,
+                    model=settings.GEMINI_MODEL,
+                    contents=dom_prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.0,
+                    ),
+                ),
+                timeout=timeout,
+            )
+            raw_text = resp.text if hasattr(resp, "text") and resp.text else "{}"
+            result: dict[str, Any] = json.loads(raw_text)
+            logger.info(
+                "DOM-First predicted action",
+                action=result.get("action"),
+                element_id=result.get("element_id"),
+                thought=result.get("thought"),
+            )
+            return result
+        except Exception as e:
+            logger.warn("DOM-First text inference failed, falling back", error=str(e))
+            return {"action": "fallback", "element_id": None, "thought": str(e)}
+
 
 # Singleton instance
 vision_grounding_service = VisionGroundingService()
