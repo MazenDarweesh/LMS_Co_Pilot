@@ -259,6 +259,7 @@ class CdpAgentService:
                 '.dp-hdr__tab', '.dp-pgs__tile', '.dp-pgs__mod', '.dp-mods__card', '.dp-rise',
                 '.dp-btn', '.nav-link', '.menu-item',
                 'input:not([type="hidden"])', 'select', 'ng-select', '.ng-select',
+                'body > ng-dropdown-panel .ng-option', '.ng-dropdown-panel [role="option"]', '.ng-option',
                 '[data-screen]', '[routerlink]', 'td.clickable', '.btn'
             ];
 
@@ -508,14 +509,172 @@ class CdpAgentService:
         )
         logger.info("CDP Key pressed", key=key_name)
 
-    async def evaluate_script(self, ws_url: str, script: str) -> Any:
+    async def evaluate_script(self, ws_url: str, script: str, timeout: float = 15.0) -> Any:
         """تنفيذ كود JavaScript في سياق التبويب واسترجاع القيمة"""
         res = await self.execute_cdp_command(
             ws_url,
             "Runtime.evaluate",
             {"expression": script, "returnByValue": True, "awaitPromise": True},
+            timeout=timeout,
         )
         return res.get("result", {}).get("value")
+
+    async def navigate_to_erp_screen(self, ws_url: str, screen_id_or_name: Any) -> bool:
+        """
+        استدعاء مباشر لجسر ERP الداخلي للانتقال للشاشة المطلوبة في خطوة واحدة.
+        window.DynamicERP.navigateToScreen(289)
+        """
+        script = f"""
+        (async function() {{
+            if (window.DynamicERP && typeof window.DynamicERP.navigateToScreen === 'function') {{
+                try {{
+                    const res = window.DynamicERP.navigateToScreen({json.dumps(screen_id_or_name)});
+                    if (res && typeof res.then === 'function') await res;
+                    return true;
+                }} catch(e) {{
+                    console.error('Bridge navigateToScreen error:', e);
+                    return false;
+                }}
+            }}
+            return false;
+        }})()
+        """
+        try:
+            return bool(await self.evaluate_script(ws_url, script))
+        except Exception as e:
+            logger.warning("CDP Bridge navigateToScreen failed", error=str(e))
+            return False
+
+    async def fill_erp_form_bridge(self, ws_url: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        حقن وتعبئة الفاتورة وجدول الأصناف مباشرة عبر جسر window.DynamicERP.fillFormData(payload)
+        أو عبر استدعاء محرك التعبئة المباشر فائق الدقة.
+        """
+        payload_json = json.dumps(payload, ensure_ascii=False)
+        script = f"""
+        (async function() {{
+            const payload = {payload_json};
+            const logs = [];
+
+            // 1. الأولوية الأولى: جسر DynamicERP المدمج إن وجد
+            if (window.DynamicERP && typeof window.DynamicERP.fillFormData === 'function') {{
+                try {{
+                    const bridgePayload = {{
+                        fields: payload.header || {{}},
+                        rows: payload.items || []
+                    }};
+                    const res = window.DynamicERP.fillFormData(bridgePayload);
+                    const success = (res && typeof res.then === 'function') ? await res : res;
+                    if (success) {{
+                        return {{
+                            success: true,
+                            method: 'bridge',
+                            detail: 'Filled via window.DynamicERP.fillFormData'
+                        }};
+                    }}
+                }} catch(e) {{
+                    console.warn('Bridge fillFormData failed, falling back:', e);
+                }}
+            }}
+
+            // 2. الأولوية الثانية: التعبئة المباشرة فائقة الدقة لحقول الهيدر وجدول الأصناف
+            async function selectNgSelect(selector, targetVal) {{
+                if (!targetVal) return false;
+                const sel = document.querySelector(selector);
+                if (!sel) return false;
+                const container = sel.querySelector('.ng-select-container') || sel;
+                container.click();
+                await new Promise(r => setTimeout(r, 120));
+                const input = sel.querySelector('input');
+                if (input) {{
+                    input.focus();
+                    input.value = targetVal;
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }}
+                await new Promise(r => setTimeout(r, 450));
+                const panels = Array.from(document.querySelectorAll('body > ng-dropdown-panel, ng-dropdown-panel, .ng-dropdown-panel'));
+                const lastPanel = panels[panels.length - 1];
+                if (!lastPanel) return false;
+                const opts = Array.from(lastPanel.querySelectorAll('.ng-option, [role="option"]'));
+                const match = opts.find(o => (o.textContent || '').trim().includes(targetVal)) || opts[0];
+                if (match) {{
+                    match.click();
+                    return true;
+                }}
+                return false;
+            }}
+
+            const header = payload.header || {{}};
+            let filledCount = 0;
+            if (header.SupplierName) {{
+                if (await selectNgSelect('ng-select#SupplierID', header.SupplierName)) filledCount++;
+            }}
+            if (header.StoreName) {{
+                const term = header.StoreName.includes(' ') ? header.StoreName.split(' ')[0] : header.StoreName;
+                if (await selectNgSelect('ng-select#StoreID', term) || await selectNgSelect('ng-select#StoreID', header.StoreName)) filledCount++;
+            }}
+            if (header.PurchaseTypeName) {{
+                if (await selectNgSelect('ng-select#POSetting', header.PurchaseTypeName)) filledCount++;
+            }}
+            if (header.ProjectName) {{
+                if (await selectNgSelect('ng-select#ProjectID', header.ProjectName)) filledCount++;
+            }}
+
+            // 3. تعبئة الأصناف والكميات مع معالجة نافذة تأكيد الكمية التلقائية
+            const items = payload.items || [];
+            let itemsAdded = 0;
+            for (const item of items) {{
+                const prodSel = document.querySelector('ng-select#product');
+                if (!prodSel || !item.name) continue;
+                const container = prodSel.querySelector('.ng-select-container') || prodSel;
+                container.click();
+                await new Promise(r => setTimeout(r, 120));
+                const input = prodSel.querySelector('input');
+                if (input) {{
+                    input.focus();
+                    input.value = item.name;
+                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                }}
+                await new Promise(r => setTimeout(r, 450));
+                const panels = Array.from(document.querySelectorAll('body > ng-dropdown-panel, ng-dropdown-panel, .ng-dropdown-panel'));
+                const lastPanel = panels[panels.length - 1];
+                if (lastPanel) {{
+                    const opts = Array.from(lastPanel.querySelectorAll('.ng-option, [role="option"]'));
+                    const match = opts.find(o => (o.textContent || '').trim().includes(item.name)) || opts[0];
+                    if (match) {{
+                        match.click();
+                        // التعامل التلقائي مع مودال الكمية إن ظهر
+                        await new Promise(r => setTimeout(r, 350));
+                        const qtyInp = document.querySelector('input#productQty');
+                        const continueBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'متابعة');
+                        if (qtyInp && continueBtn && item.qty !== undefined) {{
+                            qtyInp.focus();
+                            qtyInp.value = item.qty;
+                            qtyInp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                            qtyInp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                            await new Promise(r => setTimeout(r, 120));
+                            continueBtn.click();
+                            await new Promise(r => setTimeout(r, 300));
+                        }}
+                        itemsAdded++;
+                    }}
+                }}
+            }}
+
+            return {{
+                success: filledCount > 0 || itemsAdded > 0,
+                method: 'dom_precision',
+                filled_count: filledCount,
+                items_count: itemsAdded
+            }};
+        }})()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=25.0)
+            return res if isinstance(res, dict) else {"success": bool(res), "method": "bridge_raw"}
+        except Exception as e:
+            logger.error("Failed to execute bridge/precision form fill", error=str(e))
+            return {"success": False, "error": str(e)}
 
 
 # Singleton instance

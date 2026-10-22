@@ -71,7 +71,7 @@ class VisionGroundingService:
     def initialize(self) -> None:
         try:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            logger.info("Vision Grounding Service initialized successfully ✅")
+            logger.info("Vision Grounding Service initialized successfully")
         except Exception as e:
             logger.error("Failed to initialize Gemini Client in VisionGroundingService", error=str(e))
             self._client = None
@@ -167,7 +167,7 @@ class VisionGroundingService:
             if txt:
                 elements_text.append(f"[{idx}] {tag}: \"{txt}\"")
 
-        dom_prompt = f"""You are an ERP Navigation Operator for DynamicPro ERP.
+        dom_prompt = f"""You are an ERP Navigation & Form Operator for DynamicPro ERP.
 GOAL: "{goal}"
 CURRENT PAGE: URL="{page_state.get('url', '')}", Title="{page_state.get('title', '')}", Headings={json.dumps(page_state.get('headings', []), ensure_ascii=False)}
 
@@ -178,16 +178,21 @@ INTERACTIVE ELEMENTS ON SCREEN:
 {chr(10).join(elements_text) if elements_text else "No elements found"}
 
 TASK:
-Decide the next action to achieve the user's goal.
-- If the current screen/page ALREADY fulfills the goal, return action="done" and is_terminal=true.
-- To click an element, choose its EXACT integer [ID] from the list above.
-- If the element you need is NOT in the list, return element_id=null so vision fallback will handle it.
+Decide the single next action to achieve the user's goal.
+- If the entire user's request (including all data entries/transactions) is completely finished, return action="done" and is_terminal=true.
+  CRITICAL: If the goal asks to create, register, or enter data (e.g. create invoice, add items, set vendor), DO NOT return "done" just because you are on the screen! You must first click "اضافة جديد" (New) or target input fields.
+- To click a button, link, or tab, choose its EXACT integer [ID] from the list above with action="click".
+- To type into an input/select field, choose its integer [ID] with action="type", and specify "text".
+- To press keyboard keys (e.g. Tab, Enter), use action="press_key" and specify "key".
+- If the element you need is NOT in the list or requires visual table/grid inspection, return element_id=null so vision fallback will handle it.
 
 OUTPUT FORMAT (JSON only):
 {{
-  "thought": "شرح موجز بالعربية للإجراء",
-  "action": "click" | "done" | "wait",
+  "thought": "شرح موجز بالعربية للخطوة التالية",
+  "action": "click" | "type" | "press_key" | "done" | "wait",
   "element_id": integer ID from list or null,
+  "text": "text to type if action is type, else null",
+  "key": "Enter|Tab|Escape if action is press_key, else null",
   "is_terminal": true or false
 }}
 """
