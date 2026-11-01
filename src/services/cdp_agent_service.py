@@ -6,6 +6,8 @@ Eliminates session/login friction by connecting to Chrome/Edge via CDP WebSocket
 
 import asyncio
 import json
+from pathlib import Path
+import re
 from typing import Any, Optional
 import httpx
 import structlog
@@ -35,6 +37,16 @@ class CdpAgentService:
         2. رابط نفق: 'https://xxx.devtunnels.ms' -> 'https://xxx.devtunnels.ms', 'wss://xxx.devtunnels.ms'
         """
         clean_h = host.strip().rstrip("/")
+
+        # التعامل الآلي الصارم مع أنفاق مايكروسوفت السحابية DevTunnels (Task A.4)
+        if ".devtunnels.ms" in clean_h:
+            if not clean_h.startswith("http"):
+                clean_h = "https://" + clean_h
+            clean_h = re.sub(r":\d+$", "", clean_h)
+            base_http = clean_h
+            base_ws = "wss://" + clean_h[len("https://"):]
+            return base_http, base_ws
+
         if clean_h.startswith("https://"):
             base_http = clean_h
             base_ws = "wss://" + clean_h[len("https://"):]
@@ -47,56 +59,136 @@ class CdpAgentService:
         return base_http, base_ws
 
     async def is_cdp_available(self, port: Optional[int] = None, host: str = "127.0.0.1") -> bool:
-        """فحص ما إذا كان المتصفح يعمل مع منفذ تصحيح الأخطاء المفتوح"""
+        """فحص ما إذا كان المتصفح يعمل مع منفذ تصحيح الأخطاء المفتوح مع إعادة المحاولة للأنفاق السحابية (Task A.6)"""
         p = port or self.default_port
         h = host or "127.0.0.1"
         base_http, _ = self._resolve_urls(h, p)
-        try:
-            async with httpx.AsyncClient(timeout=1.5, verify=False) as client:
-                res = await client.get(f"{base_http}/json/version")
-                return res.status_code == 200
-        except Exception:
-            return False
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=3.0, verify=False) as client:
+                    res = await client.get(f"{base_http}/json/version")
+                    if res.status_code == 200:
+                        return True
+            except Exception:
+                if attempt == 0:
+                    await asyncio.sleep(0.35)
+        return False
+
+    async def ensure_cdp_available(self, port: Optional[int] = None, host: str = "127.0.0.1") -> bool:
+        """
+        فحص توفر منفذ تصحيح الأخطاء، وإذا كان الاتصال محلياً والمنفذ مغلقاً،
+        يقوم تلقائياً بتشغيل متصفح Chrome بمنفذ تصحيح الأخطاء 9222 وبروفايل معزول لضمان عمل الوكيل فوراً بدون أوامر يدوية.
+        """
+        p = port or self.default_port
+        h = host or "127.0.0.1"
+        if await self.is_cdp_available(p, h):
+            return True
+
+        clean_h = h.lower().replace("http://", "").replace("https://", "").split(":")[0]
+        if clean_h in ("127.0.0.1", "localhost"):
+            logger.info("Local Chrome CDP offline; auto-spawning Chrome with remote debugging...", port=p)
+            try:
+                import subprocess, shutil, sys, os
+                chrome_candidates = [
+                    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                    r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                    shutil.which("chrome"),
+                ]
+                chrome_path = next((c for c in chrome_candidates if c and os.path.exists(c)), None)
+                if chrome_path:
+                    user_data = r"C:\chrome-dev-profile"
+                    os.makedirs(user_data, exist_ok=True)
+                    cmd = [
+                        chrome_path,
+                        f"--remote-debugging-port={p}",
+                        "--remote-debugging-address=0.0.0.0",
+                        f"--user-data-dir={user_data}",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "http://localhost:4200/core",
+                    ]
+                    creationflags = 0
+                    if sys.platform == "win32":
+                        DETACHED_PROCESS = 0x00000008
+                        CREATE_NEW_PROCESS_GROUP = 0x00000200
+                        creationflags = DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+                    self._chrome_proc = subprocess.Popen(
+                        cmd,
+                        creationflags=creationflags,
+                        close_fds=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    logger.info("Chrome auto-spawned successfully with PID", pid=self._chrome_proc.pid)
+
+                    # فحص الإتاحة لمدة تصل إلى 5 ثوانٍ
+                    for _ in range(10):
+                        await asyncio.sleep(0.5)
+                        if await self.is_cdp_available(p, h):
+                            logger.info("Auto-spawned Chrome CDP is now online and reachable ✅", port=p)
+                            return True
+            except Exception as e:
+                logger.error("Failed to auto-launch Chrome with CDP", error=str(e))
+
+        return False
 
     async def get_active_erp_tab(self, port: Optional[int] = None, host: str = "127.0.0.1", title_match: str = "") -> Optional[dict[str, Any]]:
         """
-        البحث عن التبويب النشط لنظام DynamicPro ERP واستخراج عنوان الـ WebSocket للتصحيح.
+        البحث عن التبويب النشط لنظام DynamicPro ERP واستخراج عنوان الـ WebSocket للتصحيح مع إعادة المحاولة.
         """
         p = port or self.default_port
         h = host or "127.0.0.1"
         base_http, base_ws = self._resolve_urls(h, p)
-        try:
-            async with httpx.AsyncClient(timeout=2.0, verify=False) as client:
-                res = await client.get(f"{base_http}/json")
-                if res.status_code != 200:
-                    return None
-                tabs: list[dict[str, Any]] = res.json()
-                pages = [t for t in tabs if t.get("type") == "page"]
-                if not pages:
-                    return None
+        for attempt in range(2):
+            try:
+                async with httpx.AsyncClient(timeout=4.0, verify=False) as client:
+                    res = await client.get(f"{base_http}/json")
+                    if res.status_code != 200:
+                        continue
+                    tabs: list[dict[str, Any]] = res.json()
+                    pages = [t for t in tabs if t.get("type") == "page"]
+                    if not pages:
+                        # إنشاء تبويب ERP جديد فوراً إذا لم يكن هناك تبويبات صفحات مفتوحة
+                        try:
+                            new_tab_res = await client.put(f"{base_http}/json/new?http://localhost:4200/core")
+                            if new_tab_res.status_code == 200:
+                                await asyncio.sleep(1.0)
+                                pages = [new_tab_res.json()]
+                        except Exception:
+                            pass
 
-                target_tab = pages[0]
-                # أولوية 1: التبويب الذي يحتوي على كلمة dynamic أو العنوان المطلوب
-                if title_match:
+                    if not pages:
+                        continue
+
+                    target_tab = pages[0]
+                    # أولوية 1: التبويب الذي يحتوي على كلمة dynamic أو core أو العنوان المطلوب
                     for t in pages:
                         title = t.get("title", "").lower()
                         url = t.get("url", "").lower()
-                        if title_match.lower() in title or title_match.lower() in url:
+                        if (
+                            (title_match and title_match.lower() in title)
+                            or (title_match and title_match.lower() in url)
+                            or "dynamic" in title
+                            or "dynamic" in url
+                            or "4200" in url
+                            or "core" in url
+                        ):
                             target_tab = t
                             break
 
-                # ضبط عنوان الـ WebSocket للتوافق مع IP أو نفق الجهاز المستهدف
-                ws_url = target_tab.get("webSocketDebuggerUrl", "")
-                if ws_url:
-                    import re
-                    match = re.search(r"/(devtools/.*)$", ws_url)
-                    if match:
-                        target_tab["webSocketDebuggerUrl"] = f"{base_ws}/{match.group(1)}"
-
-                return target_tab
-        except Exception as e:
-            logger.warning("Failed to discover Chrome tabs over CDP", error=str(e), host=h, port=p)
-            return None
+                    # ضبط عنوان الـ WebSocket للتوافق مع IP أو نفق الجهاز المستهدف
+                    tab_id = target_tab.get("id")
+                    if tab_id:
+                        clean_ws_base = base_ws.rstrip("/")
+                        ws_url = f"{clean_ws_base}/devtools/page/{tab_id}"
+                        target_tab["webSocketDebuggerUrl"] = ws_url
+                        target_tab["clean_ws_url"] = ws_url
+                    return target_tab
+            except Exception:
+                if attempt == 0:
+                    await asyncio.sleep(0.35)
+        return None
 
     async def execute_cdp_command(
         self, ws_url: str, method: str, params: Optional[dict[str, Any]] = None, timeout: float = 6.0
@@ -159,7 +251,7 @@ class CdpAgentService:
         return s
 
     async def get_page_state(self, ws_url: str) -> dict[str, Any]:
-        """استخراج حالة الصفحة الحالية: الرابط، العنوان، والنصوص البارزة في الترويسات"""
+        """استخراج حالة الصفحة الحالية: الرابط، العنوان، النصوص البارزة، والشاشة النشطة حالياً عبر الجسر"""
         script = """
         (function() {
             const headings = [];
@@ -167,10 +259,14 @@ class CdpAgentService:
                 const txt = (el.innerText || el.textContent || '').trim();
                 if (txt && txt.length < 100) headings.push(txt);
             });
+            const activeScreen = (window.DynamicERP && typeof window.DynamicERP.getActiveScreen === 'function')
+                ? window.DynamicERP.getActiveScreen()
+                : null;
             return {
                 url: window.location.href,
                 title: document.title,
-                headings: headings.slice(0, 5)
+                headings: headings.slice(0, 5),
+                activeScreen: activeScreen
             };
         })()
         """
@@ -180,7 +276,7 @@ class CdpAgentService:
                 return res
         except Exception as e:
             logger.warn("Failed to get page state", error=str(e))
-        return {"url": "", "title": "", "headings": []}
+        return {"url": "", "title": "", "headings": [], "activeScreen": None}
 
     async def get_viewport_metrics(self, ws_url: str) -> dict[str, float]:
         """
@@ -545,6 +641,29 @@ class CdpAgentService:
             logger.warning("CDP Bridge navigateToScreen failed", error=str(e))
             return False
 
+    async def get_user_authorized_screens(self, ws_url: str) -> list[dict[str, Any]]:
+        """
+        استدعاء مباشر لجسر window.DynamicERP.listUserPages() لجلب الشاشات المسموحة للمستخدم الحالي
+        مباشرة من ذاكرة المتصفح مع اسم الموديول والاسم العربي والإنجليزي ورقم الصفحة.
+        """
+        script = """
+        (function() {
+            if (window.DynamicERP && typeof window.DynamicERP.listUserPages === 'function') {
+                return window.DynamicERP.listUserPages();
+            }
+            if (window.DynamicERP && typeof window.DynamicERP.listScreens === 'function') {
+                return window.DynamicERP.listScreens();
+            }
+            return [];
+        })()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=8.0)
+            return res if isinstance(res, list) else []
+        except Exception as e:
+            logger.warning("CDP Bridge get_user_authorized_screens failed", error=str(e))
+            return []
+
     async def fill_erp_form_bridge(self, ws_url: str, payload: dict[str, Any]) -> dict[str, Any]:
         """
         حقن وتعبئة الفاتورة وجدول الأصناف مباشرة عبر جسر window.DynamicERP.fillFormData(payload)
@@ -577,10 +696,10 @@ class CdpAgentService:
                 }}
             }}
 
-            // 2. الأولوية الثانية: التعبئة المباشرة فائقة الدقة لحقول الهيدر وجدول الأصناف
-            async function selectNgSelect(selector, targetVal) {{
+            // 2. محرك التعبئة المعمم فائق الدقة (Generic Polymorphic DOM Injector - Task B.3 & A.1.2)
+            async function selectNgSelect(target, targetVal) {{
                 if (!targetVal) return false;
-                const sel = document.querySelector(selector);
+                const sel = typeof target === 'string' ? document.querySelector(target) : target;
                 if (!sel) return false;
                 const container = sel.querySelector('.ng-select-container') || sel;
                 container.click();
@@ -604,66 +723,132 @@ class CdpAgentService:
                 return false;
             }}
 
-            const header = payload.header || {{}};
-            let filledCount = 0;
-            if (header.SupplierName) {{
-                if (await selectNgSelect('ng-select#SupplierID', header.SupplierName)) filledCount++;
-            }}
-            if (header.StoreName) {{
-                const term = header.StoreName.includes(' ') ? header.StoreName.split(' ')[0] : header.StoreName;
-                if (await selectNgSelect('ng-select#StoreID', term) || await selectNgSelect('ng-select#StoreID', header.StoreName)) filledCount++;
-            }}
-            if (header.PurchaseTypeName) {{
-                if (await selectNgSelect('ng-select#POSetting', header.PurchaseTypeName)) filledCount++;
-            }}
-            if (header.ProjectName) {{
-                if (await selectNgSelect('ng-select#ProjectID', header.ProjectName)) filledCount++;
+            function findFieldElement(fieldName) {{
+                const candidates = [
+                    `[formcontrolname='${{fieldName}}']`,
+                    `[formcontrolname='${{fieldName.toLowerCase()}}']`,
+                    `#${{fieldName}}`,
+                    `#${{fieldName.toLowerCase()}}`,
+                    `input[name='${{fieldName}}']`,
+                    `select[name='${{fieldName}}']`,
+                    `textarea[name='${{fieldName}}']`
+                ];
+                for (const c of candidates) {{
+                    const el = document.querySelector(c);
+                    if (el) return el;
+                }}
+
+                // المطابقة المعممة بواسطة تسميات الحقول بالعربية أو الإنجليزية (Label-Anchored Matching)
+                // تتيح تعبئة أي حقل في أي شاشة من الـ 821 شاشة حتى لو اختلف اسم الـ formControl
+                try {{
+                    const labels = Array.from(document.querySelectorAll('label'));
+                    const cleanField = fieldName.trim().toLowerCase();
+                    const matchedLabel = labels.find(l => {{
+                        const txt = (l.textContent || '').trim().toLowerCase();
+                        return txt && (txt === cleanField || txt.includes(cleanField) || cleanField.includes(txt));
+                    }});
+                    if (matchedLabel) {{
+                        const forAttr = matchedLabel.getAttribute('for');
+                        if (forAttr) {{
+                            const target = document.getElementById(forAttr);
+                            if (target) return target;
+                        }}
+                        const parent = matchedLabel.closest('.form-group, .col, .field, div, td, tr');
+                        if (parent) {{
+                            const inner = parent.querySelector('input:not([type="hidden"]), select, textarea, ng-select');
+                            if (inner) return inner;
+                        }}
+                    }}
+                }} catch(e) {{
+                    console.warn('Label match error:', e);
+                }}
+
+                return null;
             }}
 
-            // 3. تعبئة الأصناف والكميات مع معالجة نافذة تأكيد الكمية التلقائية
-            const items = payload.items || [];
+            async function fillSingleControl(fieldName, val) {{
+                if (val === undefined || val === null || val === '') return false;
+                const el = findFieldElement(fieldName);
+                if (!el) return false;
+
+                const isNgSelect = el.tagName.toLowerCase() === 'ng-select' || el.classList.contains('ng-select');
+                if (isNgSelect) {{
+                    const strVal = String(val);
+                    const firstTerm = strVal.includes(' ') ? strVal.split(' ')[0] : strVal;
+                    return await selectNgSelect(el, strVal) || await selectNgSelect(el, firstTerm);
+                }}
+
+                if (el.type === 'checkbox') {{
+                    el.checked = Boolean(val);
+                    el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    return true;
+                }}
+
+                el.focus();
+                el.value = val;
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                await new Promise(r => setTimeout(r, 80));
+                return true;
+            }}
+
+            // أ. تعبئة حقول الهيدر ديناميكياً لأي وثيقة
+            const header = payload.header || {{}};
+            let filledCount = 0;
+            for (const [key, val] of Object.entries(header)) {{
+                if (await fillSingleControl(key, val)) {{
+                    filledCount++;
+                }}
+            }}
+
+            // ب. تعبئة أسطر الجدول / الأصناف ديناميكياً لأي وثيقة
+            const items = payload.items || payload.lines || [];
             let itemsAdded = 0;
             for (const item of items) {{
-                const prodSel = document.querySelector('ng-select#product');
-                if (!prodSel || !item.name) continue;
-                const container = prodSel.querySelector('.ng-select-container') || prodSel;
-                container.click();
-                await new Promise(r => setTimeout(r, 120));
-                const input = prodSel.querySelector('input');
-                if (input) {{
-                    input.focus();
-                    input.value = item.name;
-                    input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                }}
-                await new Promise(r => setTimeout(r, 450));
-                const panels = Array.from(document.querySelectorAll('body > ng-dropdown-panel, ng-dropdown-panel, .ng-dropdown-panel'));
-                const lastPanel = panels[panels.length - 1];
-                if (lastPanel) {{
-                    const opts = Array.from(lastPanel.querySelectorAll('.ng-option, [role="option"]'));
-                    const match = opts.find(o => (o.textContent || '').trim().includes(item.name)) || opts[0];
-                    if (match) {{
-                        match.click();
-                        // التعامل التلقائي مع مودال الكمية إن ظهر
-                        await new Promise(r => setTimeout(r, 350));
-                        const qtyInp = document.querySelector('input#productQty');
-                        const continueBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'متابعة');
-                        if (qtyInp && continueBtn && item.qty !== undefined) {{
-                            qtyInp.focus();
-                            qtyInp.value = item.qty;
-                            qtyInp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                            qtyInp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-                            await new Promise(r => setTimeout(r, 120));
-                            continueBtn.click();
-                            await new Promise(r => setTimeout(r, 300));
-                        }}
-                        itemsAdded++;
+                let itemFilled = false;
+
+                // إذا كان هناك مدخل صنف ng-select
+                const prodSel = document.querySelector('ng-select#product, [formcontrolname="product"], [formcontrolname="AccID"], ng-select#AccID, table ng-select');
+                const itemName = item.product || item.name || item.AccID || item.ItemName;
+                if (prodSel && itemName) {{
+                    if (await selectNgSelect(prodSel, itemName)) {{
+                        itemFilled = true;
                     }}
                 }}
+
+                // تعبئة باقي الحقول في السطر (مثل الكمية والسعر والمدين والدائن)
+                for (const [col, colVal] of Object.entries(item)) {{
+                    if (col !== 'product' && col !== 'name' && col !== 'AccID' && col !== 'ItemName') {{
+                        if (await fillSingleControl(col, colVal)) {{
+                            itemFilled = true;
+                        }}
+                    }}
+                }}
+
+                // معالجة المودال التلقائي للكمية أو التأكيد إن ظهر
+                await new Promise(r => setTimeout(r, 350));
+                const qtyInp = document.querySelector('input#productQty, [formcontrolname="productQty"], input[type="number"]');
+                const continueBtn = Array.from(document.querySelectorAll('button')).find(b => {{
+                    const t = (b.textContent || '').trim();
+                    return t === 'متابعة' || t === 'تأكيد' || t === 'موافق' || t === 'إضافة';
+                }});
+                if (qtyInp && continueBtn && (item.productQty !== undefined || item.qty !== undefined)) {{
+                    const qVal = item.productQty !== undefined ? item.productQty : item.qty;
+                    qtyInp.focus();
+                    qtyInp.value = qVal;
+                    qtyInp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                    qtyInp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                    await new Promise(r => setTimeout(r, 120));
+                    continueBtn.click();
+                    await new Promise(r => setTimeout(r, 300));
+                }}
+
+                if (itemFilled) itemsAdded++;
             }}
 
             return {{
                 success: filledCount > 0 || itemsAdded > 0,
-                method: 'dom_precision',
+                method: 'dom_precision_generic',
                 filled_count: filledCount,
                 items_count: itemsAdded
             }};
@@ -675,6 +860,110 @@ class CdpAgentService:
         except Exception as e:
             logger.error("Failed to execute bridge/precision form fill", error=str(e))
             return {"success": False, "error": str(e)}
+
+    async def inspect_active_page_dom(self, ws_url: str) -> dict[str, Any]:
+        """
+        فحص الـ DOM المباشر للشاشة المفتوحة حالياً في المتصفح لاستخراج جميع عناصر Angular
+        والـ formControls والتسميات العربية والجداول تلقائياً (Self-Discovery Engine).
+        """
+        script = """
+        (function() {
+            try {
+                const url = window.location.href;
+                const match = url.match(/page_id=(\\d+)/i) || url.match(/\\/(\\d+)(?:[?#]|$)/) || url.match(/#\\/[^\\/]+\\/(\\d+)/);
+                const pageId = match ? parseInt(match[1]) : null;
+
+                const headerEl = document.querySelector('h1, h2, h3, .page-title, .breadcrumb-item.active');
+                const pageTitle = headerEl ? (headerEl.textContent || '').trim() : document.title;
+
+                const controls = [];
+                const elements = Array.from(document.querySelectorAll('[formcontrolname], input:not([type="hidden"]), select, textarea, ng-select'));
+                const seenNames = new Set();
+
+                for (const el of elements) {
+                    const fcName = el.getAttribute('formcontrolname') || el.getAttribute('name') || el.id;
+                    if (!fcName || seenNames.has(fcName.toLowerCase())) continue;
+                    seenNames.add(fcName.toLowerCase());
+
+                    let label = '';
+                    if (el.id) {
+                        const lbl = document.querySelector(`label[for="${el.id}"]`);
+                        if (lbl) label = (lbl.textContent || '').trim();
+                    }
+                    if (!label) {
+                        const parent = el.closest('.form-group, .col, .field, div');
+                        if (parent) {
+                            const lbl = parent.querySelector('label');
+                            if (lbl) label = (lbl.textContent || '').trim();
+                        }
+                    }
+                    if (!label) {
+                        label = el.getAttribute('placeholder') || el.getAttribute('title') || fcName;
+                    }
+
+                    let type = el.tagName.toLowerCase();
+                    if (type === 'input') type = el.type || 'text';
+                    if (el.classList.contains('ng-select') || type === 'ng-select') type = 'select_typeahead';
+
+                    controls.push({
+                        name: fcName,
+                        label: label,
+                        type: type,
+                        required: el.hasAttribute('required') || el.getAttribute('aria-required') === 'true'
+                    });
+                }
+
+                const grids = [];
+                const tables = Array.from(document.querySelectorAll('table'));
+                for (const table of tables) {
+                    const headers = Array.from(table.querySelectorAll('thead th, tr:first-child th'))
+                        .map(th => (th.textContent || '').trim())
+                        .filter(Boolean);
+                    if (headers.length >= 2) {
+                        grids.push({ headers: headers });
+                    }
+                }
+
+                return {
+                    page_id: pageId,
+                    url: url,
+                    title: pageTitle,
+                    controls_count: controls.length,
+                    controls: controls,
+                    grids: grids
+                };
+            } catch(e) {
+                return { error: String(e) };
+            }
+        })()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=12.0)
+            return res if isinstance(res, dict) else {}
+        except Exception as e:
+            logger.error("Failed to inspect active page DOM", error=str(e))
+            return {"error": str(e)}
+
+    async def auto_catalog_active_page(self, ws_url: str, persist: bool = False) -> dict[str, Any]:
+        """
+        فحص وتسجيل الشاشة الحالية في المتصفح الحي تلقائياً في كتالوج النماذج
+        (Self-Learning Auto-Cataloging on Live Navigation).
+        """
+        from src.services.forms_catalog_service import forms_catalog_service
+
+        inspection = await self.inspect_active_page_dom(ws_url)
+        if not inspection or "error" in inspection or not inspection.get("page_id"):
+            logger.warning("Auto-catalog inspection skipped: no valid page_id found", inspection=inspection)
+            return {}
+
+        registered = forms_catalog_service.auto_register_from_dom_inspection(inspection, persist=persist)
+        logger.info(
+            "Auto-cataloged active screen successfully",
+            page_id=registered.get("page_id"),
+            title=registered.get("name_ar"),
+            controls=len(registered.get("header_fields", {})),
+        )
+        return registered
 
 
 # Singleton instance

@@ -1,0 +1,5749 @@
+[
+  {
+    "page_id": 223,
+    "screen_key": "Country",
+    "name_ar": "القطاع",
+    "name_en": "Governorate",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 224,
+    "screen_key": "Gov.",
+    "name_ar": "المنطقة",
+    "name_en": "Area",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 225,
+    "screen_key": "Sales Types",
+    "name_ar": "انواع المبيعات",
+    "name_en": "Sales Types",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 234,
+    "screen_key": "Customers",
+    "name_ar": "بيانات العملاء",
+    "name_en": "Customers",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 235,
+    "screen_key": "Customer Accounts",
+    "name_ar": "حسابات العملاء",
+    "name_en": "Customer Accounts",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 236,
+    "screen_key": "Accounting Professor",
+    "name_ar": "حساب الاستاذ",
+    "name_en": "General Ledger",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 246,
+    "screen_key": "Suppliers",
+    "name_ar": "بيانات الموردين",
+    "name_en": "Vendor Information",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 247,
+    "screen_key": "Vendor Accounts",
+    "name_ar": "حسابات الموردين",
+    "name_en": "Vendor Accounts",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 248,
+    "screen_key": "Deportation",
+    "name_ar": "ترحيل الحسابات",
+    "name_en": "Posting Accounts",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 250,
+    "screen_key": "Tax Declaration",
+    "name_ar": "الإقرار الضريبي",
+    "name_en": "General Ledger",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 255,
+    "screen_key": "Groups Permission",
+    "name_ar": "مجموعات الصلاحيات",
+    "name_en": "User Permission Groups",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 256,
+    "screen_key": "Groups Permission",
+    "name_ar": "الصلاحيات",
+    "name_en": "Permissions",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 261,
+    "screen_key": "Staff Groups",
+    "name_ar": "مجموعات الموظفين",
+    "name_en": "Employee Groups",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 262,
+    "screen_key": "Staff Groups",
+    "name_ar": "الموظفين",
+    "name_en": "Employees",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 231,
+    "screen_key": "Store Identification",
+    "name_ar": "تعريف المخازن",
+    "name_en": "Inventory Identification",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 241,
+    "screen_key": "Product Category",
+    "name_ar": "التصنيفات للمنتجات",
+    "name_en": "Product Category",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 291,
+    "screen_key": "Purchases Setting",
+    "name_ar": "انواع المشتريات",
+    "name_en": "Types of Purchases",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 298,
+    "screen_key": "Currencies",
+    "name_ar": "العملات",
+    "name_en": "Currencies",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 309,
+    "screen_key": "Details Entries",
+    "name_ar": "قيود تفصيلي",
+    "name_en": "Details Entries",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 310,
+    "screen_key": "Cost Center accounts",
+    "name_ar": "حسابات مركز التكلفة",
+    "name_en": "Cost Center accounts",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 311,
+    "screen_key": "General registration",
+    "name_ar": "القيد العام",
+    "name_en": "General registration",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 312,
+    "screen_key": "/ProductionEquations",
+    "name_ar": "معادلات التصنيع",
+    "name_en": "Bill of Materials (BOM)",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 313,
+    "screen_key": "/ProductionProcess",
+    "name_ar": "أوامر الانتاج",
+    "name_en": "Production Orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 314,
+    "screen_key": "Total cost centers",
+    "name_ar": "اجمالي مراكز التكاليف",
+    "name_en": "Total cost centers",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 315,
+    "screen_key": "Total Customers",
+    "name_ar": "ميزان مراجعة للعملاء",
+    "name_en": "Customer Trial Balance",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 316,
+    "screen_key": "Total suppliers",
+    "name_ar": "ميزان مراجعه للموردين",
+    "name_en": "Supplier Trial Balance",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 318,
+    "screen_key": "/ProductionExpences",
+    "name_ar": "مصاريف التصنيع",
+    "name_en": "Manufacturing expenses",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 305,
+    "screen_key": "Stores Invoices Source",
+    "name_ar": "مصادر الاذون",
+    "name_en": "Stores Invoices Source",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 307,
+    "screen_key": "Units",
+    "name_ar": "الوحدات",
+    "name_en": "Units",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 320,
+    "screen_key": "/INProduction",
+    "name_ar": "المواد الخام",
+    "name_en": "Raw materials",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 321,
+    "screen_key": "/OUTProduction",
+    "name_ar": "المواد المصنعة",
+    "name_en": "Manufactured materials",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 322,
+    "screen_key": "/ProductionExpencesReport",
+    "name_ar": "تقرير مصاريف التصنيع",
+    "name_en": "Manufacturing expenses Report",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 327,
+    "screen_key": "Central Registry",
+    "name_ar": "القيد المركزي",
+    "name_en": "Centralized Journal Entry",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 328,
+    "screen_key": "Company Setting",
+    "name_ar": "اعدادات الشركة",
+    "name_en": "Company Setting",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 331,
+    "screen_key": "Years Closing",
+    "name_ar": "اقفال السنوات",
+    "name_en": "Year-End Closing",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 337,
+    "screen_key": "Details purchases",
+    "name_ar": "تفاصيل المشتريات",
+    "name_en": "Details purchases",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 338,
+    "screen_key": "Suppliers accounts total",
+    "name_ar": "حسابات الموردين الاجمالي",
+    "name_en": "Suppliers accounts total",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 339,
+    "screen_key": "Total customer accounts",
+    "name_ar": "حسابات العملاء الاجمالي",
+    "name_en": "Total customer accounts",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 348,
+    "screen_key": "Sales Return Types",
+    "name_ar": "انواع مرتجعات البيع",
+    "name_en": "Sales Return Types",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 352,
+    "screen_key": "Purchases Return",
+    "name_ar": "تقرير مرتجعات المشتريات",
+    "name_en": "Purchases Return ٌReport",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 1003,
+    "screen_key": "LeaseTypes",
+    "name_ar": "الدفع والتجديد",
+    "name_en": "Payment and Renewal",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1004,
+    "screen_key": "Maintenance",
+    "name_ar": "الصيانه",
+    "name_en": "Maintenance",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1005,
+    "screen_key": "MaintenanceDetails",
+    "name_ar": "تفاصيل الصيانات الموجوده",
+    "name_en": "MaintenanceDetails",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1006,
+    "screen_key": "MaintenanceReports",
+    "name_ar": "تقرير تكاليف الصيانه",
+    "name_en": "MaintenanceReports",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1007,
+    "screen_key": "MostRequestedUnitsReport",
+    "name_ar": "تقرير الوحدات الاكثر طلبا للصيانه",
+    "name_en": "MostRequestedUnitsReport",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1008,
+    "screen_key": "MaintenanceResponseTimeSimpleReport",
+    "name_ar": "تقرير متوسط الاستجابه بين الصيانات",
+    "name_en": "MaintenanceResponseTimeSimpleReport",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1009,
+    "screen_key": "OccupancyRateReport",
+    "name_ar": "تقرير نسبة الإشغال",
+    "name_en": "Occupancy Rate Report",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1010,
+    "screen_key": "VacancyReport",
+    "name_ar": "تقرير الوحدات الشاغرة ومدة شغورها",
+    "name_en": "Vacancy Report",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1011,
+    "screen_key": "ExpiringContractsReport",
+    "name_ar": "تقرير العقود المنتهية خلال فترة قادمة",
+    "name_en": "Expiring Contracts Report",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1012,
+    "screen_key": "TenantTurnoverRateReport",
+    "name_ar": "تقرير معدل دوران المستأجرين",
+    "name_en": "Tenant Turnover Rate Report",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 404,
+    "screen_key": "Customers Category",
+    "name_ar": "تصنيفات العملاء",
+    "name_en": "Customers Category",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 405,
+    "screen_key": "Sales Channels",
+    "name_ar": "قنوات البيع",
+    "name_en": "Sales Channels",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 406,
+    "screen_key": "/Color",
+    "name_ar": "الالوان",
+    "name_en": "Colors",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 999,
+    "screen_key": "LeaseTypes",
+    "name_ar": "انواع الايجارات",
+    "name_en": "LeaseTypes",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1000,
+    "screen_key": "LeaseTypes",
+    "name_ar": "عقود الايجار",
+    "name_en": "LeaseTypes",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1001,
+    "screen_key": "Evictions",
+    "name_ar": "اخلاء الايجار",
+    "name_en": "LeaseTermination",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 1017,
+    "screen_key": "CustomerTrialDetailed",
+    "name_ar": "ميزان مراجعه عملاء تفصيلي",
+    "name_en": "CustomerTrialDetailed",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 1018,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "تعديل الطلبيات",
+    "name_en": "Shipping orders Edit",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 1021,
+    "screen_key": "Overtime Request",
+    "name_ar": "طلب وقت اضافي",
+    "name_en": "Overtime Request",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 1022,
+    "screen_key": "Overtime Request Approve",
+    "name_ar": "اعتماد طلب وقت اضافي",
+    "name_en": "Overtime Request Approve",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 1015,
+    "screen_key": "SupplierTrialDetailed",
+    "name_ar": "ميزان مراجعه موردين تفصيلي",
+    "name_en": "SupplierTrialDetailed",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2426,
+    "screen_key": "Customer Accounts",
+    "name_ar": "حسابات العملاء",
+    "name_en": "Customer Accounts",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2427,
+    "screen_key": "Accounting Professor",
+    "name_ar": "حساب الاستاذ",
+    "name_en": "General Ledger",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2428,
+    "screen_key": "Income List",
+    "name_ar": "قائمة الدخل",
+    "name_en": "Income List",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2429,
+    "screen_key": "Trial Balance",
+    "name_ar": "ميزان المراجعة",
+    "name_en": "Trial Balance",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2430,
+    "screen_key": "Balance Sheet",
+    "name_ar": "الميزانية العمومية",
+    "name_en": "Balance Sheet",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2431,
+    "screen_key": "Vendor Accounts",
+    "name_ar": "حسابات الموردين",
+    "name_en": "Vendor Accounts",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2432,
+    "screen_key": "Total Traffic Report",
+    "name_ar": "تقرير حركة اجمالي",
+    "name_en": "Total Movement Report",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2433,
+    "screen_key": "Inventory",
+    "name_ar": "الجرد",
+    "name_en": "Inventory Counting",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2434,
+    "screen_key": "Cost Center accounts",
+    "name_ar": "حسابات مركز التكلفة",
+    "name_en": "Cost Center accounts",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2435,
+    "screen_key": "General registration",
+    "name_ar": "القيد العام",
+    "name_en": "General Journal Entry",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2436,
+    "screen_key": "Total cost centers",
+    "name_ar": "اجمالي مراكز التكاليف",
+    "name_en": "Total cost centers",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2437,
+    "screen_key": "Total suppliers",
+    "name_ar": "اجمالي الموردين",
+    "name_en": "Total suppliers",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2438,
+    "screen_key": "Total Products:",
+    "name_ar": "ميزان المراجعة للمنتجات",
+    "name_en": "Total Products",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2439,
+    "screen_key": "A detailed report of the movement",
+    "name_ar": "تقرير حركة تفصيلي",
+    "name_en": "Detailed Movement Report",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2440,
+    "screen_key": "Audit Products Balance",
+    "name_ar": "ميزان المراجعة للمنتجات",
+    "name_en": "Product Trial Balance",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2441,
+    "screen_key": "Central Registry",
+    "name_ar": "القيد المركزي",
+    "name_en": "Central Journal Entry",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2448,
+    "screen_key": "Details purchases",
+    "name_ar": "تفاصيل المشتريات",
+    "name_en": "Details purchases",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2449,
+    "screen_key": "Suppliers accounts total",
+    "name_ar": "حسابات الموردين الاجمالي",
+    "name_en": "Suppliers accounts total",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2450,
+    "screen_key": "Total customer accounts",
+    "name_ar": "حسابات العملاء الاجمالي",
+    "name_en": "Total customer accounts",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2451,
+    "screen_key": "/Sizes",
+    "name_ar": "المقاسات",
+    "name_en": "Sizes",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2452,
+    "screen_key": "/Dimantion",
+    "name_ar": "الابعاد",
+    "name_en": "Dimensions",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2453,
+    "screen_key": "Settings sales commissions",
+    "name_ar": "اعدادات عمولات البيع",
+    "name_en": "Settings sales commissions",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2454,
+    "screen_key": "Settings commissions shipping",
+    "name_ar": "اعدادات عمولات الشحن",
+    "name_en": "Settings commissions shipping",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 2455,
+    "screen_key": "Fixed assets",
+    "name_ar": "الاصول الثابتة",
+    "name_en": "Fixed assets",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 2456,
+    "screen_key": "/ShipmentCompanyView",
+    "name_ar": "شركات الشحن",
+    "name_en": "shipping companies",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 2457,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "طلبيات الشحن",
+    "name_en": "Shipping orders",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 2458,
+    "screen_key": "/ContractStates",
+    "name_ar": "متابعات اوامر الشحن",
+    "name_en": "Rebounds shipping orders",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 2459,
+    "screen_key": "/#",
+    "name_ar": "Comming\"استلام خطوط انتاج\"",
+    "name_en": "Comming \"receipt of the production lines\"",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2460,
+    "screen_key": "/ESTProductionView",
+    "name_ar": "اجمالي طلبيات الانتاج",
+    "name_en": "Production orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2461,
+    "screen_key": "/SupplyChinView",
+    "name_ar": "خطوط انتاج",
+    "name_en": "Production lines",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2462,
+    "screen_key": "/Matrial",
+    "name_ar": "الخامات",
+    "name_en": "Raw materials",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2463,
+    "screen_key": "/#",
+    "name_ar": "احتياجات خط الانتاج",
+    "name_en": "Comming \"production line needs\"",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2464,
+    "screen_key": "/ProductionReport",
+    "name_ar": "تقرير تشغيلات المصانع",
+    "name_en": "Factories report startups",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2465,
+    "screen_key": "/#",
+    "name_ar": "قدرات خط الانتاج",
+    "name_en": "Production line capabilities",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2466,
+    "screen_key": "/#",
+    "name_ar": "Comming\"تقرير مادة مصنعة\"",
+    "name_en": "Comming \"report manufactured material\"",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2467,
+    "screen_key": "/#",
+    "name_ar": "Comming\"تقييم انتاجية عامل\"",
+    "name_en": "Comming \"evaluation of the productivity factor\"",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2468,
+    "screen_key": "/#",
+    "name_ar": "Comming\"تقييم انتاجية ماكينة\"",
+    "name_en": "Comming \"evaluation of the productivity of machine\"",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2469,
+    "screen_key": "/#",
+    "name_ar": "Comming\"المواد الخام\"",
+    "name_en": "Comming \"raw materials\"",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2481,
+    "screen_key": "Receivables",
+    "name_ar": "المستحقات",
+    "name_en": "Receivables",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2408,
+    "screen_key": "Advertising",
+    "name_ar": "الاعلانات",
+    "name_en": "Advertising",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2409,
+    "screen_key": "/CustomerRequstView",
+    "name_ar": "طلبات الاستثمار",
+    "name_en": "Investment Requests",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2410,
+    "screen_key": "Customer visits",
+    "name_ar": "زيارات العميل",
+    "name_en": "Customer visits",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2411,
+    "screen_key": "Customer calls",
+    "name_ar": "مكالمات العميل",
+    "name_en": "Customer calls",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2416,
+    "screen_key": "Visit Type",
+    "name_ar": "انواع الزيارات",
+    "name_en": "Visit Type",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2417,
+    "screen_key": "Call Types",
+    "name_ar": "انواع المكالمات",
+    "name_en": "Call Types",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2527,
+    "screen_key": "Flows Details",
+    "name_ar": "تفاصيل التدفقات",
+    "name_en": "Flows Details",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2528,
+    "screen_key": "Number of clients",
+    "name_ar": "عدد العملاء",
+    "name_en": "Number of clients",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2529,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد العملاء لكل رجل بيع",
+    "name_en": "Number for each sales man",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2530,
+    "screen_key": "number of each advertisement",
+    "name_ar": "عدد العملاء لكل اعلان",
+    "name_en": "Number of each advertisement",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2531,
+    "screen_key": "number of each advertisement with seller",
+    "name_ar": "عدد العملاء لكل اعلان مع بائع",
+    "name_en": "Number of each advertisement with seller",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2532,
+    "screen_key": "number of visits",
+    "name_ar": "عدد الزيارات",
+    "name_en": "Number of visits",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2533,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد الزيارات لكل رجل بيع",
+    "name_en": "Number of Visits per Sales Representative",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2534,
+    "screen_key": "number of each advertisement",
+    "name_ar": "عدد الزيارات لكل اعلان",
+    "name_en": "Number of each advertisement",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2535,
+    "screen_key": "number of each advertisement with seller",
+    "name_ar": "عدد الزيارات لكل اعلان مع بائع",
+    "name_en": "Number of Visits per Advertisement with Sales",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2536,
+    "screen_key": "Number of calls",
+    "name_ar": "عدد المكالمات",
+    "name_en": "Number of calls",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2537,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد المكالمات لكل رجل بيع",
+    "name_en": "Number of Calls per Sales Representative",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2538,
+    "screen_key": "number of each advertisement",
+    "name_ar": "عدد المكالمات لكل اعلان",
+    "name_en": "Number of Calls per Advertisement",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2539,
+    "screen_key": "number of each advertisement with seller",
+    "name_ar": "عدد المكالمات لكل اعلان مع بائع",
+    "name_en": "Number of Calls per Advertisement with Sales",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2420,
+    "screen_key": "New Customers",
+    "name_ar": "العملاء الجدد",
+    "name_en": "New Customers",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2560,
+    "screen_key": "/ContractStatesArrived",
+    "name_ar": "اومر شحن مستلمة",
+    "name_en": "Received shipping orders",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 2800,
+    "screen_key": "/ProductionReport",
+    "name_ar": "عمال تصنيع",
+    "name_en": "Factories report startups",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 2839,
+    "screen_key": "/JobSheetWorkerMonthlyNumberReport",
+    "name_ar": "تقرير شهرى  اوامر الشغل للفنى",
+    "name_en": "Monthly Report of Work Orders for Technicians",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2840,
+    "screen_key": "/JobSheetForWorkersForTodayReport",
+    "name_ar": "تقرير اوامر الشغل لكل فنى اليوم",
+    "name_en": "Operation order report for each technical today",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2841,
+    "screen_key": "/JobSheetForErrorAppearence",
+    "name_ar": "تقرير ظهور الاعطال",
+    "name_en": "Failure Occurrence Report",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2842,
+    "screen_key": "/VisitRoutes",
+    "name_ar": "خطوط السير",
+    "name_en": "Routes",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2843,
+    "screen_key": "/JobSheetType",
+    "name_ar": "انواع امر الشغل",
+    "name_en": "Types of Work Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2844,
+    "screen_key": "/JobSheetError",
+    "name_ar": "اعطال امر الشغل",
+    "name_en": "Failures in Work Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2846,
+    "screen_key": "/CustomerDemand",
+    "name_ar": "طلبات العملاء",
+    "name_en": "Customer Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2847,
+    "screen_key": "/CustomerDemandType",
+    "name_ar": "نوع طلب الاستثمار",
+    "name_en": "Type of Investment Request",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2848,
+    "screen_key": "/RatingQuestions",
+    "name_ar": "أسئلة التقييم",
+    "name_en": "RatingQuestions",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2849,
+    "screen_key": "/EmployeeJobSheetRating",
+    "name_ar": "تقييم الفنيين حسب اوامر الشغل",
+    "name_en": "Technician Evaluation Based on Work Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2860,
+    "screen_key": "Pages",
+    "name_ar": "Pages",
+    "name_en": "Pages",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2861,
+    "screen_key": "Modules",
+    "name_ar": "Modules",
+    "name_en": "Modules",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2862,
+    "screen_key": "masters",
+    "name_ar": "masters",
+    "name_en": "masters",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2863,
+    "screen_key": "list",
+    "name_ar": "Lists",
+    "name_en": "list",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2865,
+    "screen_key": "Table Details",
+    "name_ar": "TableDetails",
+    "name_en": "Table Details",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2866,
+    "screen_key": "/CustomerDemandCRM",
+    "name_ar": "نوع طلبات العميل",
+    "name_en": "CustomerOrdersType",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2868,
+    "screen_key": "/CustomerDemand",
+    "name_ar": "العمل اليومى",
+    "name_en": "Daily Operations",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2869,
+    "screen_key": "Visit Type",
+    "name_ar": "انواع الزيارات",
+    "name_en": "Visit Type",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2870,
+    "screen_key": "Print Templates",
+    "name_ar": "قوالب الطباعة",
+    "name_en": "Print Templates",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2871,
+    "screen_key": "Visit Type",
+    "name_ar": "الزيارات",
+    "name_en": "Visits",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2872,
+    "screen_key": "/JobSheet",
+    "name_ar": "اوامر الشغل",
+    "name_en": "Work Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2873,
+    "screen_key": "/WorkShop",
+    "name_ar": "الورشه",
+    "name_en": "WorkShop",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2570,
+    "screen_key": "/JobSheetWorkerDailyNumberReport",
+    "name_ar": "تقرير يومى  اوامر الشغل للفنى",
+    "name_en": "Daily Report of Work Orders for Technicians",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2875,
+    "screen_key": "/SystemEdit",
+    "name_ar": "تعديل العقود",
+    "name_en": "Contract Modification",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2876,
+    "screen_key": "/RatingJobSheet",
+    "name_ar": "تقييم أمر الشغل",
+    "name_en": "Work Order Evaluation",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2877,
+    "screen_key": "Account Balance",
+    "name_ar": "اجمالي الحساب",
+    "name_en": "Account Balance",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2885,
+    "screen_key": "general Settings",
+    "name_ar": "إعادة الضبط",
+    "name_en": "Reset",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2895,
+    "screen_key": "A vacation request",
+    "name_ar": "طلب أجازه",
+    "name_en": "Vacation request",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2896,
+    "screen_key": "Approval of the manager on vacation",
+    "name_ar": "موافقه المدير على الاجازه",
+    "name_en": "Manager Approval on vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2897,
+    "screen_key": "Approval of the resources on vacation",
+    "name_ar": "موافقه الموارد البشرية على الاجازه",
+    "name_en": "HR Approval on vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2898,
+    "screen_key": "request a permission",
+    "name_ar": "طلب إذن",
+    "name_en": "Request a permission",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2899,
+    "screen_key": "Approval of the manager on the permission",
+    "name_ar": "موافقة المدير على الاذن",
+    "name_en": "Manager Approval on permission",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2900,
+    "screen_key": "Approval of the resources on the permission",
+    "name_ar": "موافقة الموارد البشرية على الاذن",
+    "name_en": "HR Approval on permission",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2904,
+    "screen_key": "Employee Discounts",
+    "name_ar": "خصومات الموظف",
+    "name_en": "Employee deductions",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2905,
+    "screen_key": "Employee Additions",
+    "name_ar": "إضافات الموظف",
+    "name_en": "Employee Additions",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2906,
+    "screen_key": "predecessor",
+    "name_ar": "اعتماد السلف",
+    "name_en": "Approval of loans",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2908,
+    "screen_key": "Attendance and Departure",
+    "name_ar": "الحضور والانصراف",
+    "name_en": "Attendance and Departure",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2909,
+    "screen_key": "report of employee attendance days",
+    "name_ar": "تقرير بايام الحضور للموظف",
+    "name_en": "Report of employee attendance days",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2910,
+    "screen_key": "recorded absence days report",
+    "name_ar": "تقرير بأيام الغياب المسجله",
+    "name_en": "Recorded absence days report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2911,
+    "screen_key": "report for all employees absence days",
+    "name_ar": "تقرير بكل أيام الغياب للموظفين",
+    "name_en": "Report for employees absence days",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2912,
+    "screen_key": "employee delays report",
+    "name_ar": "تقرير بتأخيرات الموظف",
+    "name_en": "Employee delays report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2913,
+    "screen_key": "total report for employee delays",
+    "name_ar": "تقرير باجمالي غيابات الموظف",
+    "name_en": "Total report for employee delays",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2914,
+    "screen_key": "not recorded employee absences report",
+    "name_ar": "تقرير بغيابات الموظف بدون المسجله",
+    "name_en": "Not recorded employee absences report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2915,
+    "screen_key": "monthly Number of hours for employee attendance",
+    "name_ar": "عدد ساعات الحضور الشهريه للموظف",
+    "name_en": "Monthly Number of hours for employee attendance",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2931,
+    "screen_key": "Employee permissions report",
+    "name_ar": "تقرير بأذون الموظف",
+    "name_en": "Employee permissions report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2942,
+    "screen_key": "Calculation and payment of salary",
+    "name_ar": "احتساب واستحقاق المرتب",
+    "name_en": "Calculation and payment of salary",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2945,
+    "screen_key": "Disbursed Employee salaries",
+    "name_ar": "مرتبات الموظف المصروفه",
+    "name_en": "Employee Salaries Paid",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2946,
+    "screen_key": "Prior departure time",
+    "name_ar": "المغادره قبل المعاد",
+    "name_en": "Early permission",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2947,
+    "screen_key": "Additional employee days",
+    "name_ar": "الايام الاضافيه للموظف",
+    "name_en": "Additional employee days",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2967,
+    "screen_key": "attendance and departure processing",
+    "name_ar": "معالجة الحضور والانصراف",
+    "name_en": "Attendance and departure processing",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2968,
+    "screen_key": "Customer calls Pending",
+    "name_ar": "مكالمات واجبة",
+    "name_en": "Mandatory Calls",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2969,
+    "screen_key": "Customer visits",
+    "name_ar": "زيارات واجبة",
+    "name_en": "Customer visits",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2970,
+    "screen_key": "Follow-up customers",
+    "name_ar": "متابعة العملاء",
+    "name_en": "Follow-up customers",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2971,
+    "screen_key": "/JobSheet",
+    "name_ar": "اوامر الشغل فني",
+    "name_en": "technical operation orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2972,
+    "screen_key": "Periods of assessment",
+    "name_ar": "فترات التقييم",
+    "name_en": "Periods of assessment",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2973,
+    "screen_key": "Languages",
+    "name_ar": "اللغات",
+    "name_en": "Languages",
+    "module": "AdminPanel"
+  },
+  {
+    "page_id": 2974,
+    "screen_key": "Evaluation proposals",
+    "name_ar": "مقترحات التقييم",
+    "name_en": "Evaluation proposals",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2975,
+    "screen_key": "available Training",
+    "name_ar": "التدريبات المتاحه",
+    "name_en": "available Training",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2976,
+    "screen_key": "Periodic assessment",
+    "name_ar": "التقييم الدورى",
+    "name_en": "Periodic assessment",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2977,
+    "screen_key": "Comprehensive Assessment",
+    "name_ar": "التقييم الشامل",
+    "name_en": "Overall assessment",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2978,
+    "screen_key": "Overall assessment report",
+    "name_ar": "التقرير المجمل للتقييمات",
+    "name_en": "Overall assessment report",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2979,
+    "screen_key": "Detailed Assessment Report",
+    "name_ar": "تقرير التقييم التفصيلى",
+    "name_en": "Detailed Assessment Report",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2980,
+    "screen_key": "Staff problems",
+    "name_ar": "مشاكل الموظفين",
+    "name_en": "Staff problems",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2981,
+    "screen_key": "evaluation Index Type",
+    "name_ar": "نوع مؤشر التقييم",
+    "name_en": "Evaluation Index Type",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2982,
+    "screen_key": "A total assessment",
+    "name_ar": "مجموعه التقييم",
+    "name_en": "Evaluation Group",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2983,
+    "screen_key": "Elements of evaluation",
+    "name_ar": "عناصر التقييم",
+    "name_en": "Elements of evaluation",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2984,
+    "screen_key": "Levels of assessment for managers",
+    "name_ar": "مستويات التقييم للمديرين",
+    "name_en": "Levels of evaluation for managers",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2919,
+    "screen_key": "number of hours for employee",
+    "name_ar": "عدد ساعات الموظف",
+    "name_en": "Employee Hours",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2923,
+    "screen_key": "additional number of hours for employees",
+    "name_ar": "عدد الساعات الإضافيه للموظف",
+    "name_en": "Additional number of hours for employees",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2929,
+    "screen_key": "Report shifts",
+    "name_ar": "تقرير الورديات",
+    "name_en": "Report shifts",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2986,
+    "screen_key": "Calibrator bonuses",
+    "name_ar": "تدريج العلاوات",
+    "name_en": "Incremental bonuses",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2988,
+    "screen_key": "Complaints and suggestions",
+    "name_ar": "الشكاوى والاقتراحات",
+    "name_en": "Complaints and suggestions",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2989,
+    "screen_key": "Resolving complaints and suggestions",
+    "name_ar": "حل الشكاوى والاقتراحات",
+    "name_en": "Resolving complaints and suggestions",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2990,
+    "screen_key": "Types of tasks",
+    "name_ar": "أنواع المهام",
+    "name_en": "Types of tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 2991,
+    "screen_key": "The questionnaire",
+    "name_ar": "الاستبيان",
+    "name_en": "Survey",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2992,
+    "screen_key": "required Questionnaires",
+    "name_ar": "الاستبيانات المطلوبه",
+    "name_en": "Required Survey",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2993,
+    "screen_key": "Answers of employees to the questionnaire",
+    "name_ar": "إجابات الموظفين على الاستبيان",
+    "name_en": "Answers of employees to the Survey",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2995,
+    "screen_key": "Types of tasks",
+    "name_ar": "مهام جديدة",
+    "name_en": "New tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 2996,
+    "screen_key": "Employee Tasks",
+    "name_ar": "مهمات الموظف",
+    "name_en": "Employee Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 2997,
+    "screen_key": "Call Results",
+    "name_ar": "نتائج المكالمات",
+    "name_en": "Call Results",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2998,
+    "screen_key": "visit Results",
+    "name_ar": "نتائج الزيارات",
+    "name_en": "visit Results",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 2999,
+    "screen_key": "Approval of the General Manager on vacation",
+    "name_ar": "موافقه المدير العام على الاجازه",
+    "name_en": "GM Approval on vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 3000,
+    "screen_key": "Ads Methods",
+    "name_ar": "طرق الاعلانات",
+    "name_en": "Ads Methods",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3001,
+    "screen_key": "Customer Actions",
+    "name_ar": "عمليات العميل",
+    "name_en": "Customer Actions",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3002,
+    "screen_key": "Sales Dashboard",
+    "name_ar": "الاحصائيات",
+    "name_en": "Dashboards",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3003,
+    "screen_key": "Ads comparison",
+    "name_ar": "مقارنة الاعلانات",
+    "name_en": "Ads comparison",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3004,
+    "screen_key": "/SparePartwithJob",
+    "name_ar": "تفاصيل امر شغل",
+    "name_en": "Work Order Details",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2959,
+    "screen_key": "Employee salary payment",
+    "name_ar": "صرف المرتبات للموظف",
+    "name_en": "Employee salary payment",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 3009,
+    "screen_key": "offers Dashboard",
+    "name_ar": "احصائيات العروض",
+    "name_en": "Offer Statistics",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 4001,
+    "screen_key": "Employee Check Type",
+    "name_ar": "نوع الحركه",
+    "name_en": "Employee Check Type",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4002,
+    "screen_key": "Employee In And Out",
+    "name_ar": "دخول وخروج الموظفين",
+    "name_en": "Employee In And Out",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4003,
+    "screen_key": "/JobSheet",
+    "name_ar": "بيانات اوامر الشغل",
+    "name_en": "operation order data",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 4004,
+    "screen_key": "Resigning Request",
+    "name_ar": "طلب إستقاله",
+    "name_en": "Resigning Request",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4005,
+    "screen_key": "Confirmation of the manager on the Resign",
+    "name_ar": "موافقة المدير على الإستقاله",
+    "name_en": "Confirmation of the manager on the Resign",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4006,
+    "screen_key": "Confirmation of the resources on the Resign",
+    "name_ar": "موافقة الموارد على الإستقاله",
+    "name_en": "Confirmation of the HR on the Resign",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4007,
+    "screen_key": "Custody Deliver",
+    "name_ar": "تسليم العهده",
+    "name_en": "Custody Deliver",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4008,
+    "screen_key": "In Out movement Report",
+    "name_ar": "تقرير بحركات التعيين والاستقالة",
+    "name_en": "In Out movement Report",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 3995,
+    "screen_key": "Dashboard of accounting",
+    "name_ar": "احصائيات الحسابات",
+    "name_en": "Dashboard of accounting",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 3996,
+    "screen_key": "representative target",
+    "name_ar": "تارجيت المندوبين",
+    "name_en": "Sales Representatives' Targets",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3997,
+    "screen_key": "representative target report",
+    "name_ar": "تقرير تارجيت المندوبين",
+    "name_en": "Sales Representatives' Targets Report",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 3999,
+    "screen_key": "Pre Attendance  before processing",
+    "name_ar": "الحضور والانصراف قبل المعالجه",
+    "name_en": "Pre Attendance  before processing",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 3888,
+    "screen_key": "AssetRenewals",
+    "name_ar": "تجديد الأصول الثابتة",
+    "name_en": "AssetRenewals",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 3889,
+    "screen_key": "AssetReplacement",
+    "name_ar": "إحلال الأصول الثابتة",
+    "name_en": "AssetReplacement",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 4600,
+    "screen_key": "/targettime",
+    "name_ar": "مستهدف المبيعات",
+    "name_en": "Sales Target",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 5000,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد العملاء لكل مدير",
+    "name_en": "Number of Clients per Manager",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 5001,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد العملاء لكل دولة",
+    "name_en": "Number for each Country",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 5002,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد العملاء لكل اعتماد",
+    "name_en": "Number for each Category",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 5680,
+    "screen_key": "ArchivingContractorsUnion",
+    "name_ar": "إتحاد المقاولين",
+    "name_en": "Contractors' Union",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5681,
+    "screen_key": "ArchivingIndustryRegister",
+    "name_ar": "السجل الصناعى",
+    "name_en": "Industrial Register",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5682,
+    "screen_key": "ArchivingWorkingLicense",
+    "name_ar": "رخصة التشغيل",
+    "name_en": "Operating License",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5683,
+    "screen_key": "ArchivingExaminationPosition",
+    "name_ar": "موقف الفحص",
+    "name_en": "Inspection Status",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5684,
+    "screen_key": "ArchivingReservationStatus",
+    "name_ar": "موقف الحجز",
+    "name_en": "Reservation Status",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5685,
+    "screen_key": "ArchivingTaxDeclaration",
+    "name_ar": "الإقرارات الضريبيه",
+    "name_en": "Tax Declarations",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5686,
+    "screen_key": "ArchivingAdditionalTax",
+    "name_ar": "ضريبة القيمة المضافه",
+    "name_en": "Value Added Tax (VAT)",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5687,
+    "screen_key": "ArchivingBatchTax",
+    "name_ar": "ضريبة الدفعه",
+    "name_en": "Payment Tax",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5688,
+    "screen_key": "ArchivingBussinessProfit",
+    "name_ar": "كسب العمل",
+    "name_en": "Earned Income",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5689,
+    "screen_key": "ArchivingBankBudget",
+    "name_ar": "ميزانية البنك",
+    "name_en": "Bank Balance",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5690,
+    "screen_key": "ArchivingSessions",
+    "name_ar": "الجلسات",
+    "name_en": "Sessions",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 5691,
+    "screen_key": "ArchivingFiles",
+    "name_ar": "الملفات",
+    "name_en": "Files",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6047,
+    "screen_key": "Next Step",
+    "name_ar": "الادارات",
+    "name_en": "Next Step",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6048,
+    "screen_key": "Task Periorty",
+    "name_ar": "اهمية المهام",
+    "name_en": "Task Periorty",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6050,
+    "screen_key": "Profile",
+    "name_ar": "الصفحة الشخصية",
+    "name_en": "Profile",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6028,
+    "screen_key": "ManagerApproved",
+    "name_ar": "موافقة المدير على المهمة",
+    "name_en": "ManagerApproved",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6030,
+    "screen_key": "Employee Tasks",
+    "name_ar": "تقرير مهمات الموظف",
+    "name_en": "Employee Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6031,
+    "screen_key": "Project Tasks",
+    "name_ar": "تقرير مهمات المشروع",
+    "name_en": "Project Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6032,
+    "screen_key": "Media",
+    "name_ar": "الملفات",
+    "name_en": "Files",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6074,
+    "screen_key": "Total Movment",
+    "name_ar": "إجمالى الحركات",
+    "name_en": "Total Movment",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 6076,
+    "screen_key": "LateSetting",
+    "name_ar": "لوائح التأخيرات",
+    "name_en": "Delay Policies",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6077,
+    "screen_key": "AbsenceSetting",
+    "name_ar": "لوائح الغياب",
+    "name_en": "Absence Setting",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6078,
+    "screen_key": "OverDaySetting",
+    "name_ar": "لوائح اضافى اليوم",
+    "name_en": "Daily Overtime Policies",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6079,
+    "screen_key": "OverHourSetting",
+    "name_ar": "لوائح اضافى الساعه",
+    "name_en": "Hourly Overtime Policies",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6080,
+    "screen_key": "TotalLateSetting",
+    "name_ar": "لوائح التأخيرات المجمعه",
+    "name_en": "Total Late Setting",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6081,
+    "screen_key": "Formal Vacation",
+    "name_ar": "لوائح الأجازات الرسميه",
+    "name_en": "Official holiday regulations",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6082,
+    "screen_key": "WorkShiftSetting",
+    "name_ar": "لوائح الورديات",
+    "name_en": "Shift Policies",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6083,
+    "screen_key": "WeekDaysSetting",
+    "name_ar": "لوائح الأيام الأسبوعيه",
+    "name_en": "Week Days Setting",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6084,
+    "screen_key": "LeaveEarlySetting",
+    "name_ar": "لوائح المغادره مبكرا",
+    "name_en": "Early Leave Setting",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6201,
+    "screen_key": "Total customer accounts",
+    "name_ar": "حسابات العملاء الاجمالي بالعملات",
+    "name_en": "Total Customer Accounts by Currency",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6534,
+    "screen_key": "CustomerOpenBalance",
+    "name_ar": "رصيد إفتتاحى عملاء",
+    "name_en": "CustomerOpenBalance",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6535,
+    "screen_key": "SupplierOpenBalance",
+    "name_ar": "رصيد إفتتاحى موردين",
+    "name_en": "SupplierOpenBalance",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6536,
+    "screen_key": "AccountOpenBalance",
+    "name_ar": "رصيد إفتتاحى حسابات",
+    "name_en": "AccountOpenBalance",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6537,
+    "screen_key": "/SupplierView",
+    "name_ar": "زيارات المورد",
+    "name_en": "Supplier Visits",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6538,
+    "screen_key": "/CallsView",
+    "name_ar": "مكالمات المورد",
+    "name_en": "Supplier Calls",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6539,
+    "screen_key": "/Supplier",
+    "name_ar": "الموردين الجدد",
+    "name_en": "New Supplier",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6088,
+    "screen_key": "Word Reports",
+    "name_ar": "طباعات word",
+    "name_en": "Word Reports",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6090,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "طلبيات الشحن الجزئي",
+    "name_en": "Partial Shipments Orders",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 6162,
+    "screen_key": "Accounting Professor",
+    "name_ar": "حساب مستخلصات المعدات",
+    "name_en": "Accounting Professor",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 6020,
+    "screen_key": "Admin",
+    "name_ar": "الحركات على السيستم",
+    "name_en": "System Transactions",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6551,
+    "screen_key": "/estProductionAvilability",
+    "name_ar": "كميات طلبيات الانتاج لم يتم تشغيلها",
+    "name_en": "Production Order Quantities Not Yet Processed",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6553,
+    "screen_key": "/SystemEdit",
+    "name_ar": "تقرير حالات اوامر بيع",
+    "name_en": "Sales Order Status Report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6556,
+    "screen_key": "Details Entries",
+    "name_ar": "مصمم تقارير الحسابات",
+    "name_en": "Accounts Reports Designer",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6558,
+    "screen_key": "Project Tasks",
+    "name_ar": "نسبة انجاز المشروع",
+    "name_en": "Project Achievement Percentage",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6559,
+    "screen_key": "Risk",
+    "name_ar": "المخاطر",
+    "name_en": "Risks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6560,
+    "screen_key": "TasksView",
+    "name_ar": "تقرير المهام تفصيلي",
+    "name_en": "Detailed Task Report",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6564,
+    "screen_key": "TasksReport",
+    "name_ar": "تقرير المهام",
+    "name_en": "Task Report",
+    "module": "المهام"
+  },
+  {
+    "page_id": 6572,
+    "screen_key": "/CostItem",
+    "name_ar": "مركز تكلفة مجمع",
+    "name_en": "Consolidated Cost Center",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6574,
+    "screen_key": "/JobSheet",
+    "name_ar": "تعديل اوامر الشغل",
+    "name_en": "Modify Work Orders",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 6575,
+    "screen_key": "ArchivingCustomersName",
+    "name_ar": "الإسم",
+    "name_en": "ArchivingCustomersName",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6576,
+    "screen_key": "ArchivingRegistrationNumber",
+    "name_ar": "رقم التسجيل",
+    "name_en": "ArchivingRegistrationNumber",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6581,
+    "screen_key": "ArchivingCustomers",
+    "name_ar": "أرشفة العملاء",
+    "name_en": "ArchivingCustomers",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6582,
+    "screen_key": "ArchivingCategory",
+    "name_ar": "تصنيف ملفات الارشفه",
+    "name_en": "ArchivingCategory",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6583,
+    "screen_key": "/ESTProductionView",
+    "name_ar": "طلبيات (مكتب فني)",
+    "name_en": "Orders (Technical Office)",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6584,
+    "screen_key": "/ESTProductionView",
+    "name_ar": "طلبيات انتاج مقفلة",
+    "name_en": "Closed Production Orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6585,
+    "screen_key": "PROEguationsDetailsViewReport",
+    "name_ar": "معادلات التصنيع تفصيلي",
+    "name_en": "Detailed Manufacturing Formulas",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6597,
+    "screen_key": "/CallsView",
+    "name_ar": "متابعة العميل",
+    "name_en": "Customer Follow-up",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6598,
+    "screen_key": "/CallsView",
+    "name_ar": "متابعات لم تتم",
+    "name_en": "Not Done Following Up",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6599,
+    "screen_key": "/ADSView",
+    "name_ar": "البحث عن استمارة",
+    "name_en": "Customer Actions",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6600,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "ارشيف العملاء",
+    "name_en": "ArchCustomer",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6601,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء تم الشراء",
+    "name_en": "Customers with Purchases",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6602,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء اليوم",
+    "name_en": "Customers for Today",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6603,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء مكررة",
+    "name_en": "Duplicate Customers",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6604,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء موظفين غير موجود",
+    "name_en": "Employees' Clients Not Found",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6605,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء لم يتم توزيعها",
+    "name_en": "Unassigned Customers",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6606,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "توزيع مديرين",
+    "name_en": "Managers' Distribution",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6607,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء لم يتم التواصل معها",
+    "name_en": "Customers Not Contacted",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6608,
+    "screen_key": "/CustomerAccountView",
+    "name_ar": "عملاء مكررة لم يتم توزيعها",
+    "name_en": "Unassigned Duplicate Customers",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6609,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "المجال الوظيفى",
+    "name_en": "Job Field",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6611,
+    "screen_key": "Number for each sales man",
+    "name_ar": "عدد العملاء لكل برنامج",
+    "name_en": "Count For Every Progrm",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6612,
+    "screen_key": "report",
+    "name_ar": "تقارير مبيعات",
+    "name_en": "Sales Reports",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6613,
+    "screen_key": "/CallMounthResult",
+    "name_ar": "اجمالي نتائج المتابعات",
+    "name_en": "Total Follow-Up Results",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6614,
+    "screen_key": "/CallMounthResultEmp",
+    "name_ar": "اجمالي نتائج المتابعات لكل موظف",
+    "name_en": "Total Follow-Up Results per Employee",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6615,
+    "screen_key": "/CallMounthResultEmp",
+    "name_ar": "Not Qualified Count",
+    "name_en": "Number of calls",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6616,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "تكلفة الاعلانات",
+    "name_en": "Ads Cost",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6617,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "صفحات التسويق",
+    "name_en": "Marketing Pages",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6618,
+    "screen_key": "/ShippmentOrderView",
+    "name_ar": "تكلفة الاعلانات مجمعة",
+    "name_en": "Total Advertising Costs",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6592,
+    "screen_key": "ArchivingTaxFile",
+    "name_ar": "الملف الضريبى",
+    "name_en": "Tax File",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6593,
+    "screen_key": "ArchivingTaxRegister",
+    "name_ar": "السجل الضريبى",
+    "name_en": "Tax Register",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6594,
+    "screen_key": "ArchivingRentContract",
+    "name_ar": "عقد الإيجار",
+    "name_en": "ArchivingRentContract",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6623,
+    "screen_key": "Defaults",
+    "name_ar": "افتراضيات",
+    "name_en": "Defaults",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6625,
+    "screen_key": "Purchase Portifolio",
+    "name_ar": "ملفات المشتريات",
+    "name_en": "Purchase Files",
+    "module": "الأرشفة"
+  },
+  {
+    "page_id": 6634,
+    "screen_key": "/#",
+    "name_ar": "قدرات خط الانتاج للمواد المصنعة",
+    "name_en": "Production line capabilities",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6635,
+    "screen_key": "/BeforProduction",
+    "name_ar": "ادخال سريع للتشغيلات",
+    "name_en": "Quick Entry for Operations",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6578,
+    "screen_key": "/JobSheetWorkerDailyNumberReport",
+    "name_ar": "تقرير يومى بعدد ماتم ومالغائه من اوامر الشغل للفنى",
+    "name_en": "JobSheetWorkerDailyNumberReport",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 6579,
+    "screen_key": "/JobSheetWorkerMonthlyNumberReport",
+    "name_ar": "تقرير شهرى بعدد ماتم ومالغائه من اوامر الشغل للفنى",
+    "name_en": "JobSheetWorkerMonthlyNumberReport",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 6644,
+    "screen_key": "First Categry",
+    "name_ar": "تصنيفات الموردين",
+    "name_en": "SupplierCategory",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 6656,
+    "screen_key": "Comparison",
+    "name_ar": "الموازنة",
+    "name_en": "Comparison",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6660,
+    "screen_key": "Staff Groups",
+    "name_ar": "ادخال الموظفين",
+    "name_en": "Employee Entry",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6671,
+    "screen_key": "RelaidPurchases",
+    "name_ar": "ترحيل المشتريات",
+    "name_en": "RelaidPurchases",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6682,
+    "screen_key": "Milk Pricing",
+    "name_ar": "تسعير الالبان",
+    "name_en": "Milk Pricing",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6683,
+    "screen_key": "Milk Bills",
+    "name_ar": "فواتير الالبان",
+    "name_en": "Milk Bills",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6685,
+    "screen_key": "milkProduction",
+    "name_ar": "تصنيع الالبان",
+    "name_en": "Milk Manufacturing",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6686,
+    "screen_key": "/ProductionExpenses",
+    "name_ar": "توزيع التكلفه بنظام النقط",
+    "name_en": "Cost Allocation by Points System",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6692,
+    "screen_key": "Details Entries",
+    "name_ar": "قيود تفصيلى مجمعه بالحساب والمشروع",
+    "name_en": "Detailed Consolidated Entries by Account and Project",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6693,
+    "screen_key": "Details Entries",
+    "name_ar": "قيود تفصيلى مجمعه بالحساب",
+    "name_en": "Detailed Consolidated Entries by Account",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6694,
+    "screen_key": "Distruction Fixed assets",
+    "name_ar": "اهلاك الاصول الثابتة",
+    "name_en": "Distruction Fixed assets",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 6698,
+    "screen_key": "/ProductionProcess",
+    "name_ar": "بداية التشغيلة",
+    "name_en": "Start operation",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6699,
+    "screen_key": "/ProductionProcess",
+    "name_ar": "نهاية التشغيلة",
+    "name_en": "End operation",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6700,
+    "screen_key": "Customers",
+    "name_ar": "العملاء",
+    "name_en": "Customers",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6706,
+    "screen_key": "Company Setting",
+    "name_ar": "اعدادات الشركة",
+    "name_en": "Company Setting",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6707,
+    "screen_key": "Product Category",
+    "name_ar": "التصنيفات للمنتجات",
+    "name_en": "Product Category",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6708,
+    "screen_key": "Sales Types",
+    "name_ar": "انواع المبيعات",
+    "name_en": "Sales Types",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6709,
+    "screen_key": "Company Setting",
+    "name_ar": "اعدادات الفاتورة الالكترونية",
+    "name_en": "Electronic Invoice Settings",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6703,
+    "screen_key": "Customers Category",
+    "name_ar": "تصنيفات العملاء",
+    "name_en": "Customers Category",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7000,
+    "screen_key": "distractions",
+    "name_ar": "الانحرافات",
+    "name_en": "distractions",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7015,
+    "screen_key": "Details purchases",
+    "name_ar": "مصمم تقارير المشتريات تفصيلي",
+    "name_en": "Detailed Purchase Reports Designer",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7017,
+    "screen_key": "Customers",
+    "name_ar": "تقرير تارجت المندوبين",
+    "name_en": "Sales Representatives' Targets Report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7018,
+    "screen_key": "Fixed assets",
+    "name_ar": "تقرير اهلاك الاصول",
+    "name_en": "Asset Depreciation Report",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 7019,
+    "screen_key": "Fixed assets",
+    "name_ar": "مصمم تقرير اهلاك الاصول",
+    "name_en": "Asset Depreciation Report Designer",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 7033,
+    "screen_key": "/ProductionProcess",
+    "name_ar": "تقرير بتكاليف التشغيل",
+    "name_en": "Operating Costs Report",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7034,
+    "screen_key": "DatabaseConnections",
+    "name_ar": "الداتا بيس القديمه",
+    "name_en": "Old database",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7035,
+    "screen_key": "/estProductionAvilability",
+    "name_ar": "كميات طلبيات الانتاج لم يتم تشغيلها مجمع",
+    "name_en": "Total Quantities of Production Orders Not Yet Processed",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7036,
+    "screen_key": "/ESTProductionView",
+    "name_ar": "طلبيات انتاج مطلوبة",
+    "name_en": "Required Production Orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7037,
+    "screen_key": "/estProductionAvilability",
+    "name_ar": "كميات طلبيات الانتاج",
+    "name_en": "Production Order Quantities",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7038,
+    "screen_key": "/estProductionAvilability",
+    "name_ar": "كميات طلبيات الانتاج مجمع",
+    "name_en": "Consolidated Production Order Quantities",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7044,
+    "screen_key": "Department",
+    "name_ar": "الاقسام",
+    "name_en": "Department",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7053,
+    "screen_key": "Contractors",
+    "name_ar": "المقاولون",
+    "name_en": "Contractors",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7063,
+    "screen_key": "Farming Report",
+    "name_ar": "مصمم تقارير توريد زراعة",
+    "name_en": "Farming Report",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7061,
+    "screen_key": "Farming Report",
+    "name_ar": "تقرير توريد زراعة",
+    "name_en": "Farming Report",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7071,
+    "screen_key": "Company Setting",
+    "name_ar": "إعدادات راسل الفاتورة",
+    "name_en": "Invoice Header Settings",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7078,
+    "screen_key": "Details purchases",
+    "name_ar": "صافي المشتريات",
+    "name_en": "Details purchases",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7079,
+    "screen_key": "Total customer accounts",
+    "name_ar": "صافي مسحوبات العميل بعد المرتجعات",
+    "name_en": "Net Customer Withdrawals After Returns",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7080,
+    "screen_key": "PermissionSetting",
+    "name_ar": "يومية عامل",
+    "name_en": "Daily Worker Report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7087,
+    "screen_key": "Total customer accounts",
+    "name_ar": "حسابات العملاء باخر تاريخ تحصيل و فاتورة",
+    "name_en": "Customer Accounts with Latest Collection Date and Invoice",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7088,
+    "screen_key": "Vendor Accounts",
+    "name_ar": "حسابات عميل ومورد",
+    "name_en": "Customer and Supplier Accounts",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7092,
+    "screen_key": "TaxSetting",
+    "name_ar": "لوائح الضرائب",
+    "name_en": "TaxSetting",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7095,
+    "screen_key": "/Color",
+    "name_ar": "الاصناف",
+    "name_en": "Categories",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7099,
+    "screen_key": "additional number of hours for employees",
+    "name_ar": "تقرير شامل للموظف",
+    "name_en": "Comprehensive Employee Report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7107,
+    "screen_key": "/BulkProductionProcess",
+    "name_ar": "أوامر الانتاج المجمعة",
+    "name_en": "Consolidated Production Orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7108,
+    "screen_key": "Roll Manufacturing",
+    "name_ar": "تصنيع اروال",
+    "name_en": "Roll Manufacturing",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7109,
+    "screen_key": "Total customer accounts",
+    "name_ar": "إجمالي مبيعات العميل",
+    "name_en": "Total Customer Sales",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7111,
+    "screen_key": "ManagerApproved",
+    "name_ar": "طلبات مد الوقت",
+    "name_en": "ManagerApproved",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7112,
+    "screen_key": "Types of tasks",
+    "name_ar": "المهام الرئيسية",
+    "name_en": "Main Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7113,
+    "screen_key": "Types of tasks",
+    "name_ar": "مهام بين الادارات",
+    "name_en": "Interdepartmental Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7114,
+    "screen_key": "ManagerApproved",
+    "name_ar": "تقرير طلبات مد الوقت",
+    "name_en": "Time Extension Requests Report",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7115,
+    "screen_key": "TasksReport",
+    "name_ar": "مهام يتم العمل عليها",
+    "name_en": "Tasks in Progress",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7116,
+    "screen_key": "TasksReport",
+    "name_ar": "مهام تمت",
+    "name_en": "Completed Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7117,
+    "screen_key": "TasksReport",
+    "name_ar": "مهام لم يتم انجزها",
+    "name_en": "Pending Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7118,
+    "screen_key": "TasksReport",
+    "name_ar": "مصمم تقرير المهام",
+    "name_en": "Task Report Designer",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7119,
+    "screen_key": "TasksReport",
+    "name_ar": "مهام لم تبدأ",
+    "name_en": "Tasks Not Started",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7120,
+    "screen_key": "TasksReport",
+    "name_ar": "تقرير عام للمهام",
+    "name_en": "General Task Report",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7121,
+    "screen_key": "ManagerApproved",
+    "name_ar": "مهام تم الموافقة عليها",
+    "name_en": "Approved Tasks",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7122,
+    "screen_key": "TasksView",
+    "name_ar": "مهام قاربت على الانتهاء",
+    "name_en": "Tasks Nearing Completion",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7123,
+    "screen_key": "TasksView",
+    "name_ar": "مصمم تقرير المهام تفصيلي",
+    "name_en": "Detailed Task Report Designer",
+    "module": "المهام"
+  },
+  {
+    "page_id": 7125,
+    "screen_key": "ProductionProcessWithStages",
+    "name_ar": "أوامر الإنتاج المرحلية",
+    "name_en": "Phased Production Orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7126,
+    "screen_key": "Staff Groups",
+    "name_ar": "خطوط سير المناديب",
+    "name_en": "Sales Representatives' Routes",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7130,
+    "screen_key": "/ContractStates",
+    "name_ar": "مصمم تقارير الشحن",
+    "name_en": "Shipping Reports Designer",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 7131,
+    "screen_key": "Details Entries",
+    "name_ar": "قيود تفصيلي غير مجمع",
+    "name_en": "Non-Consolidated Detailed Entries",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7128,
+    "screen_key": "/ESTProductionView",
+    "name_ar": "تقرير طلبيات الانتاج",
+    "name_en": "Production orders",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7136,
+    "screen_key": "Mobile Attendance",
+    "name_ar": "الحضور",
+    "name_en": "Attendance",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7137,
+    "screen_key": "Staff Groups",
+    "name_ar": "طلبات الدخول",
+    "name_en": "Entry Requests",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7158,
+    "screen_key": "Loan Request",
+    "name_ar": "طلب سلفة",
+    "name_en": "Loan Request",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7159,
+    "screen_key": "predecessor",
+    "name_ar": "تقرير السلف",
+    "name_en": "Loan Report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7160,
+    "screen_key": "predecessor",
+    "name_ar": "صرف السلف",
+    "name_en": "predecessor",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7161,
+    "screen_key": "additional number of hours for employees",
+    "name_ar": "مصمم تقرير شامل للموظف",
+    "name_en": "Comprehensive Employee Report Designer",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7166,
+    "screen_key": "EmployeesDaysOff",
+    "name_ar": "تصفية الاجازات السنوية",
+    "name_en": "Employees Days Off",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7167,
+    "screen_key": "EmployeesReturn",
+    "name_ar": "مباشرة الموظفين",
+    "name_en": "Employees Return",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7190,
+    "screen_key": "EarnedDiscounts",
+    "name_ar": "ترحيل خصم مكتسب",
+    "name_en": "EarnedDiscounts",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7300,
+    "screen_key": "Employee salary payment",
+    "name_ar": "صرف الاجازات",
+    "name_en": "Employee salary payment",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7310,
+    "screen_key": "supply Orders",
+    "name_ar": "ميزان مراجعه أوامر البيع",
+    "name_en": "Supply Order Trial Balance",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7151,
+    "screen_key": "Pre Attendance  before processing",
+    "name_ar": "سجل الحضور و الانصراف",
+    "name_en": "Attendance Register",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7152,
+    "screen_key": "Details Entries",
+    "name_ar": "مصمم تقارير حسابات المشروعات",
+    "name_en": "Project Report Designer",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7154,
+    "screen_key": "Customers Category",
+    "name_ar": "مراحل التصنيع",
+    "name_en": "Manufacturing Stages",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7621,
+    "screen_key": "Employee salary payment",
+    "name_ar": "صرف المرتبات للمجموعه",
+    "name_en": "Group Payroll",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7630,
+    "screen_key": "Total customer supplier accounts",
+    "name_ar": "حسابات العملاء الموردين الاجمالي",
+    "name_en": "Total customer accounts",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7631,
+    "screen_key": "Rented Equipment",
+    "name_ar": "المعدات المستأجرة",
+    "name_en": "Rented Equipment",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 7643,
+    "screen_key": "ConstructionSupplierContractState",
+    "name_ar": "مراحل اعتماد عقد المقاول",
+    "name_en": "ConstructionSupplierContractState",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7644,
+    "screen_key": "SupplyOrderStateManagement",
+    "name_ar": "اعتماد إذون توريد مورد",
+    "name_en": "SupplyOrderStateManagement",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7646,
+    "screen_key": "SupplyOrderState",
+    "name_ar": "مراحل اعتماد إذون توريد مورد",
+    "name_en": "SupplyOrderState",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7648,
+    "screen_key": "/ProductionReport",
+    "name_ar": "تقرير تشغيلات تفصيلي",
+    "name_en": "Factories report startups",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7649,
+    "screen_key": "/ProductionReport",
+    "name_ar": "مصمم تقرير تشغيلات تفصيلي",
+    "name_en": "Factories report startups",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7650,
+    "screen_key": "/OUTProduction",
+    "name_ar": "مصمم تقارير المواد المصنعة",
+    "name_en": "Manufactured materials",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7862,
+    "screen_key": "Employee salary payment",
+    "name_ar": "تقرير صرف المرتبات للموظف",
+    "name_en": "Employee salary payment",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7863,
+    "screen_key": "Employee salary payment",
+    "name_ar": "مسير الرواتب الحالي",
+    "name_en": "EmployeeSalary",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7864,
+    "screen_key": "Employee salary payment",
+    "name_ar": "مسير الرواتب السابقة",
+    "name_en": "EmployeeSalary",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7865,
+    "screen_key": "Employee salary payment",
+    "name_ar": "ترحيل المرتبات للمجموعه",
+    "name_en": "Confirm Group Payroll",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7867,
+    "screen_key": "Employee salary payment",
+    "name_ar": "ترحيل الاجازات",
+    "name_en": "Confirm Vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7868,
+    "screen_key": "Employee salary payment",
+    "name_ar": "ترحيل المرتبات للموظف",
+    "name_en": "Employee salary payment",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7896,
+    "screen_key": "Commencement Of Work",
+    "name_ar": "مباشرة العمل",
+    "name_en": "Commencement Of Work",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7661,
+    "screen_key": "Employee Additions",
+    "name_ar": "اضافة او خصم اجازة",
+    "name_en": "Employee Additions Vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7662,
+    "screen_key": "Employee Additions",
+    "name_ar": "اجازة موظف",
+    "name_en": "Employee Vacation",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7663,
+    "screen_key": "Employee Additions",
+    "name_ar": "انهاء خدمة موظف",
+    "name_en": "Employee End Work",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7664,
+    "screen_key": "Disbursed Employee salaries",
+    "name_ar": "مرتبات الموظفين المحتسبة",
+    "name_en": "Disbursed Employee salaries",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7677,
+    "screen_key": "SalesAssestSettings",
+    "name_ar": "إعدادات بيع الأصول",
+    "name_en": "SalesAssestSettings",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 7860,
+    "screen_key": "EmployeesDaysOffBalance",
+    "name_ar": "تعديل رصيد الأجازات",
+    "name_en": "Employees Days Off Balance",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7901,
+    "screen_key": "Employee permissions report",
+    "name_ar": "تقرير اجمالي أذون الموظف",
+    "name_en": "Employee permissions report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7902,
+    "screen_key": "Employee Vacations Balance",
+    "name_ar": "اجمالي رصيد أجازات الموظف",
+    "name_en": "Employee Vacations Balance",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7903,
+    "screen_key": "Employee Vacations Balance",
+    "name_ar": "رصيد اجازات الموظفين",
+    "name_en": "Employee Vacations",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7904,
+    "screen_key": "Details purchases",
+    "name_ar": "تفاصيل طلبات الشراء",
+    "name_en": "Purchase order details",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7905,
+    "screen_key": "/ProductionExpences",
+    "name_ar": "تقرير تشغيل العمالة",
+    "name_en": "Manufacturing expenses",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7655,
+    "screen_key": "Sales Assets",
+    "name_ar": "بيع الاصول",
+    "name_en": "Sales Assets",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 7908,
+    "screen_key": "Zatcka Configuration",
+    "name_ar": "اعدادات الزكاة والدخل",
+    "name_en": "Zatcka Configuration",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7911,
+    "screen_key": "/ProjectsExpenses",
+    "name_ar": "توزيع التكاليف الغير مباشرة علي المشاريع",
+    "name_en": "Cost Allocation by Points System",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 8005,
+    "screen_key": "/Purchase Request Total Quantity Pulled",
+    "name_ar": "متابعة كميات طلبات الشراء",
+    "name_en": "PurchaseRequest Pull Status",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 8006,
+    "screen_key": "Accounting Professor Detail",
+    "name_ar": "حساب الاستاذ التفصيلي",
+    "name_en": "Detail  Ledger",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 8007,
+    "screen_key": "Fixed assets  Summary",
+    "name_ar": "تقرير الاصول الثابتة بالاهلاك الفترات",
+    "name_en": "Fixed Assets Destruction Summary",
+    "module": "الاصول الثابتة "
+  },
+  {
+    "page_id": 8059,
+    "screen_key": "ActiveReservasions",
+    "name_ar": "إلغاء الحجز",
+    "name_en": "Reservations",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8061,
+    "screen_key": "UnitDelivery",
+    "name_ar": "تسليم الوحدات",
+    "name_en": "Units Delivery",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8100,
+    "screen_key": "EmployeeLoansReceived",
+    "name_ar": "السلف المستلمة",
+    "name_en": "EmployeeLoansReceived",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 27771,
+    "screen_key": "Edit Last fixed date of Group Emp",
+    "name_ar": "تعديل تاريخ اخر احتساب واستحقاق على مستوى المجموعه",
+    "name_en": "Edit Last fixed date of Group Emp",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 27772,
+    "screen_key": "ImplPaths",
+    "name_ar": "مسارات التنفيذ",
+    "name_en": "Implementation paths",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 27773,
+    "screen_key": "ImplPathsFollowUp",
+    "name_ar": "متابعة مسارات التنفيذ",
+    "name_en": "Implementation follow-up",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 8557,
+    "screen_key": "project cash flow",
+    "name_ar": "التدفقات النقدية علي المشروع",
+    "name_en": "ProjectCashFlow",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 8590,
+    "screen_key": "project cash flow",
+    "name_ar": "التدفقات النقدية علي المشروع بشكل يومي",
+    "name_en": "ProjectCashFlow",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 8062,
+    "screen_key": "RealEstateUnitOwner",
+    "name_ar": "عقود الملاك",
+    "name_en": "RealEstateUnitOwner",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8041,
+    "screen_key": "Finishing Invoicing",
+    "name_ar": "فوترة التشطيبات",
+    "name_en": "Finishing Invoicing",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 8055,
+    "screen_key": "RealEstateSharesSetting",
+    "name_ar": "إعدادات الحصص العقارية",
+    "name_en": "Real Estate Shares Setting",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8056,
+    "screen_key": "RealEstateShares",
+    "name_ar": "الحصص العقارية",
+    "name_en": "Real Estate Shares",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8057,
+    "screen_key": "RealEstateScheduling",
+    "name_ar": "أنظمة الجدولة",
+    "name_en": "Scheduling Methods",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 8058,
+    "screen_key": "RealEstatePricing",
+    "name_ar": "أنظمة التسعير",
+    "name_en": "Pricing Methods",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 7861,
+    "screen_key": "Employees data",
+    "name_ar": "ادخال الموظفين",
+    "name_en": "Employees added",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7897,
+    "screen_key": "IssuanceLetters",
+    "name_ar": "تقرير خطابات الضمان",
+    "name_en": "IssuanceLetters",
+    "module": "خطابات الضمان"
+  },
+  {
+    "page_id": 7898,
+    "screen_key": "ProjectAssessmentsList",
+    "name_ar": "طلبات رفع مقاسية",
+    "name_en": "Project Assessments",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7899,
+    "screen_key": "/ProductsExpensesForMainProjects",
+    "name_ar": "المنتجات المصروفة علي المشروع",
+    "name_en": "Products Expenses For MainProjects",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7651,
+    "screen_key": "Projects",
+    "name_ar": "تصنيف بنود المقايسة",
+    "name_en": "Categorize items",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7652,
+    "screen_key": "/CustomerExtractionsDiff",
+    "name_ar": "حساب مشروع اجمالي",
+    "name_en": "Total project account",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7653,
+    "screen_key": "/CustomerExtractionsDiff",
+    "name_ar": "حساب عقود مقاولين اجمالي",
+    "name_en": "Total Contractor Contracts Account",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7654,
+    "screen_key": "/CustomerExtractionsDiff",
+    "name_ar": "حساب عقود عملاء اجمالي",
+    "name_en": "Total Customer Contracts Account",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7645,
+    "screen_key": "Contractors contract  State Management",
+    "name_ar": "اعتماد عقود المقاولين",
+    "name_en": "Contractors contract  State Management",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7633,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "اعمال المعدات تفصيلي للمورد والمشروع",
+    "name_en": "Equipment movements",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 7634,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "مصمم تقرير المعدات للمورد والمشروع",
+    "name_en": "Equipment movements",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 7624,
+    "screen_key": "Suppliers Pricing Offers Approval By Contract Requests",
+    "name_ar": "إعتماد عروض اسعار مقاولين حسب طلبات العقود",
+    "name_en": "Suppliers Pricing Offers Approval by Contract Requests",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7626,
+    "screen_key": "Enter Products",
+    "name_ar": "ادخال مركب",
+    "name_en": "Enter Products",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7627,
+    "screen_key": "ApprovePriceOfferByPurchasesRequests",
+    "name_ar": "أعتماد عروض الأسعار حسب طلبات الشراء",
+    "name_en": "ApprovePriceOfferByPurchasesRequests",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7156,
+    "screen_key": "/Extractions",
+    "name_ar": "اعتماد مستخلصات عملاء",
+    "name_en": "Contractors abstracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7157,
+    "screen_key": "Suppliers Pricing Offers Approval",
+    "name_ar": "إعتماد عروض اسعار عملاء",
+    "name_en": "Approval of Customer Price Quotations",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7153,
+    "screen_key": "Suppliers Pricing Offers Approval",
+    "name_ar": "إعتماد عروض اسعار مقاولين",
+    "name_en": "Suppliers Pricing Offers Approval",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7555,
+    "screen_key": "Depit Note",
+    "name_ar": "إشعارات مدين مورد",
+    "name_en": "Depit Note",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7556,
+    "screen_key": "Credit Note",
+    "name_ar": "إشعارات دائن عملاء",
+    "name_en": "Credit Note",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7142,
+    "screen_key": "Sales Types",
+    "name_ar": "مبيعات بالمنتج",
+    "name_en": "Product Sales",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7143,
+    "screen_key": "Employees data",
+    "name_ar": "مصمم تقارير بيانات الموظفين",
+    "name_en": "Employee Data Report Designe",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7149,
+    "screen_key": "ContractorsContractRequest",
+    "name_ar": "طلبات عقود المقاولين",
+    "name_en": "Contractors Contracts Requests",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7150,
+    "screen_key": "ContractorsContractRequestApproval",
+    "name_ar": "اعتماد طلبات عقود المقاولين",
+    "name_en": "Approval of Contractor Contract Requests",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7103,
+    "screen_key": "Out Invoices",
+    "name_ar": "اذون صرف بدون تكلفة",
+    "name_en": "Out Invoices",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7090,
+    "screen_key": "/Extractions",
+    "name_ar": "اعتماد المستخلصات مقاولين",
+    "name_en": "Approval of extracts for contractors",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7091,
+    "screen_key": "/Extractions",
+    "name_ar": "مراحل اعتماد المستخلصات",
+    "name_en": "Approval stages on abstracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7074,
+    "screen_key": "Sales Types",
+    "name_ar": "اشعار اضافة",
+    "name_en": "Addition Notification",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7075,
+    "screen_key": "Sales Types",
+    "name_ar": "اشعار خصم",
+    "name_en": "Discount Notification",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7082,
+    "screen_key": "Products",
+    "name_ar": "تقرير الرواكد",
+    "name_en": "Scrap Report",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7055,
+    "screen_key": "Customer Modality Discount",
+    "name_ar": "خصم تصنيف العميل",
+    "name_en": "Customer Category Discount",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7059,
+    "screen_key": "Purchases",
+    "name_ar": "فواتير مشتريات فلاحين",
+    "name_en": "Purchases",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7048,
+    "screen_key": "Out Invoices",
+    "name_ar": "اذون الصرف الفعلي على امر البيع مجمع",
+    "name_en": "Consolidated Actual Disbursement Notes for Sales Orders",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7049,
+    "screen_key": "Out Invoices",
+    "name_ar": "اذون الصرف الفعلي على امر البيع",
+    "name_en": "Actual Disbursement Notes for Sales Orders",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7050,
+    "screen_key": "Sales Types",
+    "name_ar": "شاشة العمليات",
+    "name_en": "Operations Dashboard",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7016,
+    "screen_key": "Sales Types",
+    "name_ar": "مصمم تقارير فواتير المبيعات",
+    "name_en": "Sales Invoice Reports Designer",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6705,
+    "screen_key": "Products",
+    "name_ar": "المنتجات",
+    "name_en": "Products",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7014,
+    "screen_key": "Purchases",
+    "name_ar": "مصمم تقارير فواتير المشتريات",
+    "name_en": "Purchase Invoice Reports Designer",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 6672,
+    "screen_key": "RelaiedExpenses",
+    "name_ar": "ترحيل المصاريف",
+    "name_en": "RelaiedExpenses",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6669,
+    "screen_key": "RelaiedCashMony",
+    "name_ar": "ترحيل النقدية",
+    "name_en": "RelaiedCashMony",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6674,
+    "screen_key": "IssuanceLetters",
+    "name_ar": "اصدار خطابات الضمان",
+    "name_en": "IssuanceLetters",
+    "module": "خطابات الضمان"
+  },
+  {
+    "page_id": 6675,
+    "screen_key": "LettersType",
+    "name_ar": "اعدادات خطابات الضمان",
+    "name_en": "IssuanceLetters settings",
+    "module": "خطابات الضمان"
+  },
+  {
+    "page_id": 6676,
+    "screen_key": "LettersClose",
+    "name_ar": "اغلاق خطاب الضمان",
+    "name_en": "LettersClose",
+    "module": "خطابات الضمان"
+  },
+  {
+    "page_id": 6662,
+    "screen_key": "RelaiedSupplierPayment",
+    "name_ar": "ترحيل دفعات الموردين",
+    "name_en": "Supplier Payments Posting",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6664,
+    "screen_key": "RelaiedOutPayment",
+    "name_ar": "ترحيل اذن صرف نقدية",
+    "name_en": "RelaiedOutPayment",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6665,
+    "screen_key": "RelaiedProceedsPayment",
+    "name_ar": "ترحيل متحصلات الدفعات",
+    "name_en": "RelaiedProceedsPayment",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6036,
+    "screen_key": "confirmAttend",
+    "name_ar": "تأكيد الحضور والانصراف",
+    "name_en": "Confirm Attenedance",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 6636,
+    "screen_key": "NULL/MachinWorkSetting",
+    "name_ar": "محاسبة الموردين على المعدات",
+    "name_en": "Equipments",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 6637,
+    "screen_key": "AccountantDescription",
+    "name_ar": "تفاصيل المحاسبة",
+    "name_en": "Accounting Details",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 6638,
+    "screen_key": "TotalWork",
+    "name_ar": "اجمالى العمل",
+    "name_en": "TotalWork",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 6639,
+    "screen_key": "TotalWorkwithProject",
+    "name_ar": "اجمالى العمل بالمشروع",
+    "name_en": "TotalWorkwithProject",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 6595,
+    "screen_key": "/InventCustDemands",
+    "name_ar": "طلبات تسعير عميل",
+    "name_en": "Clients pricing requests",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6588,
+    "screen_key": "/ProductProcessOutView",
+    "name_ar": "اذن تسليم بضاعة",
+    "name_en": "Goods Delivery Note",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6589,
+    "screen_key": "/ProductProcessOutView",
+    "name_ar": "انواع التصنيع",
+    "name_en": "Types of Manufacturing",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6590,
+    "screen_key": "/ProductProcessOutView",
+    "name_ar": "امانة التصنيع",
+    "name_en": "Production Types",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 5555,
+    "screen_key": "CashFlowItems",
+    "name_ar": "عناصر التدفقات النقدية",
+    "name_en": "Cash flow Items",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 5577,
+    "screen_key": "CashFlowStatement",
+    "name_ar": "التدفقات النقدية",
+    "name_en": "CashFlowStatement",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 6017,
+    "screen_key": "Offers Status",
+    "name_ar": "حالات العروض",
+    "name_en": "Offers Status",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 4888,
+    "screen_key": "New Extractions Page",
+    "name_ar": "مستخلصات المقاولين بدون التعديل علي البنود",
+    "name_en": "Contractor Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 4895,
+    "screen_key": "Clients abstracts",
+    "name_ar": "مستخلصات العملاء بدون التعديل علي البنود",
+    "name_en": "Customer Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 3222,
+    "screen_key": "BaseLineSchedule",
+    "name_ar": "مخطط التدفقات النقدية",
+    "name_en": "BaseLineSchedule",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2966,
+    "screen_key": "Employees data",
+    "name_ar": "بيانات الموظفين",
+    "name_en": "Employees data",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2962,
+    "screen_key": "Insurance payment from the company",
+    "name_ar": "صرف التأمين من الشركه",
+    "name_en": "Insurance payment from the company",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 3006,
+    "screen_key": "Job Need",
+    "name_ar": "إحتياجات القسم",
+    "name_en": "Departmental Needs",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2994,
+    "screen_key": "Employment documents",
+    "name_ar": "مستندات التوظيف",
+    "name_en": "Employment documents",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2926,
+    "screen_key": "supply permission without Exchange permission",
+    "name_ar": "اذون توريد بدون اذن صرف",
+    "name_en": "Supply Orders without Issue Notes",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2927,
+    "screen_key": "supply permission without sales",
+    "name_ar": "اذون توريد بدون مبيعات",
+    "name_en": "Supply Orders without Sales",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2921,
+    "screen_key": "/ProductProcessOutView",
+    "name_ar": "طلبات تسعير بدون عرض سعر",
+    "name_en": "Price Requests without Quotation",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2922,
+    "screen_key": "Prices Offers without supply permission",
+    "name_ar": "عروض اسعار بدون اذن توريد",
+    "name_en": "Prices Offers without supply permission",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2881,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "اعداد حركات المعدات",
+    "name_en": "Equipment movement preparation",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 2882,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "اعمال المعدات",
+    "name_en": "Equipment operations",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 2883,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "حركات المعدات",
+    "name_en": "Equipment movements",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 2884,
+    "screen_key": "/MachinWorkSetting",
+    "name_ar": "تقرير حركات المعدات",
+    "name_en": "Equipment movements report",
+    "module": "حركات المعدات"
+  },
+  {
+    "page_id": 2878,
+    "screen_key": "/CheckCash",
+    "name_ar": "تحصيل أوراق قبض",
+    "name_en": "Notes Receivable",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2666,
+    "screen_key": "Category",
+    "name_ar": "تصنيفات البنود",
+    "name_en": "Category",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2777,
+    "screen_key": "GeneralCategory",
+    "name_ar": "GeneralCategory",
+    "name_en": "Category",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2471,
+    "screen_key": "Projects",
+    "name_ar": "المشاريع",
+    "name_en": "Projects",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2421,
+    "screen_key": "Projects",
+    "name_ar": "المشروعات",
+    "name_en": "Projects",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2554,
+    "screen_key": "detailed latest clients pricing offer",
+    "name_ar": "اخر عرض اسعار للعملاء تفصيلى",
+    "name_en": "Latest Detailed Quotation for Customers",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2555,
+    "screen_key": "detailed latest suppliers pricing offer",
+    "name_ar": "اخر عرض اسعار للموردين تفصيلى",
+    "name_en": "Last Detailed Quotation from Suppliers",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2556,
+    "screen_key": "total latest clients pricing offer",
+    "name_ar": "اخر عرض اسعار للعملاء اجمالى",
+    "name_en": "Last Total Quotation to Customers",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2557,
+    "screen_key": "total latest suppliers pricing offer",
+    "name_ar": "اخر عرض اسعار للموردين اجمالى",
+    "name_en": "Last Total Quotation from Suppliers",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2558,
+    "screen_key": "French general journal",
+    "name_ar": "دفتر اليوميه الفرنسيه",
+    "name_en": "French general journal",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2541,
+    "screen_key": "Expected annual cash flows",
+    "name_ar": "متوقع التدفقات النقديه السنويه",
+    "name_en": "Expected annual cash flows",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2419,
+    "screen_key": "Contracts",
+    "name_ar": "العقود",
+    "name_en": "Contracts",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2512,
+    "screen_key": "supplier pricing requests",
+    "name_ar": "طلبات تسعير مورد",
+    "name_en": "Vendor Quotation Requests",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2514,
+    "screen_key": "Suppliers pricing offers",
+    "name_ar": "عروض اسعار موردين",
+    "name_en": "Suppliers Quotations",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2518,
+    "screen_key": "Suppliers pricing offers report",
+    "name_ar": "تقرير عروض اسعار مورد",
+    "name_en": "Suppliers Quotations report",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2519,
+    "screen_key": "clients pricing Offers report",
+    "name_ar": "تقرير عروض اسعار عملاء",
+    "name_en": "Clients Quotations report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2520,
+    "screen_key": "suppliers pricing requests report",
+    "name_ar": "تقرير طلبات تسعير موردين",
+    "name_en": "suppliers Quotations report",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2521,
+    "screen_key": "Clients pricing requests report",
+    "name_ar": "تقرير طلبات تسعير للعملاء",
+    "name_en": "Clients Quotations report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2522,
+    "screen_key": "Offers best prices",
+    "name_ar": "افضل عروض الاسعار",
+    "name_en": "Best Price Quotations",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2525,
+    "screen_key": "Expected cash flows",
+    "name_ar": "متوقع التدفقات النقديه اليوميه",
+    "name_en": "Expected cash flows",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2526,
+    "screen_key": "Scheduling financial transactions",
+    "name_ar": "جدولة المعاملات المالية",
+    "name_en": "Scheduling financial transactions",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2482,
+    "screen_key": "Offers best prices",
+    "name_ar": "افضل عروض الاسعار",
+    "name_en": "Best Price Quotes",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2483,
+    "screen_key": "Contractors contracts",
+    "name_ar": "عقود المقاولين",
+    "name_en": "Contractors contracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2484,
+    "screen_key": "Detailed contracts",
+    "name_ar": "تفصيلى عقود مقاولين",
+    "name_en": "Detailed contracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2485,
+    "screen_key": "A total of contracts",
+    "name_ar": "اجمالى عقود مقاولين",
+    "name_en": "A total of contracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2486,
+    "screen_key": "Pricing requests",
+    "name_ar": "طلبات التسعير",
+    "name_en": "Requests for Quotations (RFQs)",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2487,
+    "screen_key": "Detailed abstracts",
+    "name_ar": "مستخلصات تفصيلى مقاولين",
+    "name_en": "Detailed Contractor Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2488,
+    "screen_key": "total main items abstracts",
+    "name_ar": "مستخلصات بنود مقاولين",
+    "name_en": "Contractor Itemized Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2489,
+    "screen_key": "/Extractions",
+    "name_ar": "مستخلصات المقاولين",
+    "name_en": "Contractor Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2490,
+    "screen_key": "abstracts settings",
+    "name_ar": "اعدادات المستخلصات",
+    "name_en": "Statement Settings",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2491,
+    "screen_key": "Total abstracts",
+    "name_ar": "مستخلصات اجمالي مقاولين",
+    "name_en": "Total abstracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2492,
+    "screen_key": "total main items abstracts",
+    "name_ar": "مستخلصات بنود تحليلي مقاولين",
+    "name_en": "Analytical Itemized Contractor Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2493,
+    "screen_key": "Number of pricing requests",
+    "name_ar": "عدد طلبات التسعير",
+    "name_en": "Number of Quotation Requests",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2494,
+    "screen_key": "Number of pricing offers",
+    "name_ar": "عدد عروض الاسعار",
+    "name_en": "Number of Quotations",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2495,
+    "screen_key": "/OfferMaster",
+    "name_ar": "عروض اسعار المقاول",
+    "name_en": "Contractor Quotations",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2496,
+    "screen_key": "detailed pricing offers",
+    "name_ar": "تفصيلى عروض اسعار",
+    "name_en": "Detailed Quotations",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2497,
+    "screen_key": "Projects Abstracts",
+    "name_ar": "مستخلصات المشاريع مقاولين",
+    "name_en": "Project Contractor Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2499,
+    "screen_key": "/SupplierConstructionProcess",
+    "name_ar": "حساب المقاول",
+    "name_en": "Contractor Account",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2500,
+    "screen_key": "Project Account",
+    "name_ar": "حساب المشروع",
+    "name_en": "Project Account",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2501,
+    "screen_key": "clients pricing Offers",
+    "name_ar": "مناقصات",
+    "name_en": "Customer Quotations",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 2502,
+    "screen_key": "Customer contracts",
+    "name_ar": "عقود العملاء",
+    "name_en": "Customer contracts",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2503,
+    "screen_key": "Clients abstracts",
+    "name_ar": "مستخلصات العملاء",
+    "name_en": "Customer Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2504,
+    "screen_key": "Detailed abstracts",
+    "name_ar": "مستخلصات تفصيلى عملاء",
+    "name_en": "Detailed Customer Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2505,
+    "screen_key": "Total abstracts",
+    "name_ar": "مستخلصات اجمالى عملاء",
+    "name_en": "Total Customer Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2506,
+    "screen_key": "detailed contract abstracts",
+    "name_ar": "عقود تفصيلى عملاء",
+    "name_en": "Detailed Contract Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2507,
+    "screen_key": "total contract abstracts",
+    "name_ar": "عقود اجمالى عملاء",
+    "name_en": "Total contract Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2508,
+    "screen_key": "total main items abstracts",
+    "name_ar": "مستخلصات بنود عملاء",
+    "name_en": "Total main items Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2509,
+    "screen_key": "Projects Abstracts",
+    "name_ar": "مستخلصات مشاريع عملاء",
+    "name_en": "Projects Statements",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 2510,
+    "screen_key": "/CustomerExtractionsDiff",
+    "name_ar": "فرق مستخلصات العميل مع المقاول",
+    "name_en": "Client with contractor statements difference",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 1019,
+    "screen_key": "Project Reports",
+    "name_ar": "تقارير حسابات المشروع",
+    "name_en": "Project Reports",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 1014,
+    "screen_key": "ContractTermination",
+    "name_ar": "فسخ العقود",
+    "name_en": "ContractTermination",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 306,
+    "screen_key": "Out Invoices",
+    "name_ar": "اذون صرف",
+    "name_en": "Out Invoices",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 303,
+    "screen_key": "IN Payment",
+    "name_ar": "اذن استلام نقدية /  شيك",
+    "name_en": "IN Payment  /Check",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 295,
+    "screen_key": "Products",
+    "name_ar": "المنتجات",
+    "name_en": "Products",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 244,
+    "screen_key": "Sales Types",
+    "name_ar": "فواتير المبيعات",
+    "name_en": "Sales Invoices",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 232,
+    "screen_key": "Accounting Tree",
+    "name_ar": "شجرة الحسابات",
+    "name_en": "Chart of Accounts",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 238,
+    "screen_key": "Trial Balance",
+    "name_ar": "ميزان المراجعة",
+    "name_en": "Trial Balance",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 289,
+    "screen_key": "Purchases",
+    "name_ar": "فواتير المشتريات",
+    "name_en": "Purchase Invoices",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 290,
+    "screen_key": "Store Convert Orders",
+    "name_ar": "تحويلات المخازن",
+    "name_en": "Stock Transfers",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 293,
+    "screen_key": "Total Traffic Report",
+    "name_ar": "تقرير حركة اجمالي",
+    "name_en": "Total Movement Report",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 294,
+    "screen_key": "Inventory",
+    "name_ar": "جرد المخازن",
+    "name_en": "Inventory Counting",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 323,
+    "screen_key": "A detailed report of the movement",
+    "name_ar": "تقرير حركة تفصيلي",
+    "name_en": "Detailed Movement Report",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 343,
+    "screen_key": "Product Card",
+    "name_ar": "كارتة صنف",
+    "name_en": "Product Card",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 344,
+    "screen_key": "Max Product",
+    "name_ar": "منتجات الحد الاقصى",
+    "name_en": "Max Product",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 345,
+    "screen_key": "Min Products",
+    "name_ar": "منتجات الحد الادنى",
+    "name_en": "Min Products",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 346,
+    "screen_key": "Product Order Point",
+    "name_ar": "منتجات اعادة الطلب",
+    "name_en": "Reorder Products",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 353,
+    "screen_key": "Detailed Change",
+    "name_ar": "تحويلات تفصيلي",
+    "name_en": "Detailed Change",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 326,
+    "screen_key": "Audit Products Balance",
+    "name_ar": "ميزان المراجعة للمنتجات",
+    "name_en": "Product Trial Balance",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 1404,
+    "screen_key": "Inventory Without Cost",
+    "name_ar": "الجرد بدون تكلفة",
+    "name_en": "Inventory Without Cost",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 1405,
+    "screen_key": "Product Card Without Cost",
+    "name_ar": "كارتة صنف بدون تكلفة",
+    "name_en": "Product Card Without Cost",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 1406,
+    "screen_key": "Detailed Movement No Cost",
+    "name_ar": "تقرير حركة تفصيلي بدون تكلفة",
+    "name_en": "Detailed Movement No Cost",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2852,
+    "screen_key": "/CurrentColorandSizeinventory",
+    "name_ar": "جرد الوان ومقاسات",
+    "name_en": "Inventory of Colors and Sizes",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2853,
+    "screen_key": "offers Dashboard",
+    "name_ar": "العروض",
+    "name_en": "Offers",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2916,
+    "screen_key": "exchange permission report for supply order",
+    "name_ar": "تقرير اذون الصرف لامر التوريد",
+    "name_en": "Issuance Report for Supply Orders",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2918,
+    "screen_key": "Exchange permission without sales",
+    "name_ar": "اذون صرف بدون مبيعات",
+    "name_en": "Issuance Notes without Sales",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2948,
+    "screen_key": "Full inventory by weight",
+    "name_ar": "جرد كامل بالوزن",
+    "name_en": "Full inventory by weight",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2949,
+    "screen_key": "Full inventory number",
+    "name_ar": "جرد كامل بالعدد",
+    "name_en": "Full inventory number",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2950,
+    "screen_key": "/CurrentinventoryView",
+    "name_ar": "جرد  كامل بالكمية الاخرى",
+    "name_en": "Inventory with Other Quantities",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2951,
+    "screen_key": "Inventory of the origin by number",
+    "name_ar": "جرد منشأ بالعدد",
+    "name_en": "Inventory by number",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2952,
+    "screen_key": "Inventory for hardness by weight",
+    "name_ar": "جرد صلابة بالوزن",
+    "name_en": "Inventory for hardness by weight",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2953,
+    "screen_key": "Inventory for hardness by number",
+    "name_ar": "جرد صلابة بالعدد",
+    "name_en": "Inventory for hardness by number",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2954,
+    "screen_key": "Inventory hackers",
+    "name_ar": "جرد سريال",
+    "name_en": "Serial Number Inventory",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2955,
+    "screen_key": "Inventory for expiration date",
+    "name_ar": "جرد تاريخ صلاحية",
+    "name_en": "Expiration Date Inventory",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2956,
+    "screen_key": "Date expired validity",
+    "name_ar": "تاريخ صلاحية منتهية",
+    "name_en": "Expired Date",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2957,
+    "screen_key": "Close Expired Date",
+    "name_ar": "تاريخ صلاحية قريبة",
+    "name_en": "Expiring Soon",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 4012,
+    "screen_key": "inventory adjustments",
+    "name_ar": "التسويات الجردية",
+    "name_en": "inventory adjustments",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 4013,
+    "screen_key": "adjustments Report",
+    "name_ar": "تقرير التسويات الجردية",
+    "name_en": "adjustments Report",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 5301,
+    "screen_key": "CurrentAllWithoutColorView",
+    "name_ar": "جرد كامل بدون منشاءو مخزن",
+    "name_en": "Inventory for hardness by number",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 5302,
+    "screen_key": "CurrentAllWithoutLengthView",
+    "name_ar": "جرد كامل بدون طول و مخزن",
+    "name_en": "Inventory for hardness by number",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6033,
+    "screen_key": "/CurrentInvintoryAfterRemind",
+    "name_ar": "جرد بعد التسليمات",
+    "name_en": "Inventory After Deliveries",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6034,
+    "screen_key": "/CurrentInvintoryAfterRemindColorSize",
+    "name_ar": "جرد الوان ومقاسات بعد التسليمات",
+    "name_en": "Inventory of Colors and Sizes After Deliveries",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6577,
+    "screen_key": "RequiredProductsFromSupplierView",
+    "name_ar": "احتياجات المخازن",
+    "name_en": "Inventory Needs",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6628,
+    "screen_key": "Inventory",
+    "name_ar": "ربح المخزون",
+    "name_en": "Inventory Profit",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6630,
+    "screen_key": "A detailed report of the movement",
+    "name_ar": "تاريخ تسعير المنتجات",
+    "name_en": "Product Pricing History",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6621,
+    "screen_key": "HistoryProductPricing",
+    "name_ar": "تاريخ تسعير المنتجات",
+    "name_en": "HistoryProductPricing",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6684,
+    "screen_key": "adjustments Report",
+    "name_ar": "تقرير التسويات الجردية التفصيلي",
+    "name_en": "Detailed Inventory Adjustments Report",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7009,
+    "screen_key": "Inventory",
+    "name_ar": "مصمم جرد المخازن",
+    "name_en": "Warehouse Inventory Designer",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7010,
+    "screen_key": "A detailed report of the movement",
+    "name_ar": "مصمم حركة تفصيلي",
+    "name_en": "Detailed report of the movement",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7140,
+    "screen_key": "Inventory",
+    "name_ar": "جرد المخازن بالوحدات المختلفة",
+    "name_en": "Warehouse Inventory Check in Different Units",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7129,
+    "screen_key": "Detailed Change",
+    "name_ar": "أذون استلام اضافة معلقة",
+    "name_en": "Pending Addition Receipt Notes",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7135,
+    "screen_key": "A detailed report of the movement",
+    "name_ar": "تقرير تصنيع للغير",
+    "name_en": "Manufacturing Report for Others",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7625,
+    "screen_key": "Show Date",
+    "name_ar": "جرد المخازن بالتاريخ",
+    "name_en": "Store Show Date",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 8000,
+    "screen_key": "Detailed Change",
+    "name_ar": "اجمالي صرف و اضافة النقل المخزني",
+    "name_en": "Detailed Change",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7057,
+    "screen_key": "compositProducts",
+    "name_ar": "تقرير فواتير الزجاج",
+    "name_en": "Glass Invoices Report",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7058,
+    "screen_key": "compositProducts",
+    "name_ar": "زجاج تفصيلي",
+    "name_en": "Detailed gless",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6690,
+    "screen_key": "compositProducts",
+    "name_ar": "الزجاج",
+    "name_en": "Glass",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6691,
+    "screen_key": "compositProductSetting",
+    "name_ar": "اعدادات الزجاج",
+    "name_en": "Glass settings",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6643,
+    "screen_key": "/CheckCash",
+    "name_ar": "صرف أوراق دفع",
+    "name_en": "Disbursement of Check",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7060,
+    "screen_key": "Purchases Return",
+    "name_ar": "مبيعات لفلاح",
+    "name_en": "Purchases Return",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7052,
+    "screen_key": "AddAndeduction",
+    "name_ar": "بنود الاضافات والاستقطاعات",
+    "name_en": "Additions and Deductions Items",
+    "module": "المكتب التنفيذي"
+  },
+  {
+    "page_id": 7040,
+    "screen_key": "/SystemEdit",
+    "name_ar": "اوامر بيع معدلة لم تراجع",
+    "name_en": "Sales Orders Not Reviewed",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7002,
+    "screen_key": "PurchasesRequestsConfirms",
+    "name_ar": "اعتماد المدير المالي لطلبات الشراء",
+    "name_en": "PurchasesRequestsConfirms",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7020,
+    "screen_key": "State Managment",
+    "name_ar": "مراحل امر البيع",
+    "name_en": "Sales Order Stages",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6695,
+    "screen_key": "ImplementationSchema",
+    "name_ar": "مخطط التنفيذ",
+    "name_en": "Implementation Schema",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 6591,
+    "screen_key": "/ProductProcessView",
+    "name_ar": "اذن استلام بضاعة",
+    "name_en": "Goods Receipt Note",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6552,
+    "screen_key": "/SystemEdit",
+    "name_ar": "اومر بيع لم تراجع",
+    "name_en": "Sales Orders Not Yet Reviewed",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 3007,
+    "screen_key": "Carrere Request",
+    "name_ar": "طلبات التوظيف",
+    "name_en": "Employment Requests",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2886,
+    "screen_key": "Vocabulary salary",
+    "name_ar": "مفردات مرتب",
+    "name_en": "Payroll Details",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2423,
+    "screen_key": "Customer Accounts",
+    "name_ar": "حسابات العملاء",
+    "name_en": "Customer Accounts",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2515,
+    "screen_key": "clients pricing Offers",
+    "name_ar": "عروض اسعار العملاء",
+    "name_en": "Customer Price Quotations",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2406,
+    "screen_key": "/CurrentProductView",
+    "name_ar": "الوحدات المتاحة",
+    "name_en": "Available Units",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 302,
+    "screen_key": "Out Payment",
+    "name_ar": "اذن صرف نقدية / شيك",
+    "name_en": "Out Payment /Check",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 347,
+    "screen_key": "Purchases Return",
+    "name_ar": "مرتجعات المشتريات",
+    "name_en": "Purchase Returns",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 329,
+    "screen_key": "Sales expenses",
+    "name_ar": "مصاريف المبيعات",
+    "name_en": "Sales expenses",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 292,
+    "screen_key": "Addition Invoices",
+    "name_ar": "اذون اضافة",
+    "name_en": "Addition Orders",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 237,
+    "screen_key": "Income List",
+    "name_ar": "قائمة الدخل",
+    "name_en": "Income Statement",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 226,
+    "screen_key": "Cost Centers",
+    "name_ar": "مراكز التكلفة",
+    "name_en": "Cost Centers",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7155,
+    "screen_key": "ImplementationSchema",
+    "name_ar": "رفع مخطط التنفيذ",
+    "name_en": "Implementation Schema",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7622,
+    "screen_key": "Addition Invoices",
+    "name_ar": "اذون اضافة بدون مشتريات",
+    "name_en": "Additions Without Purchases",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7146,
+    "screen_key": "AnalyticalItems",
+    "name_ar": "البنود التحليلية",
+    "name_en": "Analytical Items",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7147,
+    "screen_key": "SavedSchemas",
+    "name_ar": "النماذج",
+    "name_en": "Saved Schemas",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7148,
+    "screen_key": "ImplementationSchemaDeviation",
+    "name_ar": "انحراف مخطط التنفيذ",
+    "name_en": "Implementation Schema Deviation",
+    "module": "المكتب الفني "
+  },
+  {
+    "page_id": 7077,
+    "screen_key": "Employees data",
+    "name_ar": "الاستقالات و الانقطاعات",
+    "name_en": "Resignations and Absences",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7101,
+    "screen_key": "Addition Invoices",
+    "name_ar": "اذون اضافة بدون تكلفة",
+    "name_en": "Addition Invoices",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7096,
+    "screen_key": "PurchasesRequestsConfirms",
+    "name_ar": "اعتماد المدير العام لطلبات الشراء",
+    "name_en": "PurchasesRequestsConfirms",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7094,
+    "screen_key": "Products",
+    "name_ar": "تنبيهات المخازن",
+    "name_en": "Store Alerts",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7085,
+    "screen_key": "Store Convert Orders",
+    "name_ar": "طلب تحويل",
+    "name_en": "Store Convert Orders",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7062,
+    "screen_key": "Farming Supply",
+    "name_ar": "توريد زراعة",
+    "name_en": "Farming Supply",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7064,
+    "screen_key": "Farming Detail With Sales",
+    "name_ar": "كشف الجلاب",
+    "name_en": "Farming Detail With Sales",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7065,
+    "screen_key": "Farming Detail With Sales",
+    "name_ar": "كشف جلاب بالفلاح",
+    "name_en": "Farming Detail With Sales",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7066,
+    "screen_key": "Farmer Discount",
+    "name_ar": "خصومات الفلاح",
+    "name_en": "Farmer Discount",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7067,
+    "screen_key": "Farming Detail With Sales",
+    "name_ar": "كشف مشتريات",
+    "name_en": "Farming Detail With Sales",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7068,
+    "screen_key": "Pre Farming Supply",
+    "name_ar": "الوارد",
+    "name_en": "Farming Supply",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7069,
+    "screen_key": "PreFarmingView",
+    "name_ar": "تقرير الوارد",
+    "name_en": "PreFarmingView",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 7070,
+    "screen_key": "PreFarmingView",
+    "name_ar": "تقرير المتبقى من الوارد",
+    "name_en": "Remaining Inventory Report",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6678,
+    "screen_key": "Collect",
+    "name_ar": "تجميع اللبن",
+    "name_en": "Milk Collect",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 5300,
+    "screen_key": "CurrentAllWithoutLengthView",
+    "name_ar": "جرد كامل بدون مخزن",
+    "name_en": "Complete Inventory without Warehouse",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 3008,
+    "screen_key": "Employee Applicant",
+    "name_ar": "طلبات التقديم",
+    "name_en": "Application Requests",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2965,
+    "screen_key": "accrued salaries from the company",
+    "name_ar": "المرتبات المستحقه من الشركه",
+    "name_en": "Accrued salaries from the company",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 2563,
+    "screen_key": "/BarcodePrint",
+    "name_ar": "طباعة الباركود",
+    "name_en": "Barcode Printing",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2893,
+    "screen_key": "Vacations",
+    "name_ar": "الأجازات",
+    "name_en": "Vacations",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6026,
+    "screen_key": "/InventCustOffers",
+    "name_ar": "تأكيد عروض اسعار عملاء",
+    "name_en": "Confirm Offers",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6200,
+    "screen_key": "ExsitProcessMastersView",
+    "name_ar": "اذن خروج",
+    "name_en": "Leave Permission",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6668,
+    "screen_key": "RelaidOut Invoices",
+    "name_ar": "ترحيل اذون صرف",
+    "name_en": "RelaidOut Invoices",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6673,
+    "screen_key": "RelaidAdditionInvoices",
+    "name_ar": "ترحيل اذون اضافة",
+    "name_en": "RelaidAdditionInvoices",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6659,
+    "screen_key": "/CheckCashPart",
+    "name_ar": "صرف جزء من  الشيكات",
+    "name_en": "CheckCashPart",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6663,
+    "screen_key": "RelaiedCustomer",
+    "name_ar": "ترحيل متحصلات عملاء",
+    "name_en": "RelaiedCustomer",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6631,
+    "screen_key": "ExchangeRequest",
+    "name_ar": "طلب صرف نقدية",
+    "name_en": "Disbursement Request",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6632,
+    "screen_key": "Agreement",
+    "name_ar": "اعتماد طلب الصرف",
+    "name_en": "Approval of Disbursement Request",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6633,
+    "screen_key": "ExecutionOrder",
+    "name_ar": "تنفيذ طلب",
+    "name_en": "Request Fulfillment",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7025,
+    "screen_key": "/SystemEdit",
+    "name_ar": "مراقبة مراحل اوامر البيع",
+    "name_en": "Monitoring Sales Order Stages",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7027,
+    "screen_key": "/SystemEdit",
+    "name_ar": "اعتماد مرحلة امر البيع",
+    "name_en": "Approval of Sales Order Stage",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7003,
+    "screen_key": "PurchaseRequestsWithoutPurchases",
+    "name_ar": "طلبات شراء بدون مشتريات",
+    "name_en": "PurchaseOrdersWithoutPurchases",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7011,
+    "screen_key": "financial Transactions Reports",
+    "name_ar": "مصمم تقارير المعاملات المالية",
+    "name_en": "Financial Transactions Reports",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 239,
+    "screen_key": "Balance Sheet",
+    "name_ar": "الميزانية العمومية",
+    "name_en": "Balance Sheet",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 233,
+    "screen_key": "Entries",
+    "name_ar": "قيود اليومية",
+    "name_en": "Journal Entries",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 308,
+    "screen_key": "Purchases Expenses",
+    "name_ar": "مصاريف المشتريات",
+    "name_en": "Purchases Expenses",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 350,
+    "screen_key": "Sales Return Types",
+    "name_ar": "مرتجعات البيع",
+    "name_en": "Sales Returns",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2407,
+    "screen_key": "/ReservasionView",
+    "name_ar": "الحجز",
+    "name_en": "Reservations",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2958,
+    "screen_key": "financial Transactions Reports",
+    "name_ar": "تقارير المعاملات المالية",
+    "name_en": "Financial Transactions Reports",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7084,
+    "screen_key": "Employees data",
+    "name_ar": "مفردات مرتب الموظفين",
+    "name_en": "Employee Payroll Details",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7086,
+    "screen_key": "Store Convert Orders",
+    "name_ar": "قبول طلبات التحويل",
+    "name_en": "Approval on convert order",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7073,
+    "screen_key": "ExchangeRequest",
+    "name_ar": "تقرير طلبات الصرف",
+    "name_en": "Exchangen Request",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7102,
+    "screen_key": "Store Convert Orders",
+    "name_ar": "تحويلات المخازن بدون تكلفة",
+    "name_en": "Store Convert Orders",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7110,
+    "screen_key": "financial Transactions Reports",
+    "name_ar": "اجمالي معاملات يومي بالحساب",
+    "name_en": "financial Transactions Reports",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7144,
+    "screen_key": "Employees data",
+    "name_ar": "تقرير المرتبات المستحقة",
+    "name_en": "Payroll Report",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 7127,
+    "screen_key": "/InventCustOffers",
+    "name_ar": "تأكيد عروض اسعار موردين",
+    "name_en": "Supplier Quotation Confirmation",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7632,
+    "screen_key": "/ReservasionView",
+    "name_ar": "السعر الرسمي وسعر البيع",
+    "name_en": "Reservations",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 7910,
+    "screen_key": "Send Statments",
+    "name_ar": "إرسال كشف حسابات",
+    "name_en": "Send Statments",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7104,
+    "screen_key": "In Invoices Get",
+    "name_ar": "استلام امر اضافة بدون تكلفة",
+    "name_en": "In Invoices Get",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7132,
+    "screen_key": "Check Cash",
+    "name_ar": "مصمم تقارير شيكات",
+    "name_en": "Check Reporting Designer",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7134,
+    "screen_key": "In Invoices Get",
+    "name_ar": "استلام الجودة",
+    "name_en": "Quality Assurance Receipt",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 7081,
+    "screen_key": "Sales Types",
+    "name_ar": "فوترة اوامر البيع",
+    "name_en": "Invoicing Sales Orders",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2562,
+    "screen_key": "/ProductParentPricing",
+    "name_ar": "تسعير المنتجات الرئيسيه",
+    "name_en": "Pricing main Products",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2879,
+    "screen_key": "Check Cash",
+    "name_ar": "متابعة الشيكات",
+    "name_en": "Checks Followup",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2907,
+    "screen_key": "Impress Rem",
+    "name_ar": "العهدة العينية",
+    "name_en": "Impress Rem",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2516,
+    "screen_key": "So the supply of a resource",
+    "name_ar": "اذن توريد مورد",
+    "name_en": "Vendor Delivery Note",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 2414,
+    "screen_key": "/ProductTable",
+    "name_ar": "جدول الوحدات",
+    "name_en": "Table of Units",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2874,
+    "screen_key": "Custody Deliver",
+    "name_ar": "تسليم العهده",
+    "name_en": "Covenant Handover",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 1020,
+    "screen_key": "/changeOffersStatus",
+    "name_ar": "تغير  حالة العروض",
+    "name_en": "Change Offers Status",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 1002,
+    "screen_key": "/ProductTable",
+    "name_ar": "جدول الوحدات",
+    "name_en": "Table of Units",
+    "module": "الايجارات"
+  },
+  {
+    "page_id": 324,
+    "screen_key": "In Invoices Get",
+    "name_ar": "استلام امر اضافة",
+    "name_en": "Receipt of Add Order",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 319,
+    "screen_key": "Customer Payment",
+    "name_ar": "متحصلات العملاء",
+    "name_en": "Customer Payment",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7004,
+    "screen_key": "PurchaseRequestsWithoutSupplierOrder",
+    "name_ar": "طلبات شراء بدون توريد مورد",
+    "name_en": "PurchaseOrdersWithoutSupplierOrder",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 6666,
+    "screen_key": "RelaidClients abstracts",
+    "name_ar": "ترحيل مستخلصات العملاء",
+    "name_en": "RelaidClients abstracts",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6667,
+    "screen_key": "Relaidabstracts",
+    "name_ar": "ترحيل مستخلصات المقاولين",
+    "name_en": "Relaidabstracts",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 6657,
+    "screen_key": "AccountingComparison",
+    "name_ar": "المقارنه بين الميزانية والموازنه",
+    "name_en": "The comparison between the balance sheet and budget",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6642,
+    "screen_key": "Sales Types",
+    "name_ar": "الغاء فواتير المبيعات",
+    "name_en": "Cancel Sales Invoices",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6540,
+    "screen_key": "/CostItem",
+    "name_ar": "حسابات مركز التكلفه",
+    "name_en": "Cost Center Accounts",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2894,
+    "screen_key": "Permits",
+    "name_ar": "الأذون",
+    "name_en": "Permissions",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 3055,
+    "screen_key": "Check Book",
+    "name_ar": "دفتر الشيكات",
+    "name_en": "Checks Book",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 4011,
+    "screen_key": "applicant Interviews",
+    "name_ar": "مقابلات المتقدم",
+    "name_en": "applicant Interviews",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4009,
+    "screen_key": "job Interviews",
+    "name_ar": "مقابلات الوظيفه",
+    "name_en": "job Interviews",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2961,
+    "screen_key": "Due to the Company of Insurance",
+    "name_ar": "المستحق على الشركه من التأمين",
+    "name_en": "Company's Insurance Obligations",
+    "module": "المرتبات"
+  },
+  {
+    "page_id": 6677,
+    "screen_key": "Sales Edit",
+    "name_ar": "تغيير أسعار فواتير سابقه",
+    "name_en": "Change of Previous Invoice Prices",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6610,
+    "screen_key": "CustomerAccountView",
+    "name_ar": "بيانات العملاء",
+    "name_en": "Customers data",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 7005,
+    "screen_key": "PurchaseRequestsWithoutProcess",
+    "name_ar": "طلبات شراء بدون اذون اضافة",
+    "name_en": "PurchaseRequestsWithoutProcess",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7024,
+    "screen_key": "StoreReport",
+    "name_ar": "تقرير متابعة أوامر البيع تفصيلي",
+    "name_en": "Detailed Sales Order Follow-Up Report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7054,
+    "screen_key": "ModalityWithCustomerCategoryDiscount",
+    "name_ar": "خصم اسعار خاصه",
+    "name_en": "Special Discount Pricing",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7046,
+    "screen_key": "Out Invoices Get",
+    "name_ar": "صرف أكثر من المتبقي",
+    "name_en": "Disbursement Exceeding Available Balance",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7047,
+    "screen_key": "The total remaining on the sell order",
+    "name_ar": "اجمالي المتبقي على امر البيع",
+    "name_en": "Total remaining on sales order",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 325,
+    "screen_key": "Out Invoices Get",
+    "name_ar": "تسليم امر صرف",
+    "name_en": "Delivering Issuance Order",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2854,
+    "screen_key": "/SpearPartsPermission",
+    "name_ar": "اذن قطع الغيار",
+    "name_en": "Spare Parts Request",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 2542,
+    "screen_key": "Proceeds Payments",
+    "name_ar": "متحصلات الدفعات",
+    "name_en": "Proceeds Payments",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2415,
+    "screen_key": "Current customers",
+    "name_ar": "العملاء الحالين",
+    "name_en": "Current customers",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2405,
+    "screen_key": "/ProductCostDist",
+    "name_ar": "توزيع تكاليف المشاريع",
+    "name_en": "Projects Cost Distribution",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 2517,
+    "screen_key": "So supply client",
+    "name_ar": "أوامر البيع",
+    "name_en": "Sales Orders",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2903,
+    "screen_key": "Machine fingerprint",
+    "name_ar": "ماكينة البصمه",
+    "name_en": "Fingerprint Machine",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2880,
+    "screen_key": "Due exchange checks",
+    "name_ar": "شيكات واجبة الصرف",
+    "name_en": "Due exchange checks",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2889,
+    "screen_key": "Additions",
+    "name_ar": "الاضافات",
+    "name_en": "Additions",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7133,
+    "screen_key": "The total remaining on the sell order",
+    "name_ar": "المتبقي على امر البيع",
+    "name_en": "Total remaining on the sell order",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7105,
+    "screen_key": "Out Invoices Get",
+    "name_ar": "تسليم امر صرف بدون تكلفة",
+    "name_en": "Out Invoices Get",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 7900,
+    "screen_key": "Total remaining on the sell order",
+    "name_ar": "متابعة ما تم تنفيذه على امر البيع",
+    "name_en": "Total remaining on the sell order",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7906,
+    "screen_key": "Sales Types",
+    "name_ar": "مبيعات كاشير",
+    "name_en": "Sales Types",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7909,
+    "screen_key": "Zatcka Pending Moving Invoice",
+    "name_ar": "ترحيل فواتير إلكترونية هيئة الزكاة والدخل",
+    "name_en": "Zatcka Pending Moving Invoice",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7647,
+    "screen_key": "Job Sheet",
+    "name_ar": "حالات الشحن",
+    "name_en": "WarehousingTransportation",
+    "module": "الشحن"
+  },
+  {
+    "page_id": 7124,
+    "screen_key": "Detailed sales",
+    "name_ar": "تقرير البوانص",
+    "name_en": "Bonus Report",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7141,
+    "screen_key": "Sales Types",
+    "name_ar": "فواتير مبيعات سريعه",
+    "name_en": "Quick Sales Invoices",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7145,
+    "screen_key": "/SalesManTotal",
+    "name_ar": "اجمالي مبيعات كل رجل بيع شهري",
+    "name_en": "Total Monthly Sales per Salesperson",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7072,
+    "screen_key": "RelaiedElectronicInvoices",
+    "name_ar": "الفواتير المرحلة",
+    "name_en": "RelaiedElectronicInvoices",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7093,
+    "screen_key": "ModalityWithCustomerCategoryDiscount",
+    "name_ar": "خصم تصنيف المنتجات",
+    "name_en": "Modality With Customer Category Discount",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 2890,
+    "screen_key": "Discounts",
+    "name_ar": "الخصومات",
+    "name_en": "Deductions",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2985,
+    "screen_key": "Bonus system",
+    "name_ar": "نظام العلاوات",
+    "name_en": "Bonus system",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2511,
+    "screen_key": "Pricing cases",
+    "name_ar": "حالات تسعير",
+    "name_en": "Pricing cases",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2561,
+    "screen_key": "/FillAndEvacuation",
+    "name_ar": "تجميع وتفكيك المنتجات المركبه",
+    "name_en": "Unloading and packaging products",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2855,
+    "screen_key": "/SpearPartsPermissionDetails",
+    "name_ar": "اذن قطع غيار تفصيلى",
+    "name_en": "Detailed Spare Parts Request",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 330,
+    "screen_key": "Detailed sales",
+    "name_ar": "مبيعات تفصيلي",
+    "name_en": "Detailed sales",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 332,
+    "screen_key": "Detailed sales profit",
+    "name_ar": "ارباح مبيعات تفصيلي",
+    "name_en": "Detailed sales profit",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 333,
+    "screen_key": "Sales total profit",
+    "name_ar": "ارباح مبيعات اجمالي",
+    "name_en": "Sales total profit",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 334,
+    "screen_key": "/SalesManTotal",
+    "name_ar": "اجمالي مناديب بيع",
+    "name_en": "Total Sales Representatives",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 335,
+    "screen_key": "Total sales of classes",
+    "name_ar": "اجمالي مبيعات اصناف",
+    "name_en": "Total Sales of Items",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 336,
+    "screen_key": "Monthly sales",
+    "name_ar": "مبيعات شهرية",
+    "name_en": "Monthly sales",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 304,
+    "screen_key": "Supplier Payment",
+    "name_ar": "مدفوعات الموردين",
+    "name_en": "Supplier Payment",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2404,
+    "screen_key": "/ProductAuto",
+    "name_ar": "ادخال سريع للوحدات",
+    "name_en": "Quick Entry of Units",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 351,
+    "screen_key": "Return Details",
+    "name_ar": "مرتجعات تفصيلي",
+    "name_en": "Return Details",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 2470,
+    "screen_key": "/EmployeeCommission",
+    "name_ar": "تقرير العمولات",
+    "name_en": "Commission report",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 2442,
+    "screen_key": "Detailed sales",
+    "name_ar": "مبيعات تفصيلي",
+    "name_en": "Detailed sales",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2443,
+    "screen_key": "Detailed sales profit",
+    "name_ar": "ارباح مبيعات تفصيلي",
+    "name_en": "Detailed sales profit",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2444,
+    "screen_key": "Sales total profit",
+    "name_ar": "ارباح مبيعات اجمالي",
+    "name_en": "Sales total profit",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2445,
+    "screen_key": "/SalesManTotal",
+    "name_ar": "اجمالي مناديب بيع",
+    "name_en": "Total Sales Representatives",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2446,
+    "screen_key": "Total sales of classes",
+    "name_ar": "اجمالي مبيعات اصناف",
+    "name_en": "Total Sales of Products",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 2447,
+    "screen_key": "Monthly sales",
+    "name_ar": "مبيعات شهرية",
+    "name_en": "Monthly sales",
+    "module": "الادارة العليا"
+  },
+  {
+    "page_id": 7045,
+    "screen_key": "Monthly sales",
+    "name_ar": "السيولة المتاحة",
+    "name_en": "Available Liquidity",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7041,
+    "screen_key": "Job Sheet",
+    "name_ar": "مقاس الباركود",
+    "name_en": "Barcode Page Size",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7042,
+    "screen_key": "Job Sheet",
+    "name_ar": "اعدادات الباركود",
+    "name_en": "BarCode Settings",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7043,
+    "screen_key": "Job Sheet",
+    "name_ar": "خانات الباركود",
+    "name_en": "Barcode Attribute",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7006,
+    "screen_key": "Job Sheet",
+    "name_ar": "تصنيف المقاسات",
+    "name_en": "Sizes Category",
+    "module": "الاعدادات"
+  },
+  {
+    "page_id": 7007,
+    "screen_key": "Sales Types",
+    "name_ar": "تقارير اعمار الديون",
+    "name_en": "Dept Reports",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 7013,
+    "screen_key": "Detailed sales profit",
+    "name_ar": "مصمم ارباح مبيعات",
+    "name_en": "Sales Profit Designer",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6701,
+    "screen_key": "Sales Types",
+    "name_ar": "فواتير المبيعات",
+    "name_en": "Sales invoices",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6702,
+    "screen_key": "Detailed sales",
+    "name_ar": "مبيعات تفصيلي",
+    "name_en": "Detailed sales",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 7001,
+    "screen_key": "PurchasesRequests",
+    "name_ar": "طلبات شراء",
+    "name_en": "Purchase Orders",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 6704,
+    "screen_key": "Monthly sales",
+    "name_ar": "تقارير مبيعات",
+    "name_en": "Sales Reports",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6710,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقارير جرد مختلفة",
+    "name_en": "Various Inventory Reports",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 6641,
+    "screen_key": "RelaiedElectronicInvoices",
+    "name_ar": "ترحيل فواتير الكترونية",
+    "name_en": "Electronic Invoice Posting",
+    "module": "الفاتورة الالكترونية"
+  },
+  {
+    "page_id": 6629,
+    "screen_key": "/CheckCash",
+    "name_ar": "شيكات تم تظهيرها للموردين",
+    "name_en": "CheckCash",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6670,
+    "screen_key": "RelaiedSales",
+    "name_ar": "ترحيل مبيعات",
+    "name_en": "RelaiedSales",
+    "module": "المراجعة والترحيل"
+  },
+  {
+    "page_id": 4000,
+    "screen_key": "Applicants evaluations",
+    "name_ar": "تقييمات المقدمين",
+    "name_en": "Applicants evaluations",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 4500,
+    "screen_key": "SalesMonthTypeTube",
+    "name_ar": "مبيعات قنوات",
+    "name_en": "Channel Sales",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6550,
+    "screen_key": "Monthly sales",
+    "name_ar": "مصمم تقارير المبيعات",
+    "name_en": "Sales Reports Designer",
+    "module": "العملاء  و المبيعات"
+  },
+  {
+    "page_id": 6027,
+    "screen_key": "NewCustomer",
+    "name_ar": "ادخال العملاء خارجيا",
+    "name_en": "NewCustomer",
+    "module": "التسويق وادارة العملاء"
+  },
+  {
+    "page_id": 6055,
+    "screen_key": "Sales Types",
+    "name_ar": "التعاقدات",
+    "name_en": "Contracts",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6056,
+    "screen_key": "ProductVisit Range",
+    "name_ar": "تارجت الزيارات",
+    "name_en": "Visit Targets",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6057,
+    "screen_key": "ReciveTargt",
+    "name_ar": "توزيع التارجيت",
+    "name_en": "Target distribution",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6058,
+    "screen_key": "Product Visit",
+    "name_ar": "الزيارات على العقود",
+    "name_en": "Visit On Contracts",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6059,
+    "screen_key": "Target Recive",
+    "name_ar": "تحصيل التارجيت",
+    "name_en": "Recive Target",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6060,
+    "screen_key": "Job Sheet",
+    "name_ar": "اوامر الشغل على الزياره",
+    "name_en": "Work Orders for Visits",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6061,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل خط شهريا",
+    "name_en": "Quentity for Every Route Monthly",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6062,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل خط يوميا",
+    "name_en": "Quentity for Every Route daily",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6063,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل عميل شهريا",
+    "name_en": "Quentity for Every Customer Monthly",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6064,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل عميل يوميا",
+    "name_en": "Quentity for Every Customer daily",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6065,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل فنى شهريا",
+    "name_en": "Quentity for Every Employee Monthly",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6066,
+    "screen_key": "Job Sheet",
+    "name_ar": "تقرير الكمية المحملة لكل فنى يوميا",
+    "name_en": "Quentity for Every Employee Daily",
+    "module": "الانظمة المتخصصة"
+  },
+  {
+    "page_id": 6071,
+    "screen_key": "Job Sheet",
+    "name_ar": "اجمالى ايرادات الشهر مبيعات وتحصيلات",
+    "name_en": "Total in and out in month",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6072,
+    "screen_key": "Job Sheet",
+    "name_ar": "اجمالى مبيعات لكل رجل بيع",
+    "name_en": "Salesperson Total Sales",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 6073,
+    "screen_key": "Job Sheet",
+    "name_ar": "اجمالى مبيعات لكل اعتماد",
+    "name_en": "Total Sales per Credit",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 3992,
+    "screen_key": "Answers Rating",
+    "name_ar": "تقييم الاجابات",
+    "name_en": "Answers Rating",
+    "module": "شئون الموظفين"
+  },
+  {
+    "page_id": 2930,
+    "screen_key": "Types Vacations",
+    "name_ar": "أنواع الأجازت",
+    "name_en": "Vacation Types",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6661,
+    "screen_key": "Expenses",
+    "name_ar": "مصاريف الفرع",
+    "name_en": "Branch Expenses",
+    "module": "تقارير تكملية"
+  },
+  {
+    "page_id": 7039,
+    "screen_key": "/SystemEdit",
+    "name_ar": "اذون توريد بدون اذن اضافة",
+    "name_en": "Requisition form without Addition Note",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 355,
+    "screen_key": "Consolidated Disbursement",
+    "name_ar": "صرف مجمع",
+    "name_en": "Consolidated Disbursement",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 366,
+    "screen_key": "Consolidated",
+    "name_ar": "استلام مجمع",
+    "name_en": "Consolidated",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 301,
+    "screen_key": "Expenses",
+    "name_ar": "المصروفات",
+    "name_en": "Expenses",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 111,
+    "screen_key": "Out Invoices",
+    "name_ar": "طلب اذن صرف مخزني",
+    "name_en": "Out Invoices",
+    "module": "المخازن"
+  },
+  {
+    "page_id": 2418,
+    "screen_key": "Commotions",
+    "name_ar": "عمولات الموظفين",
+    "name_en": "Commissions",
+    "module": "التطوير العقاري"
+  },
+  {
+    "page_id": 7100,
+    "screen_key": "/SystemEdit",
+    "name_ar": "المتبقي على اذن التوريد",
+    "name_en": "Remaining on Supply Order",
+    "module": "الموردين و المشتريات"
+  },
+  {
+    "page_id": 7656,
+    "screen_key": "Consolidated Disbursement",
+    "name_ar": "صرف شيك مجمع",
+    "name_en": "Consolidated Disbursement",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7139,
+    "screen_key": "Staff Groups",
+    "name_ar": "طلبات ادخال الحضور و الانصراف من الهاتف",
+    "name_en": "Inventory Audit by Different Units",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 7138,
+    "screen_key": "Staff Groups",
+    "name_ar": "تحديد مكان البصمة للموظف",
+    "name_en": "Employee Fingerprint Location",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 2892,
+    "screen_key": "Names shift",
+    "name_ar": "أسماء الورديات",
+    "name_en": "Shift names",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 4010,
+    "screen_key": "Cash Money",
+    "name_ar": "التحويلات النقدية",
+    "name_en": "Cash Money",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 6085,
+    "screen_key": "EmployeeSettings",
+    "name_ar": "تطبيق اللوائح على الموظف",
+    "name_en": "Implement Policies for Employees",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6086,
+    "screen_key": "GroupSettings",
+    "name_ar": "تطبيق اللوائح على المجموعه",
+    "name_en": "Implement Policies for Groups",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 6587,
+    "screen_key": "/ProductionProcess",
+    "name_ar": "تصنيع الملابس",
+    "name_en": "Clothing Manufacturing",
+    "module": "التصنيع"
+  },
+  {
+    "page_id": 6580,
+    "screen_key": "Work Request Report",
+    "name_ar": "تقارير أوامر الشغل",
+    "name_en": "Work Orders Reports",
+    "module": "الصيانة"
+  },
+  {
+    "page_id": 6622,
+    "screen_key": "CurrencyTransfer",
+    "name_ar": "تحويل العملات",
+    "name_en": "CurrencyTransfer",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 2887,
+    "screen_key": "Types of skills",
+    "name_ar": "انواع المهارات",
+    "name_en": "Types of skills",
+    "module": "اعدادات المرتبات"
+  },
+  {
+    "page_id": 1016,
+    "screen_key": "Entity Merge",
+    "name_ar": "تحويل الحركات من كيان لاخر",
+    "name_en": "Entity Merge",
+    "module": "الحسابات العامه"
+  },
+  {
+    "page_id": 7907,
+    "screen_key": "ExchangeRateSettlement",
+    "name_ar": "تسوية فرق سعر صرف العملة",
+    "name_en": "Exchange Rate Settlement",
+    "module": "الحسابات العامه"
+  }
+]
