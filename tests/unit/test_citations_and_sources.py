@@ -13,18 +13,17 @@ from src.api.v1.router import _SOURCE_FIELDS
 def test_rag_prompt_dynamic_boundaries():
     """Verify system prompt explicitly bounds citations to the number of retrieved sources."""
     prompt = get_rag_system_prompt(context_str="[1] محتوى اختباري", num_sources=3)
-    assert "3 مصدر/مصادر مسترجعة" in prompt
-    assert "مرقّمة من [1] إلى [3]" in prompt
-    assert "يُحظر تماماً كتابة أو ذكر أي رقم استشهاد أكبر من [3]" in prompt
-    assert "يمنع منعاً باتاً كتابة [4] أو أي رقم أعلى" in prompt
+    assert "You have exactly 3 retrieved source(s)" in prompt
+    assert "[1] to [3]" in prompt
+    assert "citation [4] is strictly forbidden" in prompt
 
 
 def test_safe_rag_prompt_backwards_compatibility():
     """Verify legacy .format(context_str=...) calls do not crash and supply defaults."""
     formatted = RAG_SYSTEM_PROMPT.format(context_str="محتوى قديم")
-    assert "1 مصدر/مصادر مسترجعة" in formatted
-    assert "[1]" in formatted
-    assert "[2]" in formatted
+    assert "You have exactly 1 retrieved source(s)" in formatted
+    assert "[1] to [1]" in formatted
+    assert "citation [2] is strictly forbidden" in formatted
 
 
 def test_build_source_items_video_formatting():

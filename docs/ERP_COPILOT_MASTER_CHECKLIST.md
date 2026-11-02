@@ -1,14 +1,15 @@
 # DynamicPro ERP Co-Pilot — Master Living Execution Checklist
 
-**Document Version:** 1.0.0  
+**Document Version:** 1.1.0  
 **Classification:** Living Project Control & Task Tracking Ledger  
 **Author:** Tech Lead & Antigravity Agent  
-**Date:** 2026-10-25  
+**Date:** 2026-11-01  
 **Synchronized With:**
 * [ERP_COPILOT_MASTER_BLUEPRINT.md](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/docs/ERP_COPILOT_MASTER_BLUEPRINT.md)
 * [ERP_COPILOT_BUGS_AND_SOLUTIONS.md](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/docs/ERP_COPILOT_BUGS_AND_SOLUTIONS.md)
 * [ERP_METADATA_INTEGRATION_PLAN.md](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/docs/ERP_METADATA_INTEGRATION_PLAN.md)
 * [ERP_METADATA_DISCOVERY_REFERENCE.md](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/docs/ERP_METADATA_DISCOVERY_REFERENCE.md)
+* [comprehensive_status_report_and_architecture_guide.md](file:///C:/Users/EGY%20DYNAMIC/.gemini/antigravity-ide/brain/c77ecb53-302d-4229-9983-0d42683fcffe/comprehensive_status_report_and_architecture_guide.md)
 
 ---
 
@@ -22,13 +23,13 @@
 
 ## 🚦 Global Status Overview
 
-* **Current Stage:** Phase 6 Generic Scaling & Compilation Complete (Universal 822-Screen Catalog Indexed in O(1))
+* **Current Stage:** Phase 7 Live Field Pilot Observations & Quality Remediation (Pending User Approval)
 * **Active Running Infrastructure:**
   * Python FastAPI AI Engine (Port 8000)
-  * .NET 10 LMS Backend
-  * Angular 19 LMS UI
-  * Microsoft DevTunnel CDP Bridge (Port 9222 -> Port 443 HTTPS/WSS)
-* **Overall Completion:** 15 / 16 Major Milestones Completed (93.8% Complete)
+  * .NET 10 LMS Backend (Port 5115)
+  * Angular 19 LMS UI (Port 4200)
+  * Microsoft DevTunnel CDP Bridge (Port 9222 -> Port 443 HTTPS/WSS via `xhfmws6g-9222.eun1.devtunnels.ms`)
+* **Overall Completion:** 15 / 22 Major Milestones Completed (Tracks A, B, C complete; Track D planned)
 
 ---
 
@@ -154,3 +155,132 @@
 * [x] C.5 Master Living Execution Checklist established and maintained (`ERP_COPILOT_MASTER_CHECKLIST.md`).
 * [x] C.6 Transformation Deep Dive Document with Before/After code analysis and Self-Healing protocol created (`ERP_COPILOT_TRANSFORMATION_DEEP_DIVE.md`).
 * [ ] C.7 Git Milestone closure proposed with conventional commit message.
+
+---
+
+## 📋 Track D: Live Field Pilot Observations & Precision Remediation (2026-11-01)
+
+### Task D.1: Enforce Strict Exact-Match Priority in `ng-select` Typeahead Driver
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target File:** `learn-dynamic-pro-ui/src/app/core/services/form-driver/control-interactor.ts`
+* **Defect Resolved:** In `session_session_20261101_141950_tnkf.log` (Line 16), selecting `طريقة البيع مباشرة` picked `مبيعات غير مباشرة`.
+* **Implementation Details:**
+  * [x] D.1.1 Extracted pure function `pickBestOption(options, term)` prioritizing strict string equality (`cleanTerm === optText`).
+  * [x] D.1.2 Added negation penalty: if `cleanTerm` lacks `غير`, any candidate option containing `غير` (e.g. `مبيعات غير مباشرة`) is disqualified.
+  * [x] D.1.3 Integrated `pickBestOption` into `setNgSelect` before executing click selection.
+
+### Task D.2: Support Dynamic Cash-Paid & Total Settlement Auto-Population
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target Files:** `src/core/prompts.py`, `src/services/agentic_stepper_service.py`, `src/data/forms_metadata.json`, `learn-dynamic-pro-ui/src/app/core/services/form-driver/form-inspector.ts`, `learn-dynamic-pro-ui/src/app/core/services/erp-form-driver.service.ts`
+* **Defect Resolved:** In `y6p6.log`, cash settlement field `POPaid` remained blank because footer label `.dp-edit__totlbl` was unmapped.
+* **Implementation Details:**
+  * [x] D.2.1 Created unified `ERP_PAYMENT_RULES` defining `$TOTAL` assignment for numeric payment fields (`POPaid`, `CashPaid`, `المدفوع نقداً`) and preventing `$TOTAL` on treasury dropdowns (`SafeAccounId`).
+  * [x] D.2.2 Injected `ERP_PAYMENT_RULES` into both `ERP_FORM_EXTRACTION_PROMPT_TEMPLATE` and `agentic_stepper_service.py` extraction prompt.
+  * [x] D.2.3 Enriched screen 244 (Sales Invoices) schema in `forms_metadata.json` with concrete keys: `customerID, ContractType, CostItemId, StoreID, SalesMan, POPaid`, and grid `product, Qty, UnitPrice`.
+  * [x] D.2.4 Updated `findLabelForElement` in `form-inspector.ts` to inspect `.dp-edit__totlbl` on sibling/parent containers so `POPaid` maps to `"المحصل نقدا"`.
+  * [x] D.2.5 Added explicit `input[name="POPaid" i]` and `input[name*="popaid" i]` to `paidSelectors` in `erp-form-driver.service.ts`.
+  * [x] D.2.6 Verified with unit tests in `tests/unit/test_extraction_prompts.py` (3 passed).
+
+### Task D.3: Harden Host Bridge & Enforce Safe Draft Policy
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target Files:** `learn-dynamic-pro-ui/src/app/core/services/erp-bridge.service.ts`
+* **Defect Resolved:** In `tnkf.log` (Line 185), `submitActiveForm` threw `TypeError` because host bridge lacked this function.
+* **Implementation Details:**
+  * [x] D.3.1 Guarded `submitActiveForm` with `typeof (window.DynamicERP as any)?.submitActiveForm !== 'function'`.
+  * [x] D.3.2 Returns clean `ErpSaveResult` with Arabic guidance: *"الحفظ التلقائي غير مدعوم في هذه النسخة من النظام. يرجى مراجعة البيانات والضغط على زر الحفظ يدوياً."* without throwing or breaking UI flow.
+  * [x] D.3.3 Enterprise Draft-State Safety Gate enforced: manual user click is required to save.
+
+### Task D.4: Reset Grid Rows & Form Context Prior to Re-filling
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target File:** `learn-dynamic-pro-ui/src/app/core/services/erp-form-driver.service.ts`
+* **Defect Resolved:** In `tnkf.log` (Line 66), re-applying prompt in an open form appended duplicate rows into `dataObject.rows`.
+* **Implementation Details:**
+  * [x] D.4.1 Inspected `activeCtx.rows` before calling `this.bridge.fillFormData`. If dirty/populated items already exist, pass `rows: []` to prevent host-side row duplication.
+  * [x] D.4.2 In-DOM row driver updates rows in-place at indices `rIdx`, avoiding creation of extra rows.
+
+### Task D.5: Resolve 244 vs 290 Intent Conflict in Metadata Catalogs
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target Files:** `src/data/screens_metadata.json`, `src/data/forms_metadata.json`
+* **Defect Resolved:** Sales invoice intents erroneously mapped to Page 290 (Store Transfers) instead of Page 244 (Sales Invoices).
+* **Implementation Details:**
+  * [x] D.5.1 Enriched Page 244 in `screens_metadata.json` with all sales aliases and intents.
+  * [x] D.5.2 Stripped all sales aliases from Page 290 in `screens_metadata.json` and restored warehouse transfer metadata.
+  * [x] D.5.3 Re-mapped `"المبيعات"` and sales intents in `forms_metadata.json` to 244 and added standalone `"تحويلات المخازن": 290`.
+  * [x] D.5.4 Verified with unit tests in `tests/unit/test_forms_resolution.py` (2 passed).
+
+### Task D.6: Comprehensive Decoupling of Pure Q&A Mode from Action & Execution Mode
+* **Status:** [x] Completed & Verified (2026-11-01)
+* **Target Files:**
+  * UI Template: `learn-dynamic-pro-ui/src/app/shared/components/copilot-chat/copilot-chat.component.html`
+  * UI Logic: `learn-dynamic-pro-ui/src/app/shared/components/copilot-chat/copilot-chat.component.ts`
+  * UI Styles: `learn-dynamic-pro-ui/src/app/shared/components/copilot-chat/copilot-chat.component.css`
+  * System Prompts: `src/core/prompts.py`
+  * Search / RAG Service: `src/services/search_service.py`
+  * Production Bundle: `learn-dynamic-pro-ui/public/lms-copilot.bundle.js`
+* **Implementation Details:**
+  * [x] D.6.1 Added `isActionMode: boolean = false` (default Q&A mode). Mutually exclusive with `isVisionAgentMode`.
+  * [x] D.6.2 Added mode badge indicator above chat footer and action mode toggle button `⚡` with active highlight.
+  * [x] D.6.3 Dynamic placeholder based on mode (Q&A: lecture questions / Action: command execution / Vision: CDP goal).
+  * [x] D.6.4 In `streamQuery`, if `!isActionMode`, completely bypass navigation (`resolveAndNavigate`), bypass `prepareFreshForm`, pass `visibleFields = undefined`, `formSchema = undefined`, force `resolvedIntent = 'question'`, and disable `canEscalateToVisionAgent`.
+  * [x] D.6.5 Added Directive 7 (Procedural & How-To Guidance) in `_RAW_RAG_SYSTEM_PROMPT` instructing Gemini to answer procedural questions educationally without referencing action cards.
+  * [x] D.6.6 Removed dead `extracted_form_fields` parameter and branch from `prompts.py` and `search_service.py`.
+  * [x] D.6.7 Verified with unit tests in `tests/unit/test_rag_prompt.py` (2 passed), `test_citations_and_sources.py` (9 passed), and `test_multi_lesson_search.py` (6 passed).
+  * [x] D.6.8 Built production bundle via `npm run build:element` -> `public/lms-copilot.bundle.js` (661.3 KB).
+
+---
+
+## 📋 Track E: Scaled Forms Catalog & Ground-Truth Metadata Architecture (2026-11-02)
+
+### Task E.1: Phase 1 — Scaler Logic Hardening & Intent Alignment (`scale_forms_catalog.py`)
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:**
+  * Scaler Script: `scripts/scale_forms_catalog.py`
+  * Ground-Truth Compiler: `scripts/compile_ground_truth_catalog.py`
+  * Unit Tests: `tests/unit/test_forms_catalog.py`
+* **Objective:** Clean internal hardcoded dictionaries and protect curated schemas from being overwritten by auto-scaled heuristics.
+* **Implementation Details:**
+  * [x] E.1.1 Re-mapped sales intent dictionary (`"فاتورة مبيعات"`, `"فاتورة المبيعات"`, `"فواتير المبيعات"`, `"فاتورة بيع"`, `"تسجيل مبيعات"`) strictly to Page `244` (Sales Invoices) instead of `290`.
+  * [x] E.1.2 Assigned `"تحويلات المخازن"` and warehouse movements strictly to Page `290` and `112`.
+  * [x] E.1.3 Hardened handcrafted schema filter (`CORE_CURATED_PIDS = {289, 290, 7158, 311, 112, 244}`) to guarantee retention of enriched controls (`customerID`, `POPaid`, `VendorID`, etc.).
+  * [x] E.1.4 Verified resolution and retention logic via unit tests in `tests/unit/test_forms_catalog.py` (5 passed).
+
+### Task E.2: Phase 2 — Dry-Run Diagnostic & Archetype Benchmark Verification
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:** `scripts/compile_ground_truth_catalog.py`
+* **Objective:** Perform safe zero-write simulation to validate archetype distribution and intent resolution without mutating disk state.
+* **Implementation Details:**
+  * [x] E.2.1 Executed `python scripts/compile_ground_truth_catalog.py --dry-run`.
+  * [x] E.2.2 Verified terminal output metrics:
+    * Total screens processed equals 822.
+    * Core curated operational screens: 6 screens (IDs: [112, 244, 289, 290, 311, 7158]).
+    * Ground-truth database schemas: 616 screens (74.9%).
+    * Verified report/inquiry views: 200 screens (24.3%).
+    * Processing duration: 316.00ms (< 400 μs/screen).
+  * [x] E.2.3 Confirmed zero modifications to `src/data/forms_metadata.json` during dry-run.
+
+### Task E.3: Phase 3 — Controlled Compilation & Catalog Regression Suite Execution
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:**
+  * Catalog File: `src/data/forms_metadata.json`
+  * Unit Tests: `tests/unit/test_forms_catalog.py`, `tests/unit/test_forms_resolution.py`, `tests/unit/test_extraction_prompts.py`, `tests/unit/test_generic_auto_scaling.py`
+* **Objective:** Persist compiled universal catalog and execute full regression test suite to ensure zero breaking changes across pilot features.
+* **Implementation Details:**
+  * [x] E.3.1 Executed `python scripts/compile_ground_truth_catalog.py --compile` to generate production `forms_metadata.json`.
+  * [x] E.3.2 Created automatic safety backup at `src/data/forms_metadata_backup_1793616014.json`.
+  * [x] E.3.3 Ran targeted pytest suite across catalog, prompt, and resolution contracts (`10 passed in 0.64s`).
+  * [x] E.3.4 Ran full pytest suite across `LMS_CO_Pilot` (`90 passed, 0 failures`).
+  * [x] E.3.5 Verified TypeScript compilation across `learn-dynamic-pro-ui` (`npx tsc --noEmit` exited clean 0).
+
+### Task E.4: Phase 4 — Ground-Truth SQL `ListSetups` & Structure API Ingestion Pipeline
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:**
+  * Ingestion Data: `Listsetups.json`, `pageAttribute.json`, `pdetail.json`, `pages.json`, `modul.json`, `menumaster.json`
+  * Production Compiler: `scripts/compile_ground_truth_catalog.py`
+  * Output Schema Catalog: `src/data/forms_metadata.json`
+* **Objective:** Transition from heuristic archetype inference to 100% ground-truth database schemas extracted from host ERP.
+* **Implementation Details:**
+  * [x] E.4.1 Ingested complete raw SQL Server metadata datasets: 7,206 field setups (`Listsetups.json`), 950 page definitions (`pages.json`), 32 ERP modules (`modul.json`), 188 menus (`menumaster.json`), and 417 grid structures (`pdetail.json`).
+  * [x] E.4.2 Ingested verified physical column names (`ColumnName`), Arabic labels (`arColumnLabel`), exact control types (`InsertType`), and mandatory flags (`IsRquired`).
+  * [x] E.4.3 Successfully mapped and persisted exact database-bound schemas for 616 screens and report view schemas for 200 screens in `src/data/forms_metadata.json`.
+
+

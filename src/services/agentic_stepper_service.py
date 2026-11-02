@@ -7,6 +7,7 @@ from typing import Any, AsyncGenerator, Optional
 import structlog
 
 from src.core.config import settings
+from src.core.prompts import ERP_PAYMENT_RULES
 from google.genai import types
 from src.services.cdp_agent_service import cdp_agent_service
 from src.services.forms_catalog_service import forms_catalog_service
@@ -364,6 +365,11 @@ EXPECTED HEADER FIELDS (Extract values for any matching fields present in the us
 
 EXPECTED LINE/GRID FIELDS:
 {json.dumps(expected_grid, ensure_ascii=False, indent=2) if is_excel else "None (Single-record form: items must be empty [])"}
+
+RULES:
+1. Map values strictly to the matching field keys from EXPECTED HEADER FIELDS and EXPECTED LINE/GRID FIELDS.
+2. {ERP_PAYMENT_RULES}
+3. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
 
 OUTPUT FORMAT (JSON only):
 {{

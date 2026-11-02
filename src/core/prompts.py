@@ -137,7 +137,10 @@ Your mission is to provide accurate, concise, and structured answers in professi
 5. Strict Citation Boundary:
    - NEVER invent or use any citation index greater than [{num_sources}] (e.g., citation [{forbidden_citation}] is strictly forbidden).
    - Only cite valid retrieved indices [1] to [{num_sources}].
-6. Insufficient Context: If the provided chunks do not contain the answer, state that clearly and politely in Arabic without fabricating answers or citations.{multi_lesson_instructions}
+6. Insufficient Context: If the provided chunks do not contain the answer, state that clearly and politely in Arabic without fabricating answers or citations.
+7. Procedural & How-To Guidance:
+   - For procedural or workflow questions (e.g. "كيف أعمل فاتورة...", "طريقة إضافة صنف..."), provide step-by-step educational instructions based strictly on the lecture transcripts and ERP navigation menus.
+   - Do NOT reference action cards, form-filling confirmation buttons, or automated execution tools when providing procedural educational instructions.{multi_lesson_instructions}
 
 ## Arabic Domain Terminology Reference:
 - "فاتورة مبيعات" = Sales Invoice
@@ -171,34 +174,15 @@ def get_rag_system_prompt(
     visible_fields: list[str] | None = None,
     extracted_form_fields: dict | None = None,
 ) -> str:
-    """Helper to build RAG prompt with bounded citation numbers, optional multi-lesson instructions, and ERP form filling rules."""
+    """Helper to build RAG prompt with bounded citation numbers and optional multi-lesson instructions."""
     safe_num = max(1, num_sources)
     multi_instr = _MULTI_LESSON_INSTRUCTIONS if is_multi_lesson else ""
-    base_prompt = RAG_SYSTEM_PROMPT.format(
+    return RAG_SYSTEM_PROMPT.format(
         context_str=context_str,
         num_sources=safe_num,
         forbidden_citation=safe_num + 1,
         multi_lesson_instructions=multi_instr,
     )
-
-    if extracted_form_fields:
-        import json
-        extracted_json_str = json.dumps(extracted_form_fields, ensure_ascii=False, indent=2)
-        form_fill_header = f"""## 🚨 ERP Form Filling Action Context:
-The system has extracted the following concrete form data from the user request to populate the active ERP screen:
-```json
-{extracted_json_str}
-```
-
-### Executive Instructions:
-1. In a single, polite, and concise sentence in Arabic, confirm to the user that the requested data is prepared and ready for insertion into the screen via the action card below.
-2. If the user also asked an educational question, answer it directly using the video context. Do NOT generate unsolicited generic advice.
-3. Grounding rule: Do not claim the training video lacked the customer/supplier/item values, because these are live transactional values supplied by the user.
----
-"""
-        return f"{form_fill_header}\n{base_prompt}"
-
-    return base_prompt
 
 # Fast Ingress Intent Responses (PR-3 & Clean Architecture)
 # ---------------------------------------------------------------------------
@@ -244,6 +228,15 @@ def get_erp_intent_classification_prompt(query: str) -> str:
     return ERP_INTENT_CLASSIFICATION_PROMPT_TEMPLATE.format(query=query)
 
 
+# ---------------------------------------------------------------------------
+# Payment & Settlement Rules (Single Source of Truth)
+# ---------------------------------------------------------------------------
+
+ERP_PAYMENT_RULES = """Payment & Settlement Rules:
+- "SafeAccounId" or treasury fields (الخزينة / الصندوق) are dropdowns for the bank or safe account name (e.g. "الخزينة الرئيسية"). NEVER set "$TOTAL" on "SafeAccounId" or any account dropdown.
+- If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً", "المحصل نقدا"), assign "$TOTAL" to a numeric payment field like "POPaid", "CashPaid", "Paid", or "المدفوع نقداً"."""
+
+
 ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction Assistant for DynamicPro ERP.
 Analyze the user's Arabic message and the active ERP form structure.
 Extract all concrete data explicitly mentioned by the user.
@@ -267,9 +260,7 @@ User Message:
 
 Rules:
 1. Map values strictly to the matching field keys from the form context.
-2. Payment & Treasury Rules:
-   - "SafeAccounId" or treasury fields (الخزينة / الصندوق) are dropdowns for the bank or safe account name (e.g. "الخزينة الرئيسية"). NEVER set "$TOTAL" on "SafeAccounId" or any account dropdown.
-   - If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً"), assign "$TOTAL" to a numeric payment field like "CashPaid", "Paid", or "المدفوع نقداً".
+2. {payment_rules}
 3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
 4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
 5. If the user is only asking a question or explanation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
@@ -280,7 +271,8 @@ def get_erp_form_extraction_prompt(query: str, fields_ctx_json: str) -> str:
     """Constructs prompt for extracting ERP form fields and grid items using gemini-3.5-flash-lite."""
     return ERP_FORM_EXTRACTION_PROMPT_TEMPLATE.format(
         query=query,
-        fields_ctx_json=fields_ctx_json
+        fields_ctx_json=fields_ctx_json,
+        payment_rules=ERP_PAYMENT_RULES
     )
 
 

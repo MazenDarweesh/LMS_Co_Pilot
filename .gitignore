@@ -54,4 +54,14 @@ logs/
 *.jsonl
 shared_logs/
 
+# Raw ERP Database Ingestion Dumps & Compiler Backups
+src/data/forms_metadata_backup_*.json
+Listsetups.json
+pageAttribute.json
+pdetail.json
+pages.json
+modul.json
+menumaster.json
+
+
 

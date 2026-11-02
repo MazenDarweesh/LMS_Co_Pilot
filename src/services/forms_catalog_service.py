@@ -124,7 +124,7 @@ class FormsCatalogService:
 
         return None
 
-    def infer_archetype_and_schema(self, screen_meta: dict[str, Any]) -> dict[str, Any]:
+    def infer_archetype_and_schema(self, screen_meta: dict[str, Any], fallback_pid: int | str = 0) -> dict[str, Any]:
         """
         الاستنتاج المعماري الآلي لمخطط أي شاشة من الـ 821 شاشة فوراً (Polymorphic Archetype Inferrer).
         يقوم بتحليل اسم الشاشة وموديلها ووصفها ونواياها لتوليد مخطط هيدر وجدول متوافق 100%
@@ -134,7 +134,7 @@ class FormsCatalogService:
         screen_key = screen_meta.get("screen_key", "GenericScreen")
         module = screen_meta.get("module", "عام")
         desc = screen_meta.get("description", "")
-        pid = screen_meta.get("default_page_id") or screen_meta.get("page_id", 0)
+        pid = screen_meta.get("default_page_id") or screen_meta.get("page_id") or fallback_pid
 
         combined_text = f"{name_ar} {screen_key} {module} {desc}".lower()
 
@@ -394,7 +394,9 @@ class FormsCatalogService:
                 pid_int = 0
             ref_screen = self._screens_catalog_by_id.get(pid_int) or fallback_meta
             if ref_screen:
-                return self.infer_archetype_and_schema(ref_screen)
+                inferred = self.infer_archetype_and_schema(ref_screen, fallback_pid=pid_int)
+                inferred["is_dynamic"] = True
+                return inferred
 
             # توليد مخطط عام بديل
             return {

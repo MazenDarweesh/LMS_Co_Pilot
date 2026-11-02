@@ -111,11 +111,10 @@ def test_get_rag_system_prompt_multi_lesson():
     """Verify system prompt injects cross-lesson comparison instructions only when requested."""
     # Standard single-lesson/general query
     prompt_single = get_rag_system_prompt(context_str="سياق تجريبي", num_sources=2, is_multi_lesson=False)
-    assert "الربط والمقارنة بين الدروس المتعددة" not in prompt_single
-    assert "مرقّمة من [1] إلى [2]" in prompt_single
+    assert "Cross-Module Multi-Lesson" not in prompt_single
+    assert "[1] to [2]" in prompt_single
 
     # Multi-lesson query
     prompt_multi = get_rag_system_prompt(context_str="سياق تجريبي", num_sources=3, is_multi_lesson=True)
-    assert "الربط والمقارنة بين الدروس المتعددة" in prompt_multi
-    assert "Cross-Module Multi-Lesson" in prompt_multi
-    assert "مرقّمة من [1] إلى [3]" in prompt_multi
+    assert "Cross-Module Multi-Lesson Synthesis" in prompt_multi
+    assert "[1] to [3]" in prompt_multi

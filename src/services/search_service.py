@@ -901,10 +901,6 @@ class SearchService:
         # Yield sources event first for immediate citation rendering in frontend
         yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
 
-        # ERP form-fill is fully handled by the action fast-path above (AI-routed, no keyword inference).
-        extracted_form_fields: dict[str, Any] | None = None
-        form_fill_emitted = False
-
         # ──────────────────────────────────────────────
         # 3. Gemini Streaming with Heartbeat & Disconnect Guard
         # ──────────────────────────────────────────────
@@ -917,7 +913,6 @@ class SearchService:
             num_sources=num_sources,
             is_multi_lesson=is_multi_lesson,
             visible_fields=req.visible_fields,
-            extracted_form_fields=extracted_form_fields,
         )
         thread_id = req.thread_id or str(uuid.uuid4())
 
