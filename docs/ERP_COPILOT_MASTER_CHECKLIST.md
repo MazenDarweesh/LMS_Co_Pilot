@@ -283,4 +283,34 @@
   * [x] E.4.2 Ingested verified physical column names (`ColumnName`), Arabic labels (`arColumnLabel`), exact control types (`InsertType`), and mandatory flags (`IsRquired`).
   * [x] E.4.3 Successfully mapped and persisted exact database-bound schemas for 616 screens and report view schemas for 200 screens in `src/data/forms_metadata.json`.
 
+---
+
+## 📋 Track F: Navigation Stability, Settle Detection & Form Fill Lifecycle (2026-11-02)
+
+### Task F.1: DOM Settle Detection & DevTunnel CORS Hardening
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:** `src/services/cdp_agent_service.py`, `src/services/agentic_stepper_service.py`, `src/core/config.py`, `src/main.py`
+* **Implementation Details:**
+  * [x] F.1.1 Enhanced `wait_for_settle()` in `cdp_agent_service.py` with structural DOM element count stability verification.
+  * [x] F.1.2 Added regex pattern matching `allow_origin_regex` for `*.devtunnels.ms` and `*.ngrok.io` to resolve Mixed Content / CORS errors.
+  * [x] F.1.3 Implemented proactive per-step verification loop (`verify_state` check) after navigation commands before triggering form actions.
+
+### Task F.2: Angular Page-Ready Detection, Add-New Polling & POPaid Settlement
+* **Status:** [x] Completed & Verified (2026-11-02)
+* **Target Files:**
+  * `learn-dynamic-pro-ui/src/app/core/services/form-driver/dom-synchronizer.ts`
+  * `learn-dynamic-pro-ui/src/app/core/services/erp-navigator.service.ts`
+  * `learn-dynamic-pro-ui/src/app/core/services/form-driver/control-interactor.ts`
+  * `learn-dynamic-pro-ui/src/app/core/services/erp-form-driver.service.ts`
+  * `learn-dynamic-pro-ui/src/app/shared/components/copilot-chat/copilot-chat.component.ts`
+  * `learn-dynamic-pro-ui/public/lms-copilot.bundle.js`
+  * `src/services/cdp_agent_service.py`
+* **Implementation Details:**
+  * [x] F.2.1 Added `minMs: 120` safety observation window to Angular `settle()` and set `window.__erpPageReady = true`.
+  * [x] F.2.2 Upgraded `prepareFreshForm()` to poll for Add-New button / form container up to 2500ms with full ERP selector coverage.
+  * [x] F.2.3 Implemented automatic hierarchical total calculation and dual-dispatch filling for `POPaid` / `POPaidCurrancy` upon cash payment.
+  * [x] F.2.4 Closed hanging `ng-select` dropdown panels using Escape key dispatch when no option matches.
+  * [x] F.2.5 Recompiled production element bundle `public/lms-copilot.bundle.js` (663.2 KB).
+
+
 

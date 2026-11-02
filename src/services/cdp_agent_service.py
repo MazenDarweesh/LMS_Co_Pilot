@@ -472,27 +472,51 @@ class CdpAgentService:
         except Exception as e:
             logger.error("CDP hardware mouse click failed", error=str(e))
 
-    async def wait_for_settle(self, ws_url: str, initial_url: str = "", max_wait_sec: float = 0.8) -> float:
+    async def wait_for_settle(self, ws_url: str, initial_url: str = "", max_wait_sec: float = 2.5) -> float:
         """
-        انتظار ذكي لاستقرار الصفحة وتغير المسار أو جاهزية الـ DOM بدلاً من فترات الانتظار الثابتة (sleep).
-        يتحقق كل 50ms ويعود فور تغير الرابط أو اكتمال التحميل لتقليل الـ Latency إلى الحد الأدنى.
+        انتظار ذكي لاستقرار الصفحة بعد كل نقرة أو تنقل (DOM-Settle Detection).
+
+        المنطق:
+        1. إذا تغير الـ URL → يعني التنقل تمّ، نبدأ فحص الاستقرار البنيوي.
+        2. نقيس عدد العناصر التفاعلية مرتين بفاصل 150ms، إذا تساوى العددان → الصفحة مستقرة.
+        3. حد أقصى صارم (max_wait_sec) لضمان عدم التوقف الأبدي.
         """
         import time
         start = time.perf_counter()
         deadline = start + max_wait_sec
+        url_changed = False
+        prev_element_count = -1
 
         while time.perf_counter() < deadline:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.12)
             try:
                 curr_url = await self.evaluate_script(ws_url, "window.location.href")
                 if initial_url and curr_url and curr_url != initial_url:
-                    break
+                    url_changed = True
+
                 is_ready = await self.evaluate_script(ws_url, "document.readyState === 'complete'")
-                if is_ready and (time.perf_counter() - start) >= 0.15:
+                if not is_ready:
+                    continue
+
+                # فحص استقرار عدد عناصر الـ DOM (DOM Element Count Stability)
+                count_script = "document.querySelectorAll('button,a,input,select,ng-select,[role=\"button\"],[role=\"tab\"]').length"
+                curr_count = await self.evaluate_script(ws_url, count_script)
+                if isinstance(curr_count, int):
+                    if curr_count == prev_element_count and (time.perf_counter() - start) >= 0.3:
+                        # DOM مستقر: العدد لم يتغير بين فحصين متتاليين
+                        break
+                    prev_element_count = curr_count
+
+                # في حال تغيّر الـ URL وانتهى التحميل وانتظرنا مدة معقولة → نخرج
+                if url_changed and is_ready and (time.perf_counter() - start) >= 0.5:
                     break
+
             except Exception:
                 pass
-        return (time.perf_counter() - start) * 1000
+
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.debug("DOM settle completed", elapsed_ms=round(elapsed, 1), url_changed=url_changed)
+        return elapsed
 
     async def click_element_or_coordinate(
         self,
@@ -708,6 +732,9 @@ class CdpAgentService:
                     match.click();
                     return true;
                 }}
+                if (input) {{
+                    input.dispatchEvent(new KeyboardEvent('keydown', {{ bubbles: true, key: 'Escape' }}));
+                }}
                 return false;
             }}
 
@@ -785,7 +812,14 @@ class CdpAgentService:
             let filledCount = 0;
             const deferredTotals = [];
             for (const [key, val] of Object.entries(header)) {{
-                if (String(val).toUpperCase() === '$TOTAL') {{ deferredTotals.push(key); continue; }}
+                const sVal = String(val).toUpperCase();
+                const lKey = key.toLowerCase();
+                const isTotalVal = sVal === '$TOTAL' || sVal === 'TOTAL';
+                const isPaidField = lKey.includes('popaid') || lKey.includes('cashpaid') || lKey.includes('madfou') || /مدفوع|محصل|سداد|نقد/.test(key);
+                if (isTotalVal || (isPaidField && (isTotalVal || !val || val === '0' || Number(val) === 0))) {{
+                    deferredTotals.push(key);
+                    continue;
+                }}
                 if (await fillSingleControl(key, val)) {{
                     filledCount++;
                 }}
@@ -839,17 +873,41 @@ class CdpAgentService:
             // ج. تسوية الدفع: المحصل نقداً = إجمالي الفاتورة المحسوب بعد إدخال الأصناف
             let paidFilled = false;
             if (deferredTotals.length) {{
-                await new Promise(r => setTimeout(r, 400));
+                await new Promise(r => setTimeout(r, 450));
                 let total = null;
                 try {{
                     const dobj = (window.DynamicERP.getActiveFormContext() || {{}}).dataObject || {{}};
-                    total = dobj.TotalCurrancy || dobj.TotalOrderBeforCurrancy || null;
+                    total = dobj.TotalCurrancy || dobj.TotalOrderBeforCurrancy || dobj.NetTotal || null;
                 }} catch(e) {{}}
+
+                // محاولة قراءة الإجمالي من حقول الـ DOM إذا لم يكن متاحاً في كائن الـ dataObject
+                if (!total || Number(total) === 0) {{
+                    const totInputs = Array.from(document.querySelectorAll('input#TotalCurrancy, input[name="TotalCurrancy"], input[formcontrolname="TotalCurrancy"], input#TotalOrderBeforCurrancy, input[formcontrolname="TotalOrderBeforCurrancy"], .dp-edit__total input[readonly], .totlbl + * input, input[name*="total" i]'));
+                    for (const inp of totInputs) {{
+                        const v = parseFloat((inp.value || '').replace(/,/g, ''));
+                        if (!isNaN(v) && v > 0) {{ total = v; break; }}
+                    }}
+                }}
+
+                // حساب الإجمالي احتياطياً من حاصل ضرب الكميات بالأسعار
+                if (!total || Number(total) === 0) {{
+                    let sum = 0;
+                    for (const itm of items) {{
+                        const q = parseFloat(itm.productQty ?? itm.qty ?? itm.quantity ?? 1) || 1;
+                        const p = parseFloat(itm.price ?? itm.cost ?? itm.UnitPrice ?? itm.ItemPrice ?? 0) || 0;
+                        sum += q * p;
+                    }}
+                    if (sum > 0) total = sum;
+                }}
+
                 if (total) {{
-                    const lbls = Array.from(document.querySelectorAll('.dp-edit__totlbl, .totlbl, [class*="totlbl"]'));
-                    const lbl = lbls.find(l => /المحصل|مدفوع|المسدد|نقد/.test(l.textContent || ''));
+                    // البحث عن حقل المدفوع/المحصل بالمعرفات المباشرة أولاً
+                    const paidDirect = document.querySelector('input#POPaid, input[name="POPaid"], input[formcontrolname="POPaid"], input#POPaidCurrancy, input[name="POPaidCurrancy"], input[formcontrolname="POPaidCurrancy"], input[name*="paid" i], input[id*="paid" i]');
+                    const lbls = Array.from(document.querySelectorAll('.dp-edit__totlbl, .totlbl, [class*="totlbl"], label'));
+                    const lbl = lbls.find(l => /المحصل|مدفوع|المسدد|نقد|سداد/.test(l.textContent || ''));
                     const holder = lbl ? (lbl.closest('li, .dp-edit__total, .dp-field, .form-group') || lbl.parentElement) : null;
-                    const inp = holder ? holder.querySelector('input:not([disabled]):not([readonly])') : null;
+                    const inp = paidDirect || (holder ? holder.querySelector('input:not([disabled]):not([readonly])') : null);
+
                     if (inp) {{
                         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
                         inp.focus();
@@ -858,9 +916,26 @@ class CdpAgentService:
                         inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
                         inp.dispatchEvent(new Event('blur', {{ bubbles: true }}));
                         paidFilled = true;
-                    }} else if (window.DynamicERP && typeof window.DynamicERP.fillFormData === 'function') {{
-                        try {{ paidFilled = !!(await window.DynamicERP.fillFormData({{ fields: {{ POPaidCurrancy: total }}, rows: [] }})); }} catch(e) {{}}
                     }}
+
+                    if (window.DynamicERP && typeof window.DynamicERP.fillFormData === 'function') {{
+                        try {{
+                            const bRes = await window.DynamicERP.fillFormData({{
+                                fields: {{ POPaidCurrancy: total, POPaid: total }},
+                                rows: []
+                            }});
+                            if (bRes) paidFilled = true;
+                        }} catch(e) {{}}
+                    }}
+
+                    try {{
+                        const ctx = window.DynamicERP?.getActiveFormContext?.();
+                        if (ctx && ctx.dataObject) {{
+                            ctx.dataObject.POPaidCurrancy = total;
+                            ctx.dataObject.POPaid = total;
+                            paidFilled = true;
+                        }}
+                    }} catch(e) {{}}
                 }}
                 if (paidFilled) filledCount++;
             }}
@@ -896,12 +971,23 @@ class CdpAgentService:
             let bridgeCalls = 0, domClicks = 0;
             while (Date.now() < deadline) {
                 try { if (window.DynamicERP && typeof window.DynamicERP.triggerAddNew === 'function') { bridgeCalls++; await window.DynamicERP.triggerAddNew(); } } catch(e) {}
-                await sleep(500);
+                await sleep(350);
                 if (isOpen()) return { opened: true, method: 'bridge', bridgeCalls, domClicks };
                 const page = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
-                const btn = Array.from(page.querySelectorAll('button, a')).find(b => /اضافة جديد|إضافة جديد|^\\s*(اضافة|إضافة)\\s*$|add new/i.test((b.textContent || '').trim()) || b.querySelector('.fa-plus, .bi-plus'));
-                if (btn) { domClicks++; btn.click(); await sleep(700); if (isOpen()) return { opened: true, method: 'dom_button', bridgeCalls, domClicks }; }
-                await sleep(400);
+                const masterBtn = page.querySelector('button.dp-btn--primary.dp-list__act, .dp-list__act.dp-btn--primary, button.dp-btn--new, [data-action="new"], button.dp-list__act');
+                const btn = masterBtn || Array.from(page.querySelectorAll('button, a')).find(b => {
+                    if (b.closest('lms-ai-copilot, app-copilot-chat, nav, .dp-hdr')) return false;
+                    const txt = (b.textContent || '').trim().replace(/[إأآ]/g, 'ا');
+                    const hasPlus = !!b.querySelector('.fa-plus, .bi-plus, i[class*="plus"]');
+                    return /اضافة جديد|جديد|^اضافة$|add new/i.test(txt) || (hasPlus && (/اضاف|جديد/.test(txt) || txt === ''));
+                });
+                if (btn && btn.offsetParent !== null) { 
+                    domClicks++; 
+                    btn.click(); 
+                    await sleep(550); 
+                    if (isOpen()) return { opened: true, method: 'dom_button', bridgeCalls, domClicks }; 
+                }
+                await sleep(250);
             }
             return { opened: false, method: 'timeout', bridgeCalls, domClicks };
         })()

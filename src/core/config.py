@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     ERP_DECISION_TTL_DAYS: int = 90
 
     # CORS Allowed Origins
+    # يشمل البيئات المحلية وبيئات النفق السحابي (DevTunnel / ngrok) لمنع أخطاء Mixed Content
     CORS_ORIGINS: list[str] | str = [
         "http://localhost:3000",
         "http://localhost:4200",
@@ -105,6 +106,12 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4200",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8080",
+        "https://localhost:4200",
+        "https://localhost:8080",
+        # Microsoft DevTunnel (wildcard via regex-friendly prefix match handled in middleware)
+        "https://*.devtunnels.ms",
+        "https://*.ngrok.io",
+        "https://*.ngrok-free.app",
     ]
 
     # Trusted Host Security

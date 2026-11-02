@@ -562,12 +562,31 @@ OUTPUT FORMAT (JSON only):
                             "message": f"الانتقال المباشر إلى شاشة '{target_title}' (رقم {target_pid})...",
                         }
                         nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, target_pid)
-                        await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=1.5)
-                        history.append({"step": step_idx, "action": "navigate_bridge", "page_id": target_pid, "success": nav_ok})
+                        settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=2.5)
+
+                        # ✅ التحقق الاستباقي من الوصول الفعلي للشاشة المستهدفة (Per-Step Verification)
+                        verify_state = await cdp_agent_service.get_page_state(ws_url)
+                        verify_url = verify_state.get("url", "")
+                        verify_screen = verify_state.get("activeScreen") or {}
+                        arrived = (
+                            verify_screen.get("pageId") == target_pid
+                            or f"{target_pid}" in verify_url
+                            or target_title in verify_state.get("title", "")
+                            or any(target_title in h for h in verify_state.get("headings", []))
+                        )
+                        history.append({"step": step_idx, "action": "navigate_bridge", "page_id": target_pid, "success": nav_ok and arrived})
+                        _append_session_event(
+                            session_id, "INFO" if arrived else "WARN", "STEP_VERIFY",
+                            f"Step {step_idx}: Navigation verify {'PASSED' if arrived else 'FAILED'} (settle={settle_ms:.0f}ms)",
+                            {"target_pid": target_pid, "verify_url": verify_url, "arrived": arrived}
+                        )
+                        if not arrived:
+                            yield {"step": step_idx, "status": "acting", "message": f"⚠️ لم يُتحقق من الوصول لشاشة '{target_title}' — إعادة المحاولة..."}
+                            continue
                         yield {
                             "step": step_idx + 1,
                             "status": "completed",
-                            "message": f"✅ تم الانتقال بنجاح إلى شاشة '{target_title}' (رقم {target_pid})!",
+                            "message": f"✅ تم الانتقال والتحقق من الوصول بنجاح إلى شاشة '{target_title}' (رقم {target_pid})!",
                         }
                         break
                 else:
@@ -605,8 +624,25 @@ OUTPUT FORMAT (JSON only):
                             "message": f"الانتقال المباشر لشاشة المعاملة '{target_title}' (Page {tx_page_id})...",
                         }
                         nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, tx_page_id)
-                        await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=1.5)
-                        history.append({"step": step_idx, "action": "navigate_bridge", "page_id": tx_page_id, "success": nav_ok})
+                        settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=2.5)
+
+                        # ✅ التحقق من الوصول الفعلي قبل محاولة فتح النموذج (Per-Step Verification)
+                        verify_state = await cdp_agent_service.get_page_state(ws_url)
+                        verify_url = verify_state.get("url", "")
+                        verify_screen = verify_state.get("activeScreen") or {}
+                        tx_arrived = (
+                            verify_screen.get("pageId") == tx_page_id
+                            or f"{tx_page_id}" in verify_url
+                            or target_title in verify_state.get("title", "")
+                        )
+                        history.append({"step": step_idx, "action": "navigate_bridge", "page_id": tx_page_id, "success": nav_ok and tx_arrived})
+                        _append_session_event(
+                            session_id, "INFO" if tx_arrived else "WARN", "STEP_VERIFY",
+                            f"Step {step_idx}: TX Screen Navigation verify {'PASSED' if tx_arrived else 'FAILED'} (settle={settle_ms:.0f}ms)",
+                            {"target_pid": tx_page_id, "verify_url": verify_url, "tx_arrived": tx_arrived}
+                        )
+                        if not tx_arrived:
+                            yield {"step": step_idx, "status": "acting", "message": f"⚠️ لم يُتحقق من الوصول لشاشة '{target_title}' — إعادة المحاولة..."}
                         continue
 
                     else:

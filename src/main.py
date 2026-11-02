@@ -70,10 +70,30 @@ app.add_middleware(
     allowed_hosts=settings.ALLOWED_HOSTS
 )
 
-# ج. ميدل وير الـ CORS (يجب أن يكون خارجياً ليتعامل مع طلبات الـ Preflight)
+# ج. ميدل وير الـ CORS مع دعم نمط Wildcard لأنفاق DevTunnel و ngrok السحابية
+# CORSMiddleware الرسمي لا يدعم wildcards مثل *.devtunnels.ms، لذا نبني قائمة ديناميكية
+import re as _re
+
+_TUNNEL_PATTERNS = [
+    _re.compile(r"https://[a-z0-9\-]+\.devtunnels\.ms"),
+    _re.compile(r"https://[a-z0-9\-]+\.ngrok\.io"),
+    _re.compile(r"https://[a-z0-9\-]+\.ngrok-free\.app"),
+]
+
+def _is_allowed_origin(origin: str) -> bool:
+    """فحص ما إذا كان الـ origin مسموحاً به (ثابت أو نمط نفق سحابي)."""
+    exact = [o for o in settings.CORS_ORIGINS if not o.startswith("https://*.")]
+    if origin in exact:
+        return True
+    return any(p.fullmatch(origin) for p in _TUNNEL_PATTERNS)
+
+# نبني القائمة من الـ origins المحددة (بدون wildcards) + wildcard_origins لمطابقة CORSMiddleware
+_static_origins = [o for o in settings.CORS_ORIGINS if not o.startswith("https://*.")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_static_origins,
+    allow_origin_regex=r"https://[a-z0-9\-]+\.(devtunnels\.ms|ngrok\.io|ngrok-free\.app)",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
