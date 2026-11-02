@@ -675,26 +675,7 @@ class CdpAgentService:
             const payload = {payload_json};
             const logs = [];
 
-            // 1. الأولوية الأولى: جسر DynamicERP المدمج إن وجد
-            if (window.DynamicERP && typeof window.DynamicERP.fillFormData === 'function') {{
-                try {{
-                    const bridgePayload = {{
-                        fields: payload.header || {{}},
-                        rows: payload.items || []
-                    }};
-                    const res = window.DynamicERP.fillFormData(bridgePayload);
-                    const success = (res && typeof res.then === 'function') ? await res : res;
-                    if (success) {{
-                        return {{
-                            success: true,
-                            method: 'bridge',
-                            detail: 'Filled via window.DynamicERP.fillFormData'
-                        }};
-                    }}
-                }} catch(e) {{
-                    console.warn('Bridge fillFormData failed, falling back:', e);
-                }}
-            }}
+            // ملاحظة: لا نستخدم bridge.fillFormData للهيدر لأنه يكتب نصوصاً داخل حقول الـ ID (ContractType/StoreID).
 
             // 2. محرك التعبئة المعمم فائق الدقة (Generic Polymorphic DOM Injector - Task B.3 & A.1.2)
             async function selectNgSelect(target, targetVal) {{
@@ -715,7 +696,14 @@ class CdpAgentService:
                 const lastPanel = panels[panels.length - 1];
                 if (!lastPanel) return false;
                 const opts = Array.from(lastPanel.querySelectorAll('.ng-option, [role="option"]'));
-                const match = opts.find(o => (o.textContent || '').trim().includes(targetVal)) || opts[0];
+                const norm = s => String(s || '').trim().replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي');
+                const tv = norm(targetVal);
+                const tvStem = tv.replace(/[ةه]$/, '');
+                const wantsNeg = tv.includes('غير');
+                const okOpts = opts.filter(o => wantsNeg || !norm(o.textContent).includes('غير'));
+                const match = okOpts.find(o => norm(o.textContent) === tv)
+                    || okOpts.find(o => norm(o.textContent).includes(tv))
+                    || okOpts.find(o => tvStem.length >= 3 && norm(o.textContent).includes(tvStem));
                 if (match) {{
                     match.click();
                     return true;
@@ -795,7 +783,9 @@ class CdpAgentService:
             // أ. تعبئة حقول الهيدر ديناميكياً لأي وثيقة
             const header = payload.header || {{}};
             let filledCount = 0;
+            const deferredTotals = [];
             for (const [key, val] of Object.entries(header)) {{
+                if (String(val).toUpperCase() === '$TOTAL') {{ deferredTotals.push(key); continue; }}
                 if (await fillSingleControl(key, val)) {{
                     filledCount++;
                 }}
@@ -846,11 +836,41 @@ class CdpAgentService:
                 if (itemFilled) itemsAdded++;
             }}
 
+            // ج. تسوية الدفع: المحصل نقداً = إجمالي الفاتورة المحسوب بعد إدخال الأصناف
+            let paidFilled = false;
+            if (deferredTotals.length) {{
+                await new Promise(r => setTimeout(r, 400));
+                let total = null;
+                try {{
+                    const dobj = (window.DynamicERP.getActiveFormContext() || {{}}).dataObject || {{}};
+                    total = dobj.TotalCurrancy || dobj.TotalOrderBeforCurrancy || null;
+                }} catch(e) {{}}
+                if (total) {{
+                    const lbls = Array.from(document.querySelectorAll('.dp-edit__totlbl, .totlbl, [class*="totlbl"]'));
+                    const lbl = lbls.find(l => /المحصل|مدفوع|المسدد|نقد/.test(l.textContent || ''));
+                    const holder = lbl ? (lbl.closest('li, .dp-edit__total, .dp-field, .form-group') || lbl.parentElement) : null;
+                    const inp = holder ? holder.querySelector('input:not([disabled]):not([readonly])') : null;
+                    if (inp) {{
+                        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+                        inp.focus();
+                        setter.call(inp, String(total));
+                        inp.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        inp.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        inp.dispatchEvent(new Event('blur', {{ bubbles: true }}));
+                        paidFilled = true;
+                    }} else if (window.DynamicERP && typeof window.DynamicERP.fillFormData === 'function') {{
+                        try {{ paidFilled = !!(await window.DynamicERP.fillFormData({{ fields: {{ POPaidCurrancy: total }}, rows: [] }})); }} catch(e) {{}}
+                    }}
+                }}
+                if (paidFilled) filledCount++;
+            }}
+
             return {{
                 success: filledCount > 0 || itemsAdded > 0,
                 method: 'dom_precision_generic',
                 filled_count: filledCount,
-                items_count: itemsAdded
+                items_count: itemsAdded,
+                paid_filled: paidFilled
             }};
         }})()
         """
@@ -860,6 +880,75 @@ class CdpAgentService:
         except Exception as e:
             logger.error("Failed to execute bridge/precision form fill", error=str(e))
             return {"success": False, "error": str(e)}
+
+    async def ensure_erp_form_open(self, ws_url: str, timeout_sec: float = 8.0) -> dict[str, Any]:
+        """
+        يضمن أن فورم الإدخال (AddOrEdit) مفتوح: bridge.triggerAddNew ثم زر "إضافة جديد" في الـ DOM مع انتظار الجاهزية.
+        """
+        script = """
+        (async function() {
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const ctxOpen = () => { try { const c = window.DynamicERP.getActiveFormContext(); return !!(c && (c.dataObject || (c.rows && c.formType !== 'dom') || c.isInvoice)); } catch(e) { return false; } };
+            const domOpen = () => { const p = document.querySelector('.dp-shell__pages > div:not([hidden])'); const f = document.querySelector('.cdk-overlay-container .dp-modal app-add-or-edit') || (p && p.querySelector('app-add-or-edit')); return !!(f && f.offsetParent !== null); };
+            const isOpen = () => ctxOpen() || domOpen();
+            if (isOpen()) return { opened: true, method: 'already_open' };
+            const deadline = Date.now() + __TIMEOUT_MS__;
+            let bridgeCalls = 0, domClicks = 0;
+            while (Date.now() < deadline) {
+                try { if (window.DynamicERP && typeof window.DynamicERP.triggerAddNew === 'function') { bridgeCalls++; await window.DynamicERP.triggerAddNew(); } } catch(e) {}
+                await sleep(500);
+                if (isOpen()) return { opened: true, method: 'bridge', bridgeCalls, domClicks };
+                const page = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
+                const btn = Array.from(page.querySelectorAll('button, a')).find(b => /اضافة جديد|إضافة جديد|^\\s*(اضافة|إضافة)\\s*$|add new/i.test((b.textContent || '').trim()) || b.querySelector('.fa-plus, .bi-plus'));
+                if (btn) { domClicks++; btn.click(); await sleep(700); if (isOpen()) return { opened: true, method: 'dom_button', bridgeCalls, domClicks }; }
+                await sleep(400);
+            }
+            return { opened: false, method: 'timeout', bridgeCalls, domClicks };
+        })()
+        """.replace("__TIMEOUT_MS__", str(int(timeout_sec * 1000)))
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=timeout_sec + 6.0)
+            return res if isinstance(res, dict) else {"opened": bool(res), "method": "raw"}
+        except Exception as e:
+            logger.error("ensure_erp_form_open failed", error=str(e))
+            return {"opened": False, "method": "error", "error": str(e)}
+
+    async def snapshot_form_state(self, ws_url: str) -> dict[str, Any]:
+        """
+        لقطة اكتشاف ذاتي من الـ ERP نفسه: كل حقول الإدخال (بما فيها الفوتر) + مفاتيح/قيم dataObject الحقيقية،
+        لتُسجَّل في لوج الجلسة وتُستخدم في ضبط الربط.
+        """
+        script = """
+        (function() {
+            try {
+                const page = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
+                const inputs = Array.from(page.querySelectorAll('input, select, textarea, ng-select')).slice(0, 120).map(el => {
+                    const holder = el.closest('li, .dp-edit__total, .dp-field, .form-group, [class*="col-"]') || el.parentElement;
+                    const lbl = holder ? holder.querySelector('label, .dp-edit__totlbl, .totlbl, mat-label') : null;
+                    return {
+                        tag: el.tagName.toLowerCase(), type: el.type || '',
+                        name: el.getAttribute('name') || el.getAttribute('formcontrolname') || el.id || '',
+                        label: lbl ? (lbl.textContent || '').trim().slice(0, 40) : '',
+                        disabled: !!(el.disabled || el.readOnly)
+                    };
+                });
+                let model = {}, isOpen = false, formType = null;
+                try {
+                    const c = window.DynamicERP.getActiveFormContext() || {};
+                    isOpen = !!c.isOpen; formType = c.formType || null;
+                    for (const [k, v] of Object.entries(c.dataObject || {})) { if (v === null || typeof v !== 'object') model[k] = v; }
+                } catch(e) {}
+                const totals = Array.from(page.querySelectorAll('.dp-edit__totlbl, [class*="totlbl"]')).map(l => (l.textContent || '').trim()).slice(0, 20);
+                return { isOpen, formType, inputs, totals, model };
+            } catch(e) { return { error: String(e) }; }
+        })()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=10.0)
+            return res if isinstance(res, dict) else {}
+        except Exception as e:
+            logger.error("snapshot_form_state failed", error=str(e))
+            return {"error": str(e)}
 
     async def inspect_active_page_dom(self, ws_url: str) -> dict[str, Any]:
         """

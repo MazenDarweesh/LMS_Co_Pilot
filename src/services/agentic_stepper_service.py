@@ -616,10 +616,27 @@ OUTPUT FORMAT (JSON only):
                             "status": "acting",
                             "message": f"جاري تعبئة حقول '{target_title}' بدقة عبر الجسر البرمجي المباشر...",
                         }
+                        # 2.5 ضمان فتح فورم الإنشاء (إضافة جديد) قبل التعبئة - مرحلة ensure_form_open
+                        open_res = await cdp_agent_service.ensure_erp_form_open(ws_url)
+                        _append_session_event(session_id, "INFO" if open_res.get("opened") else "WARN", "VISION_AGENT", f"Step {step_idx}: ensure_form_open", open_res)
+                        if not open_res.get("opened"):
+                            history.append({"step": step_idx, "action": "open_form", "success": False})
+                            yield {"step": step_idx, "status": "acting", "message": f"تعذر فتح فورم '{target_title}' - إعادة المحاولة..."}
+                            continue
+                        await cdp_agent_service.wait_for_settle(ws_url, max_wait_sec=1.0)
+                        pre_snapshot = await cdp_agent_service.snapshot_form_state(ws_url)
+                        _append_session_event(session_id, "INFO", "FORM_SNAPSHOT", f"Step {step_idx}: form fields discovered before fill", pre_snapshot)
+
                         t_fill_start = time.perf_counter()
                         fill_report = await cdp_agent_service.fill_erp_form_bridge(ws_url, tx_payload)
                         timings["bridge_fill_ms"] = round((time.perf_counter() - t_fill_start) * 1000, 1)
                         _append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx}: Bridge fill executed", fill_report)
+                        post_snapshot = await cdp_agent_service.snapshot_form_state(ws_url)
+                        _append_session_event(session_id, "INFO", "FORM_SNAPSHOT", f"Step {step_idx}: form model after fill", {"model": post_snapshot.get("model"), "totals": post_snapshot.get("totals")})
+                        if not fill_report.get("success"):
+                            history.append({"step": step_idx, "action": "fill_form", "success": False})
+                            yield {"step": step_idx, "status": "acting", "message": "لم تُملأ أي حقول - إعادة المحاولة..."}
+                            continue
                         await cdp_agent_service.wait_for_settle(ws_url, max_wait_sec=0.8)
 
                         # 4. التدقيق البصري بالصورة (Vision Screenshot Audit)
