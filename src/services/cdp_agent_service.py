@@ -6,12 +6,20 @@ Eliminates session/login friction by connecting to Chrome/Edge via CDP WebSocket
 
 import asyncio
 import json
+import os
 from pathlib import Path
 import re
-from typing import Any, Optional
+import shutil
+import subprocess
+import sys
+import time
+from typing import Any
 import httpx
+from pydoll.connection.connection_handler import ConnectionHandler
 import structlog
 import websockets
+
+from src.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -20,15 +28,56 @@ class CdpAgentService:
     """
     خدمة التحكم المباشر في المتصفح عبر بروتوكول Chrome DevTools Protocol (CDP).
     تتيح التقاط الشاشة (Screenshot) وإرسال نقرات الماوس وأزرار الكيبورد الموثوقة (Hardware-Level Events).
+    مقسّمة إلى 5 مناطق هندسية (Regions) لتسهيل الصيانة وتتبع الأخطاء بدقة.
     """
 
     def __init__(self, default_port: int = 9222) -> None:
         self.default_port = default_port
-        self._msg_id = 0
+        self._chrome_proc: subprocess.Popen | None = None
+        self._http_client: httpx.AsyncClient | None = None
+        self._pydoll_handlers: dict[str, ConnectionHandler] = {}
+        self._handler_lock = asyncio.Lock()
 
-    def _next_id(self) -> int:
-        self._msg_id += 1
-        return self._msg_id
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """إرجاع عميل HTTP مشترك مدار لتجنب إنشاء اتصالات متكررة واستنزاف المقابس"""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=4.0, verify=False)
+        return self._http_client
+
+    async def _get_pydoll_handler(self, ws_url: str) -> ConnectionHandler:
+        """الحصول على كائن ConnectionHandler مدار من مكتبة pydoll مع إبقاء الاتصال وإعادة الاتصال الذاتي"""
+        async with self._handler_lock:
+            handler = self._pydoll_handlers.get(ws_url)
+            is_alive = False
+            if handler is not None and handler._ws_connection is not None:
+                is_alive = not handler._ws_connection.closed
+
+            if not is_alive:
+                if handler is not None:
+                    try:
+                        await handler.close()
+                    except Exception as e:
+                        logger.debug("Closing dead pydoll handler failed", ws_url=ws_url, error=str(e))
+                handler = ConnectionHandler(ws_address=ws_url)
+                self._pydoll_handlers[ws_url] = handler
+            return handler
+
+    async def aclose(self) -> None:
+        """إغلاق الموارد المشتركة بأمان عند إيقاف الخدمة أو انتهاء الجلسة"""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
+        async with self._handler_lock:
+            for ws_url, handler in list(self._pydoll_handlers.items()):
+                try:
+                    await handler.close()
+                except Exception as e:
+                    logger.debug("Closing pydoll connection handler failed", ws_url=ws_url, error=str(e))
+            self._pydoll_handlers.clear()
+
+    # ==============================================================================
+    # region 1: Lifecycle & Connection Management (إدارة دورة الحياة واكتشاف التبويبات)
+    # ==============================================================================
 
     def _resolve_urls(self, host: str, port: int) -> tuple[str, str]:
         """
@@ -38,7 +87,7 @@ class CdpAgentService:
         """
         clean_h = host.strip().rstrip("/")
 
-        # التعامل الآلي الصارم مع أنفاق مايكروسوفت السحابية DevTunnels (Task A.4)
+        # التعامل الآلي الصارم مع أنفاق مايكروسوفت السحابية DevTunnels
         if ".devtunnels.ms" in clean_h:
             if not clean_h.startswith("http"):
                 clean_h = "https://" + clean_h
@@ -58,26 +107,29 @@ class CdpAgentService:
             base_ws = f"ws://{clean_h}:{port}"
         return base_http, base_ws
 
-    async def is_cdp_available(self, port: Optional[int] = None, host: str = "127.0.0.1") -> bool:
-        """فحص ما إذا كان المتصفح يعمل مع منفذ تصحيح الأخطاء المفتوح مع إعادة المحاولة للأنفاق السحابية (Task A.6)"""
+    async def is_cdp_available(self, port: int | None = None, host: str = "127.0.0.1") -> bool:
+        """فحص ما إذا كان المتصفح يعمل مع منفذ تصحيح الأخطاء المفتوح مع إعادة المحاولة للأنفاق السحابية"""
         p = port or self.default_port
         h = host or "127.0.0.1"
         base_http, _ = self._resolve_urls(h, p)
+        client = await self._get_http_client()
+
         for attempt in range(2):
             try:
-                async with httpx.AsyncClient(timeout=3.0, verify=False) as client:
-                    res = await client.get(f"{base_http}/json/version")
-                    if res.status_code == 200:
-                        return True
-            except Exception:
+                res = await client.get(f"{base_http}/json/version")
+                if res.status_code == 200:
+                    return True
+            except Exception as e:
+                logger.debug("is_cdp_available attempt failed", attempt=attempt, host=h, port=p, error=str(e))
                 if attempt == 0:
                     await asyncio.sleep(0.35)
         return False
 
-    async def ensure_cdp_available(self, port: Optional[int] = None, host: str = "127.0.0.1") -> bool:
+    async def ensure_cdp_available(self, port: int | None = None, host: str = "127.0.0.1") -> bool:
         """
         فحص توفر منفذ تصحيح الأخطاء، وإذا كان الاتصال محلياً والمنفذ مغلقاً،
         يقوم تلقائياً بتشغيل متصفح Chrome بمنفذ تصحيح الأخطاء 9222 وبروفايل معزول لضمان عمل الوكيل فوراً بدون أوامر يدوية.
+        مع تقييد عنوان الربط أمنياً على 127.0.0.1 افتراضياً لمنع تعرض منفذ التصحيح لشبكة LAN.
         """
         p = port or self.default_port
         h = host or "127.0.0.1"
@@ -88,20 +140,24 @@ class CdpAgentService:
         if clean_h in ("127.0.0.1", "localhost"):
             logger.info("Local Chrome CDP offline; auto-spawning Chrome with remote debugging...", port=p)
             try:
-                import subprocess, shutil, sys, os
                 chrome_candidates = [
                     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                     r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
                     shutil.which("chrome"),
+                    shutil.which("google-chrome"),
+                    shutil.which("chromium"),
                 ]
                 chrome_path = next((c for c in chrome_candidates if c and os.path.exists(c)), None)
                 if chrome_path:
                     user_data = r"C:\chrome-dev-profile"
                     os.makedirs(user_data, exist_ok=True)
+
+                    # أمان: الاستماع لـ 127.0.0.1 افتراضياً لمنع كشف الـ DevTools لشبكة LAN
+                    bind_address = getattr(settings, "CDP_REMOTE_DEBUGGING_ADDRESS", "127.0.0.1")
                     cmd = [
                         chrome_path,
                         f"--remote-debugging-port={p}",
-                        "--remote-debugging-address=0.0.0.0",
+                        f"--remote-debugging-address={bind_address}",
                         f"--user-data-dir={user_data}",
                         "--no-first-run",
                         "--no-default-browser-check",
@@ -133,79 +189,238 @@ class CdpAgentService:
 
         return False
 
-    async def get_active_erp_tab(self, port: Optional[int] = None, host: str = "127.0.0.1", title_match: str = "") -> Optional[dict[str, Any]]:
+    async def get_active_erp_tab(self, port: int | None = None, host: str = "127.0.0.1", title_match: str = "") -> dict[str, Any] | None:
         """
         البحث عن التبويب النشط لنظام DynamicPro ERP واستخراج عنوان الـ WebSocket للتصحيح مع إعادة المحاولة.
         """
         p = port or self.default_port
         h = host or "127.0.0.1"
         base_http, base_ws = self._resolve_urls(h, p)
+        client = await self._get_http_client()
+
         for attempt in range(2):
             try:
-                async with httpx.AsyncClient(timeout=4.0, verify=False) as client:
-                    res = await client.get(f"{base_http}/json")
-                    if res.status_code != 200:
-                        continue
-                    tabs: list[dict[str, Any]] = res.json()
-                    pages = [t for t in tabs if t.get("type") == "page"]
-                    if not pages:
-                        # إنشاء تبويب ERP جديد فوراً إذا لم يكن هناك تبويبات صفحات مفتوحة
-                        try:
-                            new_tab_res = await client.put(f"{base_http}/json/new?http://localhost:4200/core")
-                            if new_tab_res.status_code == 200:
-                                await asyncio.sleep(1.0)
-                                pages = [new_tab_res.json()]
-                        except Exception:
-                            pass
+                res = await client.get(f"{base_http}/json")
+                if res.status_code != 200:
+                    continue
+                tabs: list[dict[str, Any]] = res.json()
+                pages = [t for t in tabs if t.get("type") == "page"]
+                if not pages:
+                    # إنشاء تبويب ERP جديد فوراً إذا لم يكن هناك تبويبات صفحات مفتوحة
+                    try:
+                        new_tab_res = await client.put(f"{base_http}/json/new?http://localhost:4200/core")
+                        if new_tab_res.status_code == 200:
+                            await asyncio.sleep(1.0)
+                            pages = [new_tab_res.json()]
+                    except Exception as tab_err:
+                        logger.debug("Auto-creating ERP tab failed", error=str(tab_err))
 
-                    if not pages:
-                        continue
+                if not pages:
+                    continue
 
-                    target_tab = pages[0]
-                    # أولوية 1: التبويب الذي يحتوي على كلمة dynamic أو core أو العنوان المطلوب
-                    for t in pages:
-                        title = t.get("title", "").lower()
-                        url = t.get("url", "").lower()
-                        if (
-                            (title_match and title_match.lower() in title)
-                            or (title_match and title_match.lower() in url)
-                            or "dynamic" in title
-                            or "dynamic" in url
-                            or "4200" in url
-                            or "core" in url
-                        ):
-                            target_tab = t
-                            break
+                target_tab = pages[0]
+                # أولوية 1: التبويب الذي يحتوي على كلمة dynamic أو core أو العنوان المطلوب
+                for t in pages:
+                    title = t.get("title", "").lower()
+                    url = t.get("url", "").lower()
+                    if (
+                        (title_match and title_match.lower() in title)
+                        or (title_match and title_match.lower() in url)
+                        or "dynamic" in title
+                        or "dynamic" in url
+                        or "4200" in url
+                        or "core" in url
+                    ):
+                        target_tab = t
+                        break
 
-                    # ضبط عنوان الـ WebSocket للتوافق مع IP أو نفق الجهاز المستهدف
-                    tab_id = target_tab.get("id")
-                    if tab_id:
-                        clean_ws_base = base_ws.rstrip("/")
-                        ws_url = f"{clean_ws_base}/devtools/page/{tab_id}"
-                        target_tab["webSocketDebuggerUrl"] = ws_url
-                        target_tab["clean_ws_url"] = ws_url
-                    return target_tab
-            except Exception:
+                # ضبط عنوان الـ WebSocket للتوافق مع IP أو نفق الجهاز المستهدف
+                tab_id = target_tab.get("id")
+                if tab_id:
+                    clean_ws_base = base_ws.rstrip("/")
+                    ws_url = f"{clean_ws_base}/devtools/page/{tab_id}"
+                    target_tab["webSocketDebuggerUrl"] = ws_url
+                    target_tab["clean_ws_url"] = ws_url
+                return target_tab
+            except Exception as e:
+                logger.debug("get_active_erp_tab attempt failed", attempt=attempt, error=str(e))
                 if attempt == 0:
                     await asyncio.sleep(0.35)
         return None
 
-    async def execute_cdp_command(
-        self, ws_url: str, method: str, params: Optional[dict[str, Any]] = None, timeout: float = 6.0
-    ) -> dict[str, Any]:
-        """إرسال أمر CDP مفرد واستلام الرد عبر WebSocket"""
-        cmd_id = self._next_id()
-        payload = {"id": cmd_id, "method": method, "params": params or {}}
+    # endregion
 
-        async with websockets.connect(ws_url, ping_interval=None, max_size=20 * 1024 * 1024) as ws:
-            await ws.send(json.dumps(payload))
-            while True:
-                resp_raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
-                data = json.loads(resp_raw)
-                if data.get("id") == cmd_id:
-                    if "error" in data:
-                        raise RuntimeError(f"CDP command {method} failed: {data['error']}")
-                    return data.get("result", {})
+    # ==============================================================================
+    # region 2: Low-Level CDP Protocol & Input Dispatch (بروتوكول CDP ونبضات الهاردوير)
+    # ==============================================================================
+
+    async def execute_cdp_command(
+        self, ws_url: str, method: str, params: dict[str, Any] | None = None, timeout: float = 6.0
+    ) -> dict[str, Any]:
+        """
+        إرسال أمر CDP واستلام الرد عبر pydoll ConnectionHandler مع إبقاء الاتصال (Keep-Alive Re-use)
+        وإدارة تزامن الأوامر (Command Futures) لمنع تداخل الرسائل عبر الـ WebSocket.
+        """
+        command = {"method": method, "params": params or {}}
+        cmd_timeout = int(max(round(timeout), 1))
+        handler = await self._get_pydoll_handler(ws_url)
+
+        try:
+            res = await handler.execute_command(command, timeout=cmd_timeout)
+            return res.get("result", {})
+        except Exception as e:
+            logger.debug(
+                "pydoll execute_cdp_command failed or disconnected, retrying once with fresh handler",
+                method=method,
+                error=str(e),
+            )
+            async with self._handler_lock:
+                old_h = self._pydoll_handlers.pop(ws_url, None)
+                if old_h:
+                    try:
+                        await old_h.close()
+                    except Exception:
+                        pass
+
+            fresh_handler = await self._get_pydoll_handler(ws_url)
+            res = await fresh_handler.execute_command(command, timeout=cmd_timeout)
+            return res.get("result", {})
+
+    async def evaluate_script(self, ws_url: str, script: str, timeout: float = 15.0) -> Any:
+        """تنفيذ كود JavaScript في سياق التبويب واسترجاع القيمة"""
+        res = await self.execute_cdp_command(
+            ws_url,
+            "Runtime.evaluate",
+            {"expression": script, "returnByValue": True, "awaitPromise": True},
+            timeout=timeout,
+        )
+        return res.get("result", {}).get("value")
+
+    async def click_at(self, ws_url: str, x: int, y: int) -> None:
+        """
+        تنفيذ نقرة ماوس موثوقة ومزدوجة:
+        1. إظهار المؤشر البصري للنقرة (Visual Ripple).
+        2. تشغيل تسلسل الأحداث المباشر على العنصر في الـ DOM عبر elementFromPoint (لتجاوز أي مشاكل في معالجة أحداث العتاد في Angular/Chromium).
+        3. إرسال أحداث ماوس عتادية كاملة عبر بروتوكول CDP (Input.dispatchMouseEvent).
+        """
+        # 0. إظهار المؤشر البصري للنقرة
+        await self.show_click_ripple(ws_url, x, y)
+        await asyncio.sleep(0.04)
+
+        # 1. نقر مباشر للعنصر عبر JavaScript DOM Dispatch (يحاكي ضغطة المستخدم تماماً داخل Angular)
+        dom_click_script = f"""
+        (function() {{
+            const el = document.elementFromPoint({x}, {y});
+            if (el) {{
+                try {{ el.focus(); }} catch(_) {{}}
+                const opts = {{ bubbles: true, cancelable: true, view: window, clientX: {x}, clientY: {y} }};
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.dispatchEvent(new MouseEvent('click', opts));
+                if (typeof el.click === 'function') {{
+                    el.click();
+                }}
+                // إذا كان العنصر ابن لرابط أو زر أو tile، اضغط الأب أيضاً
+                const parentInteractive = el.closest('button, a, [role="button"], .dp-mods__card, .dp-rise, .dp-btn, .dp-pgs__tile, .dp-pgs__mod, .dp-hdr__tab, [routerlink]');
+                if (parentInteractive && parentInteractive !== el) {{
+                    parentInteractive.dispatchEvent(new MouseEvent('click', opts));
+                    if (typeof parentInteractive.click === 'function') {{
+                        parentInteractive.click();
+                    }}
+                }}
+                return el.tagName;
+            }}
+            return null;
+        }})();
+        """
+        try:
+            hit_tag = await self.evaluate_script(ws_url, dom_click_script)
+            logger.info("DOM element click dispatched via elementFromPoint", tag=hit_tag, x=x, y=y)
+        except Exception as e:
+            logger.warn("DOM elementFromPoint click failed", error=str(e))
+
+        # 2. إرسال أحداث العتاد عبر CDP (Hardware-Level Mouse Event)
+        try:
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mouseMoved", "x": x, "y": y},
+            )
+            await asyncio.sleep(0.05)
+
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
+            )
+            await asyncio.sleep(0.08)
+
+            await self.execute_cdp_command(
+                ws_url,
+                "Input.dispatchMouseEvent",
+                {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
+            )
+            logger.info("CDP Mouse Click dispatched", x=x, y=y)
+        except Exception as e:
+            logger.error("CDP hardware mouse click failed", error=str(e))
+
+    async def type_text(self, ws_url: str, text: str, delay_ms: float = 30) -> None:
+        """
+        كتابة نص باستخدام إدخال الكيبورد المباشر (Input.insertText).
+        تدعم النصوص العربية بالكامل والمسافات.
+        """
+        await self.execute_cdp_command(
+            ws_url,
+            "Input.insertText",
+            {"text": text},
+        )
+        logger.info("CDP Text typed successfully", length=len(text), snippet=text[:15])
+
+    async def press_key(self, ws_url: str, key_name: str) -> None:
+        """
+        إرسال ضغطة زر خاصة (Enter, Tab, Escape, Backspace).
+        """
+        key_codes = {
+            "Enter": {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13},
+            "Tab": {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9},
+            "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27},
+            "Backspace": {"key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8},
+        }
+        spec = key_codes.get(key_name, {"key": key_name, "code": key_name})
+
+        await self.execute_cdp_command(
+            ws_url,
+            "Input.dispatchKeyEvent",
+            {"type": "rawKeyDown", **spec},
+        )
+        await asyncio.sleep(0.05)
+        await self.execute_cdp_command(
+            ws_url,
+            "Input.dispatchKeyEvent",
+            {"type": "keyUp", **spec},
+        )
+        logger.info("CDP Key pressed", key=key_name)
+
+    # endregion
+
+    # ==============================================================================
+    # region 3: Visual Grounding & DOM Inspection (الرصد البصري وفحص الاستقرار)
+    # ==============================================================================
+
+    @staticmethod
+    def normalize_ar(s: str) -> str:
+        """
+        تطبيع النصوص العربية لإزالة فروق الهمزات والتاء المربوطة والألف المقصورة وعلامات التشكيل.
+        مع الاحتفاظ بحروف الكلمة الأصلية وتجنب حذف حرف الواو عشوائياً.
+        """
+        if not s:
+            return ""
+        s = re.sub(r"[\u064B-\u065F\u0670]", "", s)
+        s = re.sub(r"[أإآٱ]", "ا", s)
+        s = re.sub(r"ة", "ه", s)
+        s = re.sub(r"[ىي]", "ي", s)
+        s = re.sub(r"[\s_\-]+", " ", s).strip().lower()
+        return s
 
     async def capture_screenshot(self, ws_url: str, quality: int = 80, mask_chat: bool = True) -> str:
         """
@@ -218,8 +433,8 @@ class CdpAgentService:
                     ws_url,
                     """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = 'hidden');"""
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to mask chat window before screenshot", error=str(e))
 
         try:
             res = await self.execute_cdp_command(
@@ -236,19 +451,8 @@ class CdpAgentService:
                         ws_url,
                         """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = '');"""
                     )
-                except Exception:
-                    pass
-
-    @staticmethod
-    def normalize_ar(s: str) -> str:
-        """تطبيع النصوص العربية لإزالة فروق الهمزات والتاء المربوطة وحروف العطف والمسافات"""
-        import re
-        if not s:
-            return ""
-        s = re.sub(r"[أإآ]", "ا", s)
-        s = re.sub(r"ة", "ه", s)
-        s = re.sub(r"[\s_\-و]+", "", s).lower()
-        return s
+                except Exception as e:
+                    logger.debug("Failed to unmask chat window after screenshot", error=str(e))
 
     async def get_page_state(self, ws_url: str) -> dict[str, Any]:
         """استخراج حالة الصفحة الحالية: الرابط، العنوان، النصوص البارزة، والشاشة النشطة حالياً عبر الجسر"""
@@ -361,8 +565,8 @@ class CdpAgentService:
         """
         try:
             await self.evaluate_script(ws_url, ripple_script)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("show_click_ripple skipped", error=str(e))
 
     async def get_interactive_elements(self, ws_url: str) -> list[dict[str, Any]]:
         """
@@ -426,84 +630,14 @@ class CdpAgentService:
             logger.warn("Failed to extract interactive elements over CDP", error=str(e))
             return []
 
-    async def click_at(self, ws_url: str, x: int, y: int) -> None:
-        """
-        تنفيذ نقرة ماوس موثوقة ومزدوجة:
-        1. إظهار المؤشر البصري للنقرة (Visual Ripple).
-        2. تشغيل تسلسل الأحداث المباشر على العنصر في الـ DOM عبر elementFromPoint (لتجاوز أي مشاكل في معالجة أحداث العتاد في Angular/Chromium).
-        3. إرسال أحداث ماوس عتادية كاملة عبر بروتوكول CDP (Input.dispatchMouseEvent).
-        """
-        # 0. إظهار المؤشر البصري للنقرة
-        await self.show_click_ripple(ws_url, x, y)
-        await asyncio.sleep(0.04)
-
-        # 1. نقر مباشر للعنصر عبر JavaScript DOM Dispatch (يحاكي ضغطة المستخدم تماماً داخل Angular)
-        dom_click_script = f"""
-        (function() {{
-            const el = document.elementFromPoint({x}, {y});
-            if (el) {{
-                try {{ el.focus(); }} catch(_) {{}}
-                const opts = {{ bubbles: true, cancelable: true, view: window, clientX: {x}, clientY: {y} }};
-                el.dispatchEvent(new MouseEvent('mousedown', opts));
-                el.dispatchEvent(new MouseEvent('mouseup', opts));
-                el.dispatchEvent(new MouseEvent('click', opts));
-                if (typeof el.click === 'function') {{
-                    el.click();
-                }}
-                // إذا كان العنصر ابن لرابط أو زر أو tile، اضغط الأب أيضاً
-                const parentInteractive = el.closest('button, a, [role="button"], .dp-mods__card, .dp-rise, .dp-btn, .dp-pgs__tile, .dp-pgs__mod, .dp-hdr__tab, [routerlink]');
-                if (parentInteractive && parentInteractive !== el) {{
-                    parentInteractive.dispatchEvent(new MouseEvent('click', opts));
-                    if (typeof parentInteractive.click === 'function') {{
-                        parentInteractive.click();
-                    }}
-                }}
-                return el.tagName;
-            }}
-            return null;
-        }})();
-        """
-        try:
-            hit_tag = await self.evaluate_script(ws_url, dom_click_script)
-            logger.info("DOM element click dispatched via elementFromPoint", tag=hit_tag, x=x, y=y)
-        except Exception as e:
-            logger.warn("DOM elementFromPoint click failed", error=str(e))
-
-        # 2. إرسال أحداث العتاد عبر CDP (Hardware-Level Mouse Event)
-        try:
-            await self.execute_cdp_command(
-                ws_url,
-                "Input.dispatchMouseEvent",
-                {"type": "mouseMoved", "x": x, "y": y},
-            )
-            await asyncio.sleep(0.05)
-
-            await self.execute_cdp_command(
-                ws_url,
-                "Input.dispatchMouseEvent",
-                {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
-            )
-            await asyncio.sleep(0.08)
-
-            await self.execute_cdp_command(
-                ws_url,
-                "Input.dispatchMouseEvent",
-                {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
-            )
-            logger.info("CDP Mouse Click dispatched", x=x, y=y)
-        except Exception as e:
-            logger.error("CDP hardware mouse click failed", error=str(e))
-
     async def wait_for_settle(self, ws_url: str, initial_url: str = "", max_wait_sec: float = 2.5) -> float:
         """
         انتظار ذكي لاستقرار الصفحة بعد كل نقرة أو تنقل (DOM-Settle Detection).
-
         المنطق:
         1. إذا تغير الـ URL → يعني التنقل تمّ، نبدأ فحص الاستقرار البنيوي.
         2. نقيس عدد العناصر التفاعلية مرتين بفاصل 150ms، إذا تساوى العددان → الصفحة مستقرة.
         3. حد أقصى صارم (max_wait_sec) لضمان عدم التوقف الأبدي.
         """
-        import time
         start = time.perf_counter()
         deadline = start + max_wait_sec
         url_changed = False
@@ -525,16 +659,13 @@ class CdpAgentService:
                 curr_count = await self.evaluate_script(ws_url, count_script)
                 if isinstance(curr_count, int):
                     if curr_count == prev_element_count and (time.perf_counter() - start) >= 0.3:
-                        # DOM مستقر: العدد لم يتغير بين فحصين متتاليين
                         break
                     prev_element_count = curr_count
 
-                # في حال تغيّر الـ URL وانتهى التحميل وانتظرنا مدة معقولة → نخرج
                 if url_changed and is_ready and (time.perf_counter() - start) >= 0.5:
                     break
-
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("wait_for_settle check tick error", error=str(e))
 
         elapsed = (time.perf_counter() - start) * 1000
         logger.debug("DOM settle completed", elapsed_ms=round(elapsed, 1), url_changed=url_changed)
@@ -545,8 +676,8 @@ class CdpAgentService:
         ws_url: str,
         x: int,
         y: int,
-        target_text: Optional[str] = None,
-        interactive_elements: Optional[list[dict[str, Any]]] = None,
+        target_text: str | None = None,
+        interactive_elements: list[dict[str, Any]] | None = None,
     ) -> tuple[int, int, bool]:
         """
         تنفيذ نقرة ذكية منجذبة ذاتياً (DOM-Anchored Snapped Click):
@@ -573,16 +704,13 @@ class CdpAgentService:
 
                 norm_target = self.normalize_ar(clean_target)
 
-                # البحث عن أفضل مطابقة مع تفضيل العناصر غير الفارغة والأقرب
                 candidates = []
                 for el in elements:
                     el_raw = el.get("text") or ""
                     norm_el = self.normalize_ar(el_raw)
-                    # شرط أساسي: أن يكون النص غير تافه (أطول من حرفين)
                     if len(norm_el) >= 2 and len(norm_target) >= 2:
                         if norm_target in norm_el or norm_el in norm_target:
                             dist = ((el["x"] - x) ** 2 + (el["y"] - y) ** 2) ** 0.5
-                            # مطابقة تامة للنص تحظى بأعلى أولوية
                             score = 0 if norm_target == norm_el else 1
                             candidates.append((score, dist, el))
 
@@ -614,52 +742,11 @@ class CdpAgentService:
         await self.click_at(ws_url, target_x, target_y)
         return target_x, target_y, snapped
 
-    async def type_text(self, ws_url: str, text: str, delay_ms: float = 30) -> None:
-        """
-        كتابة نص باستخدام إدخال الكيبورد المباشر (Input.insertText أو dispatchKeyEvent).
-        تدعم النصوص العربية بالكامل والمسافات.
-        """
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.insertText",
-            {"text": text},
-        )
-        logger.info("CDP Text typed successfully", length=len(text), snippet=text[:15])
+    # endregion
 
-    async def press_key(self, ws_url: str, key_name: str) -> None:
-        """
-        إرسال ضغطة زر خاصة (Enter, Tab, Escape, Backspace).
-        """
-        key_codes = {
-            "Enter": {"key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13},
-            "Tab": {"key": "Tab", "code": "Tab", "windowsVirtualKeyCode": 9},
-            "Escape": {"key": "Escape", "code": "Escape", "windowsVirtualKeyCode": 27},
-            "Backspace": {"key": "Backspace", "code": "Backspace", "windowsVirtualKeyCode": 8},
-        }
-        spec = key_codes.get(key_name, {"key": key_name, "code": key_name})
-
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.dispatchKeyEvent",
-            {"type": "rawKeyDown", **spec},
-        )
-        await asyncio.sleep(0.05)
-        await self.execute_cdp_command(
-            ws_url,
-            "Input.dispatchKeyEvent",
-            {"type": "keyUp", **spec},
-        )
-        logger.info("CDP Key pressed", key=key_name)
-
-    async def evaluate_script(self, ws_url: str, script: str, timeout: float = 15.0) -> Any:
-        """تنفيذ كود JavaScript في سياق التبويب واسترجاع القيمة"""
-        res = await self.execute_cdp_command(
-            ws_url,
-            "Runtime.evaluate",
-            {"expression": script, "returnByValue": True, "awaitPromise": True},
-            timeout=timeout,
-        )
-        return res.get("result", {}).get("value")
+    # ==============================================================================
+    # region 4: ERP Host Navigation & Form Detection (التنقل الذكي وفتح الشاشات)
+    # ==============================================================================
 
     async def navigate_to_erp_screen(self, ws_url: str, screen_id_or_name: Any) -> bool:
         """
@@ -750,6 +837,61 @@ class CdpAgentService:
             logger.warning("CDP Bridge get_user_authorized_screens failed", error=str(e))
             return []
 
+    async def ensure_erp_form_open(self, ws_url: str, timeout_sec: float = 8.0) -> dict[str, Any]:
+        """
+        يضمن أن فورم الإدخال (AddOrEdit) مفتوح: bridge.triggerAddNew ثم زر "إضافة جديد" في الـ DOM مع انتظار الجاهزية.
+        """
+        script = """
+        (async function() {
+            const sleep = ms => new Promise(r => setTimeout(r, ms));
+            const ctxOpen = () => { try { const c = window.DynamicERP?.getActiveFormContext?.(); return !!(c && (c.dataObject || (c.rows && c.formType !== 'dom') || c.isInvoice)); } catch(e) { return false; } };
+            const domOpen = () => {
+                const p = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
+                const f = p.querySelector('.dp-edit, .dp-list__pre, .dp-edit__head, section.dp-pu__sup, app-add-or-edit, .dp-modal, #addOrEditPopUp');
+                if (f && f.offsetParent !== null) return true;
+                const primaryInp = p.querySelector('[formcontrolname="SupplierID"], [formcontrolname="CustomerID"], [formcontrolname="StoreID"], [formcontrolname="EmpId"], input#productQty');
+                return !!(primaryInp && primaryInp.offsetParent !== null);
+            };
+            const isOpen = () => ctxOpen() || domOpen();
+            if (isOpen()) return { opened: true, method: 'already_open' };
+            const deadline = Date.now() + __TIMEOUT_MS__;
+            let bridgeCalls = 0, domClicks = 0;
+            while (Date.now() < deadline) {
+                try { if (window.DynamicERP && typeof window.DynamicERP.triggerAddNew === 'function') { bridgeCalls++; await window.DynamicERP.triggerAddNew(); } } catch(e) {}
+                await sleep(350);
+                if (isOpen()) return { opened: true, method: 'bridge', bridgeCalls, domClicks };
+                const page = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
+                const masterBtn = page.querySelector('button.dp-btn--primary.dp-list__act, .dp-list__act.dp-btn--primary, button.dp-btn--new, [data-action="new"], button.dp-list__act');
+                const btn = masterBtn || Array.from(page.querySelectorAll('button, a')).find(b => {
+                    if (b.closest('lms-ai-copilot, app-copilot-chat, nav, .dp-hdr')) return false;
+                    const txt = (b.textContent || '').trim().replace(/[إأآ]/g, 'ا');
+                    const hasPlus = !!b.querySelector('.fa-plus, .bi-plus, i[class*="plus"]');
+                    return /اضافة جديد|جديد|^اضافة$|add new/i.test(txt) || (hasPlus && (/اضاف|جديد/.test(txt) || txt === ''));
+                });
+                if (btn && btn.offsetParent !== null) { 
+                    domClicks++; 
+                    btn.click(); 
+                    await sleep(550); 
+                    if (isOpen()) return { opened: true, method: 'dom_button', bridgeCalls, domClicks }; 
+                }
+                await sleep(250);
+            }
+            return { opened: false, method: 'timeout', bridgeCalls, domClicks };
+        })()
+        """.replace("__TIMEOUT_MS__", str(int(timeout_sec * 1000)))
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=timeout_sec + 6.0)
+            return res if isinstance(res, dict) else {"opened": bool(res), "method": "raw"}
+        except Exception as e:
+            logger.error("ensure_erp_form_open failed", error=str(e))
+            return {"opened": False, "method": "error", "error": str(e)}
+
+    # endregion
+
+    # ==============================================================================
+    # region 5: Polymorphic Form Filling & Auto-Cataloging (محرك التعبئة والاستكشاف)
+    # ==============================================================================
+
     async def fill_erp_form_bridge(self, ws_url: str, payload: dict[str, Any]) -> dict[str, Any]:
         """
         حقن وتعبئة الفاتورة وجدول الأصناف مباشرة عبر جسر window.DynamicERP.fillFormData(payload)
@@ -761,9 +903,7 @@ class CdpAgentService:
             const payload = {payload_json};
             const logs = [];
 
-            // ملاحظة: لا نستخدم bridge.fillFormData للهيدر لأنه يكتب نصوصاً داخل حقول الـ ID (ContractType/StoreID).
-
-            // 2. محرك التعبئة المعمم فائق الدقة (Generic Polymorphic DOM Injector - Task B.3 & A.1.2)
+            // 1. محرك التعبئة المعمم فائق الدقة (Generic Polymorphic DOM Injector)
             async function selectNgSelect(target, targetVal) {{
                 if (!targetVal) return false;
                 const sel = typeof target === 'string' ? document.querySelector(target) : target;
@@ -816,7 +956,6 @@ class CdpAgentService:
                 }}
 
                 // المطابقة المعممة بواسطة تسميات الحقول بالعربية أو الإنجليزية (Label-Anchored Matching)
-                // تتيح تعبئة أي حقل في أي شاشة من الـ 821 شاشة حتى لو اختلف اسم الـ formControl
                 try {{
                     const labels = Array.from(document.querySelectorAll('label'));
                     const cleanField = fieldName.trim().toLowerCase();
@@ -893,7 +1032,6 @@ class CdpAgentService:
             for (const item of items) {{
                 let itemFilled = false;
 
-                // إذا كان هناك مدخل صنف ng-select
                 const prodSel = document.querySelector('ng-select#product, [formcontrolname="product"], [formcontrolname="AccID"], ng-select#AccID, table ng-select');
                 const itemName = item.product || item.name || item.AccID || item.ItemName;
                 if (prodSel && itemName) {{
@@ -902,7 +1040,6 @@ class CdpAgentService:
                     }}
                 }}
 
-                // تعبئة باقي الحقول في السطر (مثل الكمية والسعر والمدين والدائن)
                 for (const [col, colVal] of Object.entries(item)) {{
                     if (col !== 'product' && col !== 'name' && col !== 'AccID' && col !== 'ItemName') {{
                         if (await fillSingleControl(col, colVal)) {{
@@ -911,7 +1048,6 @@ class CdpAgentService:
                     }}
                 }}
 
-                // معالجة المودال التلقائي للكمية أو التأكيد إن ظهر
                 await new Promise(r => setTimeout(r, 350));
                 const qtyInp = document.querySelector('input#productQty, [formcontrolname="productQty"], input[type="number"]');
                 const continueBtn = Array.from(document.querySelectorAll('button')).find(b => {{
@@ -942,7 +1078,6 @@ class CdpAgentService:
                     total = dobj.TotalCurrancy || dobj.TotalOrderBeforCurrancy || dobj.NetTotal || null;
                 }} catch(e) {{}}
 
-                // محاولة قراءة الإجمالي من حقول الـ DOM إذا لم يكن متاحاً في كائن الـ dataObject
                 if (!total || Number(total) === 0) {{
                     const grandValEl = document.querySelector('.dp-edit__grandval, .dp-edit__grand strong, .dp-edit__grand, [class*="grandval"]');
                     if (grandValEl) {{
@@ -959,7 +1094,6 @@ class CdpAgentService:
                     }}
                 }}
 
-                // حساب الإجمالي احتياطياً من حاصل ضرب الكميات بالأسعار
                 if (!total || Number(total) === 0) {{
                     let sum = 0;
                     for (const itm of items) {{
@@ -971,7 +1105,6 @@ class CdpAgentService:
                 }}
 
                 if (total) {{
-                    // البحث عن حقل المدفوع/المحصل بالمعرفات المباشرة أولاً
                     const paidDirect = document.querySelector('input#POPaid, input[name="POPaid"], input[formcontrolname="POPaid"], input#POPaidCurrancy, input[name="POPaidCurrancy"], input[formcontrolname="POPaidCurrancy"], input[name*="paid" i], input[id*="paid" i]');
                     const lbls = Array.from(document.querySelectorAll('.dp-edit__totlbl, .totlbl, [class*="totlbl"], label'));
                     const lbl = lbls.find(l => /المحصل|مدفوع|المسدد|نقد|سداد/.test(l.textContent || ''));
@@ -1026,55 +1159,6 @@ class CdpAgentService:
             logger.error("Failed to execute bridge/precision form fill", error=str(e))
             return {"success": False, "error": str(e)}
 
-    async def ensure_erp_form_open(self, ws_url: str, timeout_sec: float = 8.0) -> dict[str, Any]:
-        """
-        يضمن أن فورم الإدخال (AddOrEdit) مفتوح: bridge.triggerAddNew ثم زر "إضافة جديد" في الـ DOM مع انتظار الجاهزية.
-        """
-        script = """
-        (async function() {
-            const sleep = ms => new Promise(r => setTimeout(r, ms));
-            const ctxOpen = () => { try { const c = window.DynamicERP?.getActiveFormContext?.(); return !!(c && (c.dataObject || (c.rows && c.formType !== 'dom') || c.isInvoice)); } catch(e) { return false; } };
-            const domOpen = () => {
-                const p = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
-                const f = p.querySelector('.dp-edit, .dp-list__pre, .dp-edit__head, section.dp-pu__sup, app-add-or-edit, .dp-modal, #addOrEditPopUp');
-                if (f && f.offsetParent !== null) return true;
-                const primaryInp = p.querySelector('[formcontrolname="SupplierID"], [formcontrolname="CustomerID"], [formcontrolname="StoreID"], [formcontrolname="EmpId"], input#productQty');
-                return !!(primaryInp && primaryInp.offsetParent !== null);
-            };
-            const isOpen = () => ctxOpen() || domOpen();
-            if (isOpen()) return { opened: true, method: 'already_open' };
-            const deadline = Date.now() + __TIMEOUT_MS__;
-            let bridgeCalls = 0, domClicks = 0;
-            while (Date.now() < deadline) {
-                try { if (window.DynamicERP && typeof window.DynamicERP.triggerAddNew === 'function') { bridgeCalls++; await window.DynamicERP.triggerAddNew(); } } catch(e) {}
-                await sleep(350);
-                if (isOpen()) return { opened: true, method: 'bridge', bridgeCalls, domClicks };
-                const page = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
-                const masterBtn = page.querySelector('button.dp-btn--primary.dp-list__act, .dp-list__act.dp-btn--primary, button.dp-btn--new, [data-action="new"], button.dp-list__act');
-                const btn = masterBtn || Array.from(page.querySelectorAll('button, a')).find(b => {
-                    if (b.closest('lms-ai-copilot, app-copilot-chat, nav, .dp-hdr')) return false;
-                    const txt = (b.textContent || '').trim().replace(/[إأآ]/g, 'ا');
-                    const hasPlus = !!b.querySelector('.fa-plus, .bi-plus, i[class*="plus"]');
-                    return /اضافة جديد|جديد|^اضافة$|add new/i.test(txt) || (hasPlus && (/اضاف|جديد/.test(txt) || txt === ''));
-                });
-                if (btn && btn.offsetParent !== null) { 
-                    domClicks++; 
-                    btn.click(); 
-                    await sleep(550); 
-                    if (isOpen()) return { opened: true, method: 'dom_button', bridgeCalls, domClicks }; 
-                }
-                await sleep(250);
-            }
-            return { opened: false, method: 'timeout', bridgeCalls, domClicks };
-        })()
-        """.replace("__TIMEOUT_MS__", str(int(timeout_sec * 1000)))
-        try:
-            res = await self.evaluate_script(ws_url, script, timeout=timeout_sec + 6.0)
-            return res if isinstance(res, dict) else {"opened": bool(res), "method": "raw"}
-        except Exception as e:
-            logger.error("ensure_erp_form_open failed", error=str(e))
-            return {"opened": False, "method": "error", "error": str(e)}
-
     async def snapshot_form_state(self, ws_url: str) -> dict[str, Any]:
         """
         لقطة اكتشاف ذاتي من الـ ERP نفسه: كل حقول الإدخال (بما فيها الفوتر) + مفاتيح/قيم dataObject الحقيقية،
@@ -1111,6 +1195,64 @@ class CdpAgentService:
         except Exception as e:
             logger.error("snapshot_form_state failed", error=str(e))
             return {"error": str(e)}
+
+    async def get_active_screen_metadata(self, ws_url: str) -> list[dict[str, Any]]:
+        """
+        استخراج ميتاداتا الشاشة النشطة لحظياً (0ms) مباشرة من ذاكرة Angular (RxJS columnList BehaviorSubject)
+        طبقاً لمواصفات ERP_METADATA_DISCOVERY_REFERENCE.md.
+        تعيد الحقول المرئية والإلزامية مع ColumnName و arColumnLabel و InsertType و IsGeneral (Header vs Grid)
+        ومصدر القوائم DroModel بدون الحاجة للـ DOM scraping أو استدعاءات SQL/API.
+        """
+        script = """
+        (function() {
+            try {
+                let columns = [];
+                // 1. محاولة الوصول عبر الجسر الرسمي
+                if (window.DynamicERP && typeof window.DynamicERP.getActiveComponentInstance === 'function') {
+                    const comp = window.DynamicERP.getActiveComponentInstance();
+                    if (comp && comp.columnList && typeof comp.columnList.getValue === 'function') {
+                        columns = comp.columnList.getValue() || [];
+                    }
+                }
+
+                // 2. محاولة الوصول المباشر عبر شجرة مكونات Angular إذا لم يكن الجسر متاحاً
+                if (!columns || columns.length === 0) {
+                    const pageEl = document.querySelector('.dp-shell__pages > div:not([hidden]), app-base');
+                    if (window.ng && window.ng.getComponent && pageEl) {
+                        const comp = window.ng.getComponent(pageEl);
+                        if (comp && comp.columnList && typeof comp.columnList.getValue === 'function') {
+                            columns = comp.columnList.getValue() || [];
+                        }
+                    }
+                }
+
+                if (!Array.isArray(columns) || columns.length === 0) {
+                    return [];
+                }
+
+                return columns
+                    .filter(c => c.InsertVisable === 1 || c.IsRquired === 1)
+                    .map(c => ({
+                        name: c.ColumnName,
+                        label: c.arColumnLabel || c.enColumnLabel || c.ColumnName,
+                        type: c.InsertType || 'text',
+                        isMandatory: Boolean(c.IsRquired),
+                        isHeader: Boolean(c.IsGeneral),
+                        lookup: c.DroModel || null,
+                        sort: c.sort || 0
+                    }))
+                    .sort((a, b) => a.sort - b.sort);
+            } catch(e) {
+                return [];
+            }
+        })()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script, timeout=8.0)
+            return res if isinstance(res, list) else []
+        except Exception as e:
+            logger.debug("get_active_screen_metadata failed", error=str(e))
+            return []
 
     async def inspect_active_page_dom(self, ws_url: str) -> dict[str, Any]:
         """
@@ -1215,6 +1357,8 @@ class CdpAgentService:
             controls=len(registered.get("header_fields", {})),
         )
         return registered
+
+    # endregion
 
 
 # Singleton instance
