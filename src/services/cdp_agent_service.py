@@ -259,9 +259,31 @@ class CdpAgentService:
                 const txt = (el.innerText || el.textContent || '').trim();
                 if (txt && txt.length < 100) headings.push(txt);
             });
-            const activeScreen = (window.DynamicERP && typeof window.DynamicERP.getActiveScreen === 'function')
-                ? window.DynamicERP.getActiveScreen()
-                : null;
+            let activeScreen = null;
+            try {
+                if (window.DynamicERP && typeof window.DynamicERP.getActiveScreen === 'function') {
+                    activeScreen = window.DynamicERP.getActiveScreen();
+                }
+            } catch(e) {}
+
+            if (!activeScreen) {
+                try {
+                    const baseEl = document.querySelector('app-base');
+                    if (window.ng && window.ng.getComponent && baseEl) {
+                        const comp = window.ng.getComponent(baseEl);
+                        const ps = comp ? comp.pageService : null;
+                        const curr = ps && ps.getCurrentOpenPage ? ps.getCurrentOpenPage() : null;
+                        if (curr) {
+                            activeScreen = {
+                                pageId: curr.PageID || curr.page_id,
+                                pageName: (curr.PageName || curr.screen_key || '').trim(),
+                                title: curr.ArName || curr.name_ar || (curr.PageName || '').trim()
+                            };
+                        }
+                    }
+                } catch(e) {}
+            }
+
             return {
                 url: window.location.href,
                 title: document.title,
@@ -646,16 +668,56 @@ class CdpAgentService:
         """
         script = f"""
         (async function() {{
+            const target = {json.dumps(screen_id_or_name)};
+            const targetPid = parseInt(target, 10);
+            const targetStr = String(target).trim().toLowerCase();
+
+            // 1. الأولوية الأولى: جسر DynamicERP الرسمي إن وجد
             if (window.DynamicERP && typeof window.DynamicERP.navigateToScreen === 'function') {{
                 try {{
-                    const res = window.DynamicERP.navigateToScreen({json.dumps(screen_id_or_name)});
+                    const res = window.DynamicERP.navigateToScreen(target);
                     if (res && typeof res.then === 'function') await res;
                     return true;
                 }} catch(e) {{
-                    console.error('Bridge navigateToScreen error:', e);
-                    return false;
+                    console.warn('Bridge navigateToScreen error:', e);
                 }}
             }}
+
+            // 2. الأولوية الثانية: خدمة التنقل الأصلية للنظام (Angular app-base -> pageService)
+            try {{
+                const baseEl = document.querySelector('app-base');
+                if (window.ng && window.ng.getComponent && baseEl) {{
+                    const comp = window.ng.getComponent(baseEl);
+                    const ps = comp ? comp.pageService : null;
+                    if (ps && ps.pageAuthArray && ps.pageAuthArray.length > 0) {{
+                        const pageAuth = ps.pageAuthArray.find(a => {{
+                            const p = a.Page || {{}};
+                            const pid = p.PageID || p.page_id;
+                            const pName = (p.PageName || p.screen_key || '').trim().toLowerCase();
+                            const arName = (p.ArName || p.name_ar || '').trim().toLowerCase();
+                            return (targetPid && pid === targetPid) || pName === targetStr || arName === targetStr;
+                        }});
+                        if (pageAuth && pageAuth.Page) {{
+                            comp.zone.run(() => {{
+                                ps.addNewPage(pageAuth.Page);
+                                comp.cdr.detectChanges();
+                            }});
+                            return true;
+                        }}
+                    }}
+                }}
+            }} catch(e) {{
+                console.warn('Host Angular pageService navigation error:', e);
+            }}
+
+            // 3. الأولوية الثالثة: التوجيه بالرابط المباشر
+            if (targetPid && !isNaN(targetPid)) {{
+                try {{
+                    window.location.href = `/core?p=${{targetPid}}&a=${{targetPid}}`;
+                    return true;
+                }} catch(e) {{}}
+            }}
+
             return false;
         }})()
         """
@@ -882,6 +944,14 @@ class CdpAgentService:
 
                 // محاولة قراءة الإجمالي من حقول الـ DOM إذا لم يكن متاحاً في كائن الـ dataObject
                 if (!total || Number(total) === 0) {{
+                    const grandValEl = document.querySelector('.dp-edit__grandval, .dp-edit__grand strong, .dp-edit__grand, [class*="grandval"]');
+                    if (grandValEl) {{
+                        const v = parseFloat((grandValEl.textContent || '').replace(/,/g, '').replace(/[^0-9.]/g, '').trim());
+                        if (!isNaN(v) && v > 0) {{ total = v; }}
+                    }}
+                }}
+
+                if (!total || Number(total) === 0) {{
                     const totInputs = Array.from(document.querySelectorAll('input#TotalCurrancy, input[name="TotalCurrancy"], input[formcontrolname="TotalCurrancy"], input#TotalOrderBeforCurrancy, input[formcontrolname="TotalOrderBeforCurrancy"], .dp-edit__total input[readonly], .totlbl + * input, input[name*="total" i]'));
                     for (const inp of totInputs) {{
                         const v = parseFloat((inp.value || '').replace(/,/g, ''));
@@ -963,8 +1033,14 @@ class CdpAgentService:
         script = """
         (async function() {
             const sleep = ms => new Promise(r => setTimeout(r, ms));
-            const ctxOpen = () => { try { const c = window.DynamicERP.getActiveFormContext(); return !!(c && (c.dataObject || (c.rows && c.formType !== 'dom') || c.isInvoice)); } catch(e) { return false; } };
-            const domOpen = () => { const p = document.querySelector('.dp-shell__pages > div:not([hidden])'); const f = document.querySelector('.cdk-overlay-container .dp-modal app-add-or-edit') || (p && p.querySelector('app-add-or-edit')); return !!(f && f.offsetParent !== null); };
+            const ctxOpen = () => { try { const c = window.DynamicERP?.getActiveFormContext?.(); return !!(c && (c.dataObject || (c.rows && c.formType !== 'dom') || c.isInvoice)); } catch(e) { return false; } };
+            const domOpen = () => {
+                const p = document.querySelector('.dp-shell__pages > div:not([hidden])') || document;
+                const f = p.querySelector('.dp-edit, .dp-list__pre, .dp-edit__head, section.dp-pu__sup, app-add-or-edit, .dp-modal, #addOrEditPopUp');
+                if (f && f.offsetParent !== null) return true;
+                const primaryInp = p.querySelector('[formcontrolname="SupplierID"], [formcontrolname="CustomerID"], [formcontrolname="StoreID"], [formcontrolname="EmpId"], input#productQty');
+                return !!(primaryInp && primaryInp.offsetParent !== null);
+            };
             const isOpen = () => ctxOpen() || domOpen();
             if (isOpen()) return { opened: true, method: 'already_open' };
             const deadline = Date.now() + __TIMEOUT_MS__;
