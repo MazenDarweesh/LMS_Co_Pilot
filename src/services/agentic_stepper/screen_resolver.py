@@ -15,6 +15,7 @@ from src.core.config import settings
 from src.services.cdp_agent_service import cdp_agent_service
 from src.services.forms_catalog_service import forms_catalog_service
 from src.services.vision_grounding_service import vision_grounding_service
+from src.services.agentic_stepper.prompts import get_stepper_screen_resolver_prompt
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
 logger = structlog.get_logger()
@@ -252,22 +253,12 @@ class ScreenResolver:
         if not client:
             return candidates_to_rank[0]
 
-        prompt = f"""You are an ERP Navigation Resolver for DynamicPro ERP.
-Match the user's natural language goal in Arabic to the single best ERP screen from the candidate list below.
-
-USER GOAL:
-"{goal}"
-
-CANDIDATE SCREENS:
-{json.dumps([{"page_id": s["page_id"], "name_ar": s["name_ar"], "module": s["module"], "description": s["description"]} for s in candidates_to_rank], ensure_ascii=False, indent=2)}
-
-OUTPUT FORMAT (JSON only):
-{{
-  "selected_page_id": <int>,
-  "confidence": <float 0.0 - 1.0>,
-  "reason": "سبب موجز لاختيار الشاشة"
-}}
-"""
+        candidates_json = json.dumps(
+            [{"page_id": s["page_id"], "name_ar": s["name_ar"], "module": s["module"], "description": s["description"]} for s in candidates_to_rank],
+            ensure_ascii=False,
+            indent=2,
+        )
+        prompt = get_stepper_screen_resolver_prompt(goal=goal, candidates_json=candidates_json)
         try:
             resp = await asyncio.wait_for(
                 asyncio.to_thread(

@@ -1,6 +1,8 @@
 # src/core/prompts.py
 # ملف لتجميع وإدارة جميع الـ Prompts الخاصة بالذكاء الاصطناعي لفصلها عن الكود البرمجي (Clean Architecture)
 
+from typing import Any
+
 # ---------------------------------------------------------------------------
 # Whisper ASR Domain Prompt (المقترح 3 — Dialect-Aware Prompt Hardening)
 # ---------------------------------------------------------------------------
@@ -335,3 +337,94 @@ def get_erp_navigation_prompt(user_msg: str, current_path_json: str, candidates_
         current_path_json=current_path_json,
         candidates_json=candidates_json
     )
+
+
+# ---------------------------------------------------------------------------
+# Stepper Screen Resolver & Transaction Extraction Prompts
+# ---------------------------------------------------------------------------
+
+STEPPER_SCREEN_RESOLVER_PROMPT_TEMPLATE = """You are an ERP Navigation Resolver for DynamicPro ERP.
+Match the user's natural language goal in Arabic to the single best ERP screen from the candidate list below.
+
+USER GOAL:
+"{goal}"
+
+CANDIDATE SCREENS:
+{candidates_json}
+
+OUTPUT FORMAT (JSON only):
+{{
+  "selected_page_id": <int>,
+  "confidence": <float 0.0 - 1.0>,
+  "reason": "سبب موجز لاختيار الشاشة"
+}}
+"""
+
+STEPPER_TRANSACTION_EXTRACTION_PROMPT_TEMPLATE = """You are an ERP Document Parser for DynamicPro ERP.
+Extract structured transaction data for document '{doc_name}' from the user's natural language goal in Arabic.
+
+USER GOAL:
+"{goal}"
+
+DOCUMENT SPECIFICATION:
+- Document Type: {doc_name}
+- Multi-line Items Grid: {is_excel_str}
+- Target Page ID: {target_page_id}
+- Target Screen Key: {target_screen_key}
+
+EXPECTED HEADER FIELDS (Extract values for any matching fields present in the user goal):
+{expected_header_json}
+
+EXPECTED LINE/GRID FIELDS:
+{expected_grid_json}
+
+RULES:
+1. Map values strictly to the matching field keys from EXPECTED HEADER FIELDS and EXPECTED LINE/GRID FIELDS.
+2. {payment_rules}
+3. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
+
+OUTPUT FORMAT (JSON only):
+{{
+  "header": {{
+    // Map extracted values strictly to keys from EXPECTED HEADER FIELDS (e.g. VendorID, CustomerID, EmpId, StoreID, Amount, Months, DocDate, Description)
+  }},
+  "items": [
+    // Array of objects matching keys from EXPECTED LINE/GRID FIELDS (e.g. product, productQty, UnitPrice, AccID, Debit, Credit) or empty [] if not applicable
+  ],
+  "target_page_id": {target_page_id},
+  "document_title": "{doc_name}"
+}}
+"""
+
+
+def get_stepper_screen_resolver_prompt(goal: str, candidates_json: str) -> str:
+    """Constructs prompt for resolving natural language user goals to ERP screens via Gemini."""
+    return STEPPER_SCREEN_RESOLVER_PROMPT_TEMPLATE.format(
+        goal=goal,
+        candidates_json=candidates_json,
+    )
+
+
+def get_stepper_transaction_extraction_prompt(
+    goal: str,
+    doc_name: str,
+    is_excel: bool,
+    target_page_id: Any,
+    target_screen_key: Any,
+    expected_header_json: str,
+    expected_grid_json: str,
+) -> str:
+    """Constructs prompt for extracting structured transaction data from natural language goals."""
+    is_excel_str = "Yes" if is_excel else "No"
+    grid_spec = expected_grid_json if is_excel else "None (Single-record form: items must be empty [])"
+    return STEPPER_TRANSACTION_EXTRACTION_PROMPT_TEMPLATE.format(
+        goal=goal,
+        doc_name=doc_name,
+        is_excel_str=is_excel_str,
+        target_page_id=target_page_id,
+        target_screen_key=target_screen_key,
+        expected_header_json=expected_header_json,
+        expected_grid_json=grid_spec,
+        payment_rules=ERP_PAYMENT_RULES,
+    )
+

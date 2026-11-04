@@ -11,7 +11,7 @@ import structlog
 
 from google.genai import types
 from src.core.config import settings
-from src.core.prompts import ERP_PAYMENT_RULES
+from src.services.agentic_stepper.prompts import get_stepper_transaction_extraction_prompt
 from src.services.forms_catalog_service import forms_catalog_service
 from src.services.vision_grounding_service import vision_grounding_service
 
@@ -58,41 +58,15 @@ class PayloadExtractor:
         expected_header = schema_contract.get("expected_header", {})
         expected_grid = schema_contract.get("expected_grid", {})
 
-        extraction_prompt = f"""You are an ERP Document Parser for DynamicPro ERP.
-Extract structured transaction data for document '{doc_name}' from the user's natural language goal in Arabic.
-
-USER GOAL:
-"{goal}"
-
-DOCUMENT SPECIFICATION:
-- Document Type: {doc_name}
-- Multi-line Items Grid: {"Yes" if is_excel else "No"}
-- Target Page ID: {schema_contract.get("page_id")}
-- Target Screen Key: {schema_contract.get("screen_key")}
-
-EXPECTED HEADER FIELDS (Extract values for any matching fields present in the user goal):
-{json.dumps(expected_header, ensure_ascii=False, indent=2)}
-
-EXPECTED LINE/GRID FIELDS:
-{json.dumps(expected_grid, ensure_ascii=False, indent=2) if is_excel else "None (Single-record form: items must be empty [])"}
-
-RULES:
-1. Map values strictly to the matching field keys from EXPECTED HEADER FIELDS and EXPECTED LINE/GRID FIELDS.
-2. {ERP_PAYMENT_RULES}
-3. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
-
-OUTPUT FORMAT (JSON only):
-{{
-  "header": {{
-    // Map extracted values strictly to keys from EXPECTED HEADER FIELDS (e.g. VendorID, CustomerID, EmpId, StoreID, Amount, Months, DocDate, Description)
-  }},
-  "items": [
-    // Array of objects matching keys from EXPECTED LINE/GRID FIELDS (e.g. product, productQty, UnitPrice, AccID, Debit, Credit) or empty [] if not applicable
-  ],
-  "target_page_id": {schema_contract.get("page_id")},
-  "document_title": "{doc_name}"
-}}
-"""
+        extraction_prompt = get_stepper_transaction_extraction_prompt(
+            goal=goal,
+            doc_name=doc_name,
+            is_excel=is_excel,
+            target_page_id=schema_contract.get("page_id"),
+            target_screen_key=schema_contract.get("screen_key"),
+            expected_header_json=json.dumps(expected_header, ensure_ascii=False, indent=2),
+            expected_grid_json=json.dumps(expected_grid, ensure_ascii=False, indent=2),
+        )
         try:
             resp = await asyncio.wait_for(
                 asyncio.to_thread(
