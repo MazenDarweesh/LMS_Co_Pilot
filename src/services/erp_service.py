@@ -24,6 +24,7 @@ from src.services.erp_decision_memory_service import (
     erp_decision_memory_service,
     navigation_fingerprint,
 )
+from src.services.forms_catalog_service import forms_catalog_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
 logger = structlog.get_logger()
@@ -78,10 +79,11 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
             return 0.0
 
     # مطابقة المصطلحات الثنائية (Bilingual domain matching)
-    has_invoice_intent = any(w in user_lower for w in ["فاتورة", "فاتوره", "سجل", "انشئ", "أنشئ"])
+    has_invoice_intent = any(w in user_lower for w in ["فاتورة", "فاتوره", "سجل", "انشئ", "أنشئ", "دخل"])
     bilingual_bonus = 0.0
     for en_key, ar_terms in BILINGUAL_SCREEN_MAP.items():
-        if en_key in full_cand_text:
+        cand_matches_domain = en_key in full_cand_text or any(term in full_cand_text for term in ar_terms)
+        if cand_matches_domain:
             for term in ar_terms:
                 if term in user_lower:
                     if has_invoice_intent and en_key in ("purchases", "sales", "entry", "productprocess"):
@@ -258,6 +260,20 @@ class ErpService:
                     )
                     return remembered
 
+        # 0.5 High-Speed Catalog Transaction Resolution
+        catalog_form = forms_catalog_service.resolve_form_by_text(user_msg)
+        matched_catalog_candidate_id = None
+        if catalog_form:
+            cat_pid = str(catalog_form.get("page_id", "")).strip()
+            cat_key = str(catalog_form.get("screen_key", "")).strip().lower()
+            cat_name = str(catalog_form.get("name_ar", "")).strip()
+            for c in req.candidates:
+                c_id_str = str(c.id).strip().lower()
+                c_label_clean = (c.label or "").strip()
+                if (cat_pid and c_id_str == cat_pid.lower()) or (cat_key and c_id_str == cat_key) or (cat_name and (cat_name == c_label_clean or normalize_arabic_text_leaderboard(cat_name) == normalize_arabic_text_leaderboard(c_label_clean))):
+                    matched_catalog_candidate_id = c.id
+                    break
+
         # 1. AI router
         intent = "unknown"
         scored_candidates: list[NavScored] = []
@@ -274,6 +290,11 @@ class ErpService:
                         reverse=True
                     )
                     candidates_to_score = scored_pre[:15]
+                    # Ensure matching catalog candidate is NEVER pruned out of LLM window
+                    if matched_catalog_candidate_id and matched_catalog_candidate_id in candidates_map:
+                        cat_cand = candidates_map[matched_catalog_candidate_id]
+                        if cat_cand not in candidates_to_score:
+                            candidates_to_score = [cat_cand] + candidates_to_score[:14]
 
                 candidates_payload = [
                     {"id": c.id, "label": c.label, "path": c.path} for c in candidates_to_score
@@ -296,13 +317,37 @@ class ErpService:
         if not scored_candidates:
             source = "lexical"
             # Infer intent from action signals in query
-            is_action_msg = any(w in user_msg.lower() for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن"])
+            is_action_msg = any(w in user_msg.lower() for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن", "دخل"])
             intent = "action" if is_action_msg else "unknown"
 
             for c in req.candidates:
                 score = _compute_lexical_similarity(user_msg, c.label, c.path)
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
+
+        # 2.5 Catalog-boost: if transaction form matched with action intent, grant top confidence and demote rival generic screens
+        if matched_catalog_candidate_id and intent in ("action", "navigate", "unknown"):
+            cat_doc_name = catalog_form.get("name_ar", "المعاملة المطلوبة") if catalog_form else "المعاملة المطلوبة"
+            matched_existing = False
+            for s in scored_candidates:
+                if s.id == matched_catalog_candidate_id:
+                    s.confidence = max(s.confidence, 0.98)
+                    s.reason = f"مطابقة مباشرة لمعاملة {cat_doc_name} في النظام"
+                    matched_existing = True
+                else:
+                    # Demote rival generic screens so gap threshold cleanly triggers 'go'
+                    if s.confidence > 0.60:
+                        s.confidence = min(s.confidence, 0.50)
+            if not matched_existing and matched_catalog_candidate_id in candidates_map:
+                scored_candidates.append(
+                    NavScored(
+                        id=matched_catalog_candidate_id,
+                        confidence=0.98,
+                        reason=f"مطابقة مباشرة لمعاملة {cat_doc_name} في النظام"
+                    )
+                )
+            if intent == "unknown":
+                intent = "action"
 
         # 3. Dedupe, penalize detail/report/total screens for action intent, sort, top-3
         unique_scored: dict[str, NavScored] = {}
@@ -315,8 +360,10 @@ class ErpService:
                     "detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log", "total", "اجمالي", "إجمالي",
                     "setting", "settings", "setup", "config", "configuration", "إعدادات", "اعدادات", "تهيئة", "تهيئه"
                 ]):
-                    s.confidence = 0.0
-                    s.reason = "شاشة إعدادات/تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
+                    # Do not penalize if this was the explicitly matched transaction form
+                    if s.id != matched_catalog_candidate_id:
+                        s.confidence = 0.0
+                        s.reason = "شاشة إعدادات/تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]

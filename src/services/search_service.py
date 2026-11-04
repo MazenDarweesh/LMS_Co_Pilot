@@ -30,6 +30,7 @@ from src.services.embedding_service import embedding_service
 from src.services.qdrant_service import qdrant_service
 from src.services.reranker_service import reranker_service
 from src.services.semantic_cache_service import semantic_cache_service
+from src.services.forms_catalog_service import forms_catalog_service
 from src.services.exact_cache_service import exact_cache_service
 from src.services.intent_router import intent_router, IntentType
 from src.core.metrics import (
@@ -287,7 +288,12 @@ _FORM_FILL_CONFIRMATION = (
 )
 
 
-def _build_form_fill_payload(raw_extracted: Any, screen_key: str | None) -> dict | None:
+def _build_form_fill_payload(
+    raw_extracted: Any,
+    screen_key: str | None,
+    page_id: int | str | None = None,
+    document_name: str | None = None,
+) -> dict | None:
     """
     Normalizes the AI extraction result into the `form_fill` SSE payload.
     Returns None when nothing concrete was extracted (so the request falls back to plain RAG).
@@ -300,7 +306,7 @@ def _build_form_fill_payload(raw_extracted: Any, screen_key: str | None) -> dict
     batch_items = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
     if not (fields_dict or rows_list or batch_items):
         return None
-    return {
+    payload: dict[str, Any] = {
         "intent": "form_fill",
         "fields": fields_dict,
         "rows": rows_list,
@@ -308,6 +314,43 @@ def _build_form_fill_payload(raw_extracted: Any, screen_key: str | None) -> dict
         "batch_mode": bool(raw_extracted.get("batch_mode", False)),
         "batch_items": batch_items,
     }
+    if page_id:
+        payload["pageId"] = page_id
+    if document_name:
+        payload["documentName"] = document_name
+    return payload
+
+
+def _build_schema_from_catalog(form_meta: dict[str, Any]) -> list[dict[str, Any]]:
+    """Synthesizes a standardized schema from catalog metadata for LLM extraction context."""
+    schema: list[dict[str, Any]] = []
+    # 1. Header fields
+    headers = form_meta.get("header_fields") or form_meta.get("expected_header") or {}
+    if isinstance(headers, dict):
+        for key, val in headers.items():
+            label = val.get("label_ar") if isinstance(val, dict) else str(val)
+            ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
+            req_flag = val.get("is_required", False) if isinstance(val, dict) else False
+            schema.append({
+                "name": key,
+                "label": label or key,
+                "type": ctrl,
+                "required": req_flag,
+                "section": "header"
+            })
+    # 2. Grid fields
+    grids = form_meta.get("grid_fields") or form_meta.get("expected_grid") or {}
+    if isinstance(grids, dict):
+        for key, val in grids.items():
+            label = val.get("label_ar") if isinstance(val, dict) else str(val)
+            ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
+            schema.append({
+                "name": key,
+                "label": label or key,
+                "type": ctrl,
+                "section": "grid"
+            })
+    return schema
 
 
 class SearchService:
@@ -798,33 +841,65 @@ class SearchService:
         # ──────────────────────────────────────────────
         # 1.1b ERP Action Fast-Path: AI-routed data-entry commands never need RAG retrieval
         # ──────────────────────────────────────────────
-        if (req.visible_fields or req.form_schema) and (
-            await self._classify_form_action_intent(req.query, req.erp_intent)
-        ):
-            raw_extracted = await self._extract_form_fields_if_needed(
-                req.query, req.visible_fields, req.form_schema
-            )
-            form_payload = _build_form_fill_payload(raw_extracted, req.erp_key)
-            if form_payload is not None:
-                record_stage_duration("total", time.time() - t0)
-                latency_ms = round((time.time() - t0) * 1000, 2)
-                logger.info(
-                    "Emitting form_fill SSE event (action fast-path)",
-                    fields=list(form_payload["fields"].keys()),
-                    rows_count=len(form_payload["rows"]),
-                    erp_key=req.erp_key,
+        effective_fields = req.visible_fields
+        effective_schema = req.form_schema
+        resolved_screen_key = req.erp_key
+        resolved_page_id = None
+        resolved_doc_name = None
+
+        if await self._classify_form_action_intent(req.query, req.erp_intent):
+            # Compound Intent (NAVIGATE_AND_FILL): If client didn't supply live form DOM schema, resolve from catalog
+            if not effective_fields and not effective_schema:
+                target_form = None
+                if resolved_screen_key:
+                    target_form = forms_catalog_service.get_form_by_screen_key(resolved_screen_key) or forms_catalog_service.get_form_by_page_id(resolved_screen_key)
+                if not target_form:
+                    target_form = forms_catalog_service.resolve_form_by_text(req.query)
+
+                if target_form:
+                    resolved_page_id = target_form.get("page_id")
+                    resolved_screen_key = target_form.get("screen_key") or resolved_screen_key
+                    resolved_doc_name = target_form.get("name_ar") or target_form.get("document_name")
+                    effective_schema = _build_schema_from_catalog(target_form)
+                    logger.info(
+                        "Resolved cross-screen form schema from catalog for compound intent",
+                        page_id=resolved_page_id,
+                        screen_key=resolved_screen_key,
+                        doc_name=resolved_doc_name,
+                        fields_count=len(effective_schema),
+                    )
+
+            if effective_fields or effective_schema:
+                raw_extracted = await self._extract_form_fields_if_needed(
+                    req.query, effective_fields, effective_schema
                 )
-                yield _format_sse("sources", {"sources": []})
-                yield _format_sse("form_fill", form_payload)
-                yield _format_sse("token", {"text": _FORM_FILL_CONFIRMATION})
-                yield _format_sse("done", {
-                    "thread_id": req.thread_id or str(uuid.uuid4()),
-                    "provenance": "ERP_FORM_FILL",
-                    "cache_hit": False,
-                    "latency_ms": latency_ms,
-                    "metrics": {"total_latency_ms": latency_ms},
-                })
-                return
+                form_payload = _build_form_fill_payload(
+                    raw_extracted,
+                    resolved_screen_key,
+                    page_id=resolved_page_id,
+                    document_name=resolved_doc_name,
+                )
+                if form_payload is not None:
+                    record_stage_duration("total", time.time() - t0)
+                    latency_ms = round((time.time() - t0) * 1000, 2)
+                    logger.info(
+                        "Emitting form_fill SSE event (action fast-path)",
+                        fields=list(form_payload["fields"].keys()),
+                        rows_count=len(form_payload["rows"]),
+                        erp_key=resolved_screen_key,
+                        page_id=resolved_page_id,
+                    )
+                    yield _format_sse("sources", {"sources": []})
+                    yield _format_sse("form_fill", form_payload)
+                    yield _format_sse("token", {"text": _FORM_FILL_CONFIRMATION})
+                    yield _format_sse("done", {
+                        "thread_id": req.thread_id or str(uuid.uuid4()),
+                        "provenance": "ERP_FORM_FILL",
+                        "cache_hit": False,
+                        "latency_ms": latency_ms,
+                        "metrics": {"total_latency_ms": latency_ms},
+                    })
+                    return
 
         # 1.2 Embedding & Semantic Cache
         t_emb = time.time()

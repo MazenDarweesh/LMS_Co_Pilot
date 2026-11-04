@@ -467,6 +467,7 @@ OUTPUT FORMAT (JSON only):
         history: list[dict[str, Any]] = []
         tx_payload: Optional[dict[str, Any]] = None
         authorized_screens: Optional[list[dict[str, Any]]] = None
+        consecutive_nav_fails: int = 0
         import time
 
         # استخراج الكلمات المفتاحية للهدف لاستخدامها في التحقق الاستباقي (Goal-Reached Pre-check)
@@ -623,29 +624,71 @@ OUTPUT FORMAT (JSON only):
                             "status": "acting",
                             "message": f"الانتقال المباشر لشاشة المعاملة '{target_title}' (Page {tx_page_id})...",
                         }
-                        nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, tx_page_id)
+
+                        # استراتيجية متكيفة: إذا فشلت الملاحة البرمجية بالجسر، الانتقال فوراً للنقر المباشر على DOM
+                        if consecutive_nav_fails >= 1:
+                            _append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx}: Using fallback DOM-click navigation to page {tx_page_id}")
+                            nav_ok = await cdp_agent_service.navigate_to_erp_screen_dom_click(ws_url, tx_page_id)
+                        else:
+                            nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, tx_page_id)
+
                         settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=2.5)
 
-                        # ✅ التحقق من الوصول الفعلي قبل محاولة فتح النموذج (Per-Step Verification)
+                        # ✅ التحقق الشامل من الوصول الفعلي (Per-Step Verification)
                         verify_state = await cdp_agent_service.get_page_state(ws_url)
                         verify_url = verify_state.get("url", "")
+                        verify_title = verify_state.get("title", "")
+                        verify_headings = verify_state.get("headings", [])
                         verify_screen = verify_state.get("activeScreen") or {}
+                        verify_pid = verify_screen.get("pageId")
+
                         tx_arrived = (
-                            verify_screen.get("pageId") == tx_page_id
-                            or f"{tx_page_id}" in verify_url
-                            or target_title in verify_state.get("title", "")
+                            verify_pid == tx_page_id
+                            or (bool(verify_url) and f"{tx_page_id}" in verify_url)
+                            or target_title in verify_title
+                            or any(target_title in h for h in verify_headings)
                         )
-                        history.append({"step": step_idx, "action": "navigate_bridge", "page_id": tx_page_id, "success": nav_ok and tx_arrived})
+                        history.append({
+                            "step": step_idx,
+                            "action": "navigate_bridge" if consecutive_nav_fails == 0 else "navigate_dom_click",
+                            "page_id": tx_page_id,
+                            "success": nav_ok and tx_arrived
+                        })
                         _append_session_event(
                             session_id, "INFO" if tx_arrived else "WARN", "STEP_VERIFY",
                             f"Step {step_idx}: TX Screen Navigation verify {'PASSED' if tx_arrived else 'FAILED'} (settle={settle_ms:.0f}ms)",
-                            {"target_pid": tx_page_id, "verify_url": verify_url, "tx_arrived": tx_arrived}
+                            {
+                                "target_pid": tx_page_id,
+                                "verify_pid": verify_pid,
+                                "verify_url": verify_url,
+                                "tx_arrived": tx_arrived,
+                                "consecutive_nav_fails": consecutive_nav_fails
+                            }
                         )
                         if not tx_arrived:
-                            yield {"step": step_idx, "status": "acting", "message": f"⚠️ لم يُتحقق من الوصول لشاشة '{target_title}' — إعادة المحاولة..."}
+                            consecutive_nav_fails += 1
+                            if consecutive_nav_fails >= 4:
+                                _append_session_event(
+                                    session_id, "ERROR", "VISION_AGENT",
+                                    f"Navigation aborted after {consecutive_nav_fails} consecutive failed attempts to reach page {tx_page_id}"
+                                )
+                                yield {
+                                    "step": step_idx,
+                                    "status": "failed",
+                                    "message": f"تعذر الوصول لشاشة '{target_title}' (Page {tx_page_id}) بعد {consecutive_nav_fails} محاولات متتالية.",
+                                }
+                                break
+                            yield {
+                                "step": step_idx,
+                                "status": "acting",
+                                "message": f"⚠️ لم يُتحقق من الوصول لشاشة '{target_title}' — تجربة استراتيجية بديلة...",
+                            }
+                        else:
+                            consecutive_nav_fails = 0
                         continue
 
                     else:
+                        consecutive_nav_fails = 0
                         # 3. نحن على شاشة المعاملة -> تنفيذ التعبئة التلقائية الدقيقة عبر الجسر والـ DOM
                         yield {
                             "step": step_idx,

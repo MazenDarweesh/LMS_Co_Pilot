@@ -814,6 +814,63 @@ class CdpAgentService:
             logger.warning("CDP Bridge navigateToScreen failed", error=str(e))
             return False
 
+    async def navigate_to_erp_screen_dom_click(self, ws_url: str, screen_id_or_name: Any) -> bool:
+        """
+        Fallback DOM-click navigation: بحث عن عنصر [data-page-id] أو [routerlink] أو القائمة الجانبية
+        والنقر عليه مباشرة، كحل بديل وموثوق عند فشل أو عدم استجابة جسر الملاحة الرئيسي.
+        """
+        script = f"""
+        (function() {{
+            const target = {json.dumps(screen_id_or_name)};
+            const targetPid = parseInt(target, 10);
+            const targetStr = String(target).trim().toLowerCase();
+
+            // 1. بحث عن عنصر DOM يحمل المعرف المباشر
+            const selector = `[data-page-id="${{target}}"], [data-screen-id="${{target}}"], [id="page_${{target}}"]`;
+            let el = document.querySelector(selector);
+
+            // 2. إذا لم نجد، ابحث في روابط التوجيه والقوائم
+            if (!el) {{
+                const candidates = Array.from(document.querySelectorAll('.dp-pgs__tile, .dp-nav__item, [routerlink], a, button, .dp-mods__card'));
+                el = candidates.find(e => {{
+                    const rl = (e.getAttribute('routerlink') || '').toLowerCase();
+                    const href = (e.getAttribute('href') || '').toLowerCase();
+                    const txt = (e.innerText || e.textContent || '').trim().toLowerCase();
+                    if (targetPid && (rl.includes(String(targetPid)) || href.includes(String(targetPid)))) return true;
+                    if (targetStr && (txt === targetStr || txt.includes(targetStr))) return true;
+                    return false;
+                }});
+            }}
+
+            if (el) {{
+                try {{ el.focus(); }} catch(_) {{}}
+                const opts = {{ bubbles: true, cancelable: true, view: window }};
+                el.dispatchEvent(new MouseEvent('mousedown', opts));
+                el.dispatchEvent(new MouseEvent('mouseup', opts));
+                el.dispatchEvent(new MouseEvent('click', opts));
+                if (typeof el.click === 'function') el.click();
+                return true;
+            }}
+
+            // 3. محاولة أخيرة عبر جسر DynamicERP مباشرة بصيغة رقمية صريحة
+            if (targetPid && window.DynamicERP && typeof window.DynamicERP.navigateToScreen === 'function') {{
+                try {{
+                    window.DynamicERP.navigateToScreen(targetPid);
+                    return true;
+                }} catch(_) {{}}
+            }}
+
+            return false;
+        }})()
+        """
+        try:
+            res = await self.evaluate_script(ws_url, script)
+            logger.info("DOM click navigation executed", target=screen_id_or_name, success=bool(res))
+            return bool(res)
+        except Exception as e:
+            logger.warning("DOM click navigation failed", error=str(e), target=screen_id_or_name)
+            return False
+
     async def get_user_authorized_screens(self, ws_url: str) -> list[dict[str, Any]]:
         """
         استدعاء مباشر لجسر window.DynamicERP.listUserPages() لجلب الشاشات المسموحة للمستخدم الحالي

@@ -209,10 +209,10 @@ async def test_erp_endpoints_validation_limits_422():
         )
         assert res1.status_code == 422
 
-        # اختبار تجاوز عدد المرشحين > 60
+        # اختبار تجاوز عدد المرشحين > 1200
         too_many_candidates = [
             {"id": f"c_{i}", "label": f"شاشة {i}", "path": []}
-            for i in range(61)
+            for i in range(1201)
         ]
         res2 = await client.post(
             "/v1/erp/navigation/resolve",
