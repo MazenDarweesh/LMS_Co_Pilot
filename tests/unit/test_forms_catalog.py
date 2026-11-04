@@ -1,5 +1,5 @@
 import pytest
-from src.services.forms_catalog_service import FormsCatalogService, forms_catalog_service
+from src.services.erp_copilot import FormsCatalogService, forms_catalog_service
 
 
 def test_forms_catalog_loading():

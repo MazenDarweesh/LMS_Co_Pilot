@@ -11,9 +11,9 @@ import structlog
 
 from google.genai import types
 from src.core.config import settings
-from src.services.agentic_stepper.prompts import get_stepper_transaction_extraction_prompt
-from src.services.forms_catalog_service import forms_catalog_service
-from src.services.vision_grounding_service import vision_grounding_service
+from src.services.erp_copilot.agentic_stepper.prompts import get_stepper_transaction_extraction_prompt
+from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot.vision_grounding_service import vision_grounding_service
 
 logger = structlog.get_logger()
 

@@ -9,7 +9,7 @@ from qdrant_client.models import Filter, FieldCondition, MatchValue
 from src.core.config import settings
 from src.core.prompts import QUIZ_GENERATION_PROMPT, SUMMARY_GENERATION_PROMPT
 from src.models.schemas import GeneratedQuiz, GeneratedSummary
-from src.services.qdrant_service import qdrant_service
+from src.services.cognitive_search.qdrant_service import qdrant_service
 from src.core.metrics import record_content_generation_duration, record_token_usage
 
 logger = structlog.get_logger()

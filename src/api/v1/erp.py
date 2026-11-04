@@ -18,10 +18,16 @@ from src.models.erp_models import (
     TelemetryBatchRequest,
 )
 from sse_starlette.sse import EventSourceResponse
-from src.services.agentic_stepper_service import agentic_stepper_service
-from src.services.auth_service import UserContext, get_current_user, get_optional_user
-from src.services.erp_decision_memory_service import erp_decision_memory_service
-from src.services.erp_service import erp_service
+from src.services.erp_copilot import (
+    agentic_stepper_service,
+    erp_decision_memory_service,
+    erp_service,
+)
+from src.services.shared_infrastructure import (
+    UserContext,
+    get_current_user,
+    get_optional_user,
+)
 
 logger = structlog.get_logger()
 

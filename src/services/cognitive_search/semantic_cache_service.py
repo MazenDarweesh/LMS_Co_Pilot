@@ -30,7 +30,7 @@ from qdrant_client.models import (
 
 from src.core.config import settings
 from src.core.metrics import record_cache_rbac_rejection
-from src.services.qdrant_service import qdrant_service
+from src.services.cognitive_search.qdrant_service import qdrant_service
 from src.models.auth_models import UserContext
 from src.models.search_models import SearchResponse, SourceItem
 

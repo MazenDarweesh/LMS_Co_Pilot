@@ -18,8 +18,7 @@ import pytest
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from src.models.search_models import SearchRequest
 from src.models.auth_models import UserContext, TokenClaims
-from src.services.exact_cache_service import exact_cache_service
-from src.services.search_service import _build_scope_filter
+from src.services.cognitive_search import exact_cache_service, _build_scope_filter
 
 
 def test_handoff_exact_payload():

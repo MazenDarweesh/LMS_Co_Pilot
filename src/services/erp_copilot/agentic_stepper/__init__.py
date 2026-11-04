@@ -9,9 +9,9 @@ Provides backward-compatible AgenticStepperService aggregating:
 
 from typing import Any, AsyncGenerator, Optional
 
-from src.services.agentic_stepper.payload_extractor import PayloadExtractor
-from src.services.agentic_stepper.screen_resolver import ScreenResolver
-from src.services.agentic_stepper.session_telemetry import (
+from src.services.erp_copilot.agentic_stepper.payload_extractor import PayloadExtractor
+from src.services.erp_copilot.agentic_stepper.screen_resolver import ScreenResolver
+from src.services.erp_copilot.agentic_stepper.session_telemetry import (
     ERP_LOGS_DIR,
     SHARED_LOGS_DIR,
     TelemetryStage,
@@ -19,7 +19,7 @@ from src.services.agentic_stepper.session_telemetry import (
     append_session_event,
     read_session_events,
 )
-from src.services.agentic_stepper.stepper_engine import StepperEngine
+from src.services.erp_copilot.agentic_stepper.stepper_engine import StepperEngine
 
 
 class AgenticStepperService:

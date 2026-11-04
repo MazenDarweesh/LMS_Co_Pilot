@@ -12,7 +12,7 @@ logger = structlog.get_logger()
 
 async def _periodic_semantic_cache_eviction(interval_hours: int):
     """Periodically cleans up expired semantic cache points in Qdrant."""
-    from src.services.semantic_cache_service import semantic_cache_service
+    from src.services.cognitive_search import semantic_cache_service
     interval_seconds = max(interval_hours * 3600, 60)
     while True:
         try:
@@ -135,30 +135,30 @@ async def lifespan(app: FastAPI):
 
     # ② تحميل نماذج الـ Embedding مرة واحدة عند بدء التشغيل
     # (Best Practice 2026: initialize inside lifespan → stored in app.state)
-    from src.services.embedding_service import embedding_service
+    from src.services.cognitive_search import embedding_service
     await embedding_service.initialize()
     app.state.embedding_service = embedding_service
     logger.info("Embedding service ready ✅")
 
     # ③ تحميل نموذج الـ Reranker مرة واحدة عند بدء التشغيل
-    from src.services.reranker_service import reranker_service
+    from src.services.cognitive_search import reranker_service
     await reranker_service.initialize()
     app.state.reranker_service = reranker_service
     logger.info("Reranker service ready ✅")
 
     # ④ تهيئة Qdrant Service
-    from src.services.qdrant_service import qdrant_service
+    from src.services.cognitive_search import qdrant_service
     await qdrant_service.initialize()
     app.state.qdrant_service = qdrant_service
     logger.info("Qdrant service ready ✅")
 
     # ④.1 تهيئة Exact In-Memory Cache Service (Tier-1)
-    from src.services.exact_cache_service import exact_cache_service
+    from src.services.cognitive_search import exact_cache_service
     exact_cache_service.initialize()
     app.state.exact_cache_service = exact_cache_service
 
     # ④.2 تهيئة Semantic Cache Service (Tier-2)
-    from src.services.semantic_cache_service import semantic_cache_service
+    from src.services.cognitive_search import semantic_cache_service
     await semantic_cache_service.initialize()
     app.state.semantic_cache_service = semantic_cache_service
     logger.info("Semantic cache service ready ✅")
@@ -169,23 +169,23 @@ async def lifespan(app: FastAPI):
     )
 
     # ④.3 تهيئة Fast Ingress Intent Router
-    from src.services.intent_router import intent_router
+    from src.services.cognitive_search import intent_router
     intent_router.initialize()
     app.state.intent_router = intent_router
 
     # ⑤ تهيئة Search Service (Gemini client for RAG answers)
-    from src.services.search_service import search_service
+    from src.services.cognitive_search import search_service
     search_service.initialize()
     app.state.search_service = search_service
     logger.info("Search service ready ✅")
 
     # ⑥ تهيئة LMS Client (للاتصال بـ .NET ERP)
-    from src.services.lms_client import lms_client_service
+    from src.services.lms_bridge import lms_client_service
     lms_client_service.initialize()
     app.state.lms_client_service = lms_client_service
 
     # ⑦ تهيئة Auth Validator Service
-    from src.services.auth_service import auth_validator_service
+    from src.services.shared_infrastructure import auth_validator_service
     auth_validator_service.initialize()
     app.state.auth_validator_service = auth_validator_service
 
@@ -195,22 +195,22 @@ async def lifespan(app: FastAPI):
     app.state.agent_service = agent_service
     
     # ⑨ تهيئة Event Logger Service
-    from src.services.event_logger import event_logger_service
+    from src.services.shared_infrastructure import event_logger_service
     event_logger_service.initialize(app.state.db_pool)
     app.state.event_logger_service = event_logger_service
 
     # ⑩ تهيئة Feedback Service (M07 Feedback Engine)
-    from src.services.feedback_service import feedback_service
+    from src.services.shared_infrastructure import feedback_service
     feedback_service.initialize(app.state.db_pool)
     app.state.feedback_service = feedback_service
 
     # ⑪ تهيئة ERP Service (DynamicPro Smart Assistant)
-    from src.services.erp_service import erp_service
+    from src.services.erp_copilot import erp_service
     erp_service.initialize()
     app.state.erp_service = erp_service
 
     # ⑪.1 تهيئة ذاكرة قرارات التوجيه (Qdrant للبحث + PostgreSQL للتدقيق)
-    from src.services.erp_decision_memory_service import erp_decision_memory_service
+    from src.services.erp_copilot import erp_decision_memory_service
     try:
         await erp_decision_memory_service.initialize(app.state.db_pool)
     except Exception as e:

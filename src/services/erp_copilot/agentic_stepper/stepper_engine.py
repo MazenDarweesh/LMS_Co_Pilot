@@ -9,15 +9,20 @@ import time
 from typing import Any, AsyncGenerator, Optional
 import structlog
 
-from src.services.agentic_stepper.payload_extractor import PayloadExtractor
-from src.services.agentic_stepper.screen_resolver import ScreenResolver
-from src.services.agentic_stepper.session_telemetry import (
+from src.services.erp_copilot.agentic_stepper.payload_extractor import PayloadExtractor
+from src.services.erp_copilot.agentic_stepper.screen_resolver import ScreenResolver
+from src.services.erp_copilot.agentic_stepper.session_telemetry import (
     TelemetryStage,
     append_session_event,
 )
-from src.services.cdp_agent_service import cdp_agent_service
-from src.services.forms_catalog_service import forms_catalog_service
-from src.services.vision_grounding_service import vision_grounding_service
+class _CdpProxy:
+    def __getattr__(self, name):
+        from src.services.erp_copilot.cdp import cdp_agent_service
+        return getattr(cdp_agent_service, name)
+
+cdp_agent_service = _CdpProxy()
+from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot.vision_grounding_service import vision_grounding_service
 
 logger = structlog.get_logger()
 

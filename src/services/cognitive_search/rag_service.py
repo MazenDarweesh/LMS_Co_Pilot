@@ -10,7 +10,7 @@ direct usage of search_service from authenticated endpoints.
 import structlog
 from src.models.schemas import RAGQueryResponse
 from src.models.search_models import SearchRequest
-from src.services.search_service import search_service
+from src.services.cognitive_search.search_service import search_service
 
 logger = structlog.get_logger()
 

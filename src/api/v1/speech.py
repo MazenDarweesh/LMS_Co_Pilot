@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Dict, Any
 
 from src.utils.arabic_speech_utils import calculate_wer_cer, tafqit_arabic
-from src.services.auth_service import require_role, UserContext
+from src.services.shared_infrastructure import require_role, UserContext
 from src.core.middleware import limiter
 
 router = APIRouter(prefix="/v1/speech", tags=["Speech AI Utilities"])

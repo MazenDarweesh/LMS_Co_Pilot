@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock
 from fastapi import HTTPException
 
 from src.core.config import settings
-from src.services.auth_service import verify_webhook_signature
+from src.services.shared_infrastructure import verify_webhook_signature
 
 
 def _compute_signature(secret: str, timestamp: str, body: bytes) -> str:

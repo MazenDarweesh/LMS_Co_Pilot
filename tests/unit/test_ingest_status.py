@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.main import app
 from src.models.schemas import LessonStatusResponse
-from src.services.lms_client import LMSClientService
-from src.services.qdrant_service import qdrant_service
+from src.services.lms_bridge import LMSClientService
+from src.services.cognitive_search import qdrant_service
 
 
 def test_status_routes_registered():

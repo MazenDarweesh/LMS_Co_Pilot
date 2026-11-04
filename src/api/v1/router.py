@@ -44,23 +44,26 @@ from src.models.search_models import (
     FeedbackAnalyticsResponse,
 )
 from src.models.auth_models import LessonFullContext
-from src.services.auth_service import (
+from src.services.shared_infrastructure import (
     UserContext,
     get_current_user,
     get_optional_user,
     get_guest_user_context,
     require_role,
     verify_webhook_signature,
+    feedback_service,
 )
-from src.services.lesson_content_service import lesson_content_service
-
-from src.services.lms_client import lms_client_service
-from src.services.pipeline_orchestrator import pipeline_orchestrator
-from src.services.qdrant_service import qdrant_service
-from src.services.search_service import search_service
-from src.services.semantic_cache_service import semantic_cache_service
-from src.services.exact_cache_service import exact_cache_service
-from src.services.feedback_service import feedback_service
+from src.services.lms_bridge import (
+    lesson_content_service,
+    lms_client_service,
+)
+from src.services.audio_ingestion import pipeline_orchestrator
+from src.services.cognitive_search import (
+    qdrant_service,
+    search_service,
+    semantic_cache_service,
+    exact_cache_service,
+)
 
 # Initialize Logger
 logger = structlog.get_logger()
@@ -273,8 +276,7 @@ async def clear_all_caches(
     🧹 Purges both Tier-1 Exact Cache (In-Memory) and Tier-2 Semantic Cache (Qdrant Vector Cache).
     Allows Admins and Developers to flush stale or incorrect cached responses.
     """
-    from src.services.exact_cache_service import exact_cache_service
-    from src.services.semantic_cache_service import semantic_cache_service
+    from src.services.cognitive_search import exact_cache_service, semantic_cache_service
 
     exact_cache_service.clear()
     await semantic_cache_service.clear()

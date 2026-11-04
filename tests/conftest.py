@@ -100,16 +100,16 @@ async def async_client():
       - Reranker    → _mock_rerank() بدلاً من BAAI/bge-reranker-v2-m3
     """
     patch_lms = patch(
-        "src.services.lms_client.lms_client_service.get_user_permissions",
+        "src.services.lms_bridge.lms_client.lms_client_service.get_user_permissions",
         new_callable=AsyncMock,
         return_value=make_mock_permissions(),
     )
     patch_llm = patch(
-        "src.services.search_service.SearchService._call_model",
+        "src.services.cognitive_search.search_service.SearchService._call_model",
         new=_mock_call_model,
     )
     patch_reranker = patch(
-        "src.services.reranker_service.RerankerService.rerank",
+        "src.services.cognitive_search.reranker_service.RerankerService.rerank",
         new=_mock_rerank,
     )
 

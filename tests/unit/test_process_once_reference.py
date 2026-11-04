@@ -11,10 +11,9 @@ from src.models.schemas import (
     LessonReferenceResponse,
 )
 from src.models.entities import ContentType, SourceType
-from src.services.pipeline_orchestrator import make_chunk_id
-from src.services.search_service import _build_scope_filter
+from src.services.audio_ingestion import make_chunk_id
+from src.services.cognitive_search import _build_scope_filter, QdrantService
 from src.models.search_models import SearchRequest
-from src.services.qdrant_service import QdrantService
 
 
 def test_extract_video_id():

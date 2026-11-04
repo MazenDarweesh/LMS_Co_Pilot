@@ -17,7 +17,7 @@ from pydoll.connection.connection_handler import ConnectionHandler
 import structlog
 
 from src.core.config import settings
-from src.services.agentic_stepper.session_telemetry import (
+from src.services.erp_copilot.agentic_stepper.session_telemetry import (
     TelemetryStage,
     append_session_event,
 )

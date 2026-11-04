@@ -4,7 +4,7 @@ Validates zero-breaking-changes, submodule instantiation, and delegation integri
 """
 
 import pytest
-from src.services.cdp import (
+from src.services.erp_copilot.cdp import (
     CdpAgentService,
     CdpConnectionManager,
     CdpErpNavigator,
@@ -13,7 +13,7 @@ from src.services.cdp import (
     CdpVisualGrounding,
     cdp_agent_service,
 )
-from src.services.cdp_agent_service import (
+from src.services.erp_copilot import (
     CdpAgentService as LegacyCdpAgentService,
     cdp_agent_service as legacy_cdp_agent_service,
 )
@@ -103,7 +103,7 @@ def test_facade_exposes_all_expected_methods():
 
 def test_scripts_exist_and_load():
     """Verify that all external JavaScript script files exist and can be loaded via get_script."""
-    from src.services.cdp.script_loader import get_script
+    from src.services.erp_copilot.cdp.script_loader import get_script
 
     scripts = [
         ("click_ripple.js", {"X": 100, "Y": 200}),

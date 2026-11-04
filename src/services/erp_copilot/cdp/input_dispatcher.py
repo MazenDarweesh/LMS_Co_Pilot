@@ -8,8 +8,8 @@ import asyncio
 from typing import Any, Callable, Coroutine
 import structlog
 
-from src.services.cdp.connection_manager import CdpConnectionManager
-from src.services.cdp.script_loader import get_script
+from src.services.erp_copilot.cdp.connection_manager import CdpConnectionManager
+from src.services.erp_copilot.cdp.script_loader import get_script
 
 logger = structlog.get_logger()
 

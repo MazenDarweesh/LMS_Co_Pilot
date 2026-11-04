@@ -5,13 +5,13 @@ Verifies taxonomy, string inheritance, file persistence, and hierarchical prefix
 
 import time
 import pytest
-from src.services.agentic_stepper import (
+from src.services.erp_copilot.agentic_stepper import (
     TelemetryStage,
     append_session_event,
     read_session_events,
     agentic_stepper_service,
 )
-from src.services.agentic_stepper.session_telemetry import ERP_LOGS_DIR
+from src.services.erp_copilot.agentic_stepper.session_telemetry import ERP_LOGS_DIR
 
 
 def test_telemetry_stage_taxonomy():

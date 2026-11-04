@@ -10,8 +10,8 @@ import time
 from typing import Any
 import structlog
 
-from src.services.cdp.input_dispatcher import CdpInputDispatcher
-from src.services.cdp.script_loader import get_script
+from src.services.erp_copilot.cdp.input_dispatcher import CdpInputDispatcher
+from src.services.erp_copilot.cdp.script_loader import get_script
 
 logger = structlog.get_logger()
 

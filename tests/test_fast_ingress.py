@@ -4,10 +4,13 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from src.models.auth_models import UserContext, TokenClaims, UserPermissions
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
-from src.services.exact_cache_service import ExactCacheService
-from src.services.intent_router import IntentRouterService, IntentType
-from src.services.semantic_cache_service import SemanticCacheService
-from src.services.search_service import SearchService
+from src.services.cognitive_search import (
+    ExactCacheService,
+    IntentRouterService,
+    IntentType,
+    SemanticCacheService,
+    SearchService,
+)
 
 
 @pytest.fixture
@@ -378,7 +381,7 @@ async def test_semantic_cache_eviction():
     mock_client.scroll = AsyncMock(return_value=([], None))
     mock_client.count = AsyncMock(return_value=MagicMock(count=100))
 
-    with patch("src.services.semantic_cache_service.qdrant_service._client", mock_client):
+    with patch("src.services.cognitive_search.semantic_cache_service.qdrant_service._client", mock_client):
         evicted = await service.evict_expired_entries()
         assert evicted == 0
         mock_client.delete.assert_called_once()
@@ -392,7 +395,7 @@ async def test_semantic_cache_invalidate_uses_match_any():
     mock_client = AsyncMock()
     mock_client.delete = AsyncMock(return_value=MagicMock(status="ok"))
 
-    with patch("src.services.semantic_cache_service.qdrant_service._client", mock_client):
+    with patch("src.services.cognitive_search.semantic_cache_service.qdrant_service._client", mock_client):
         await service.invalidate_by_lesson_id("lesson_target_99")
         mock_client.delete.assert_called_once()
         call_kwargs = mock_client.delete.call_args[1]
@@ -617,7 +620,7 @@ async def test_lms_client_lesson_context_caching():
     """
     Verifies that LMSClientService caches lesson context in TTLCache and invalidates properly.
     """
-    from src.services.lms_client import lms_client_service
+    from src.services.lms_bridge import lms_client_service
 
     lms_client_service.initialize()
     lesson_id = "test_lesson_cache_abc"

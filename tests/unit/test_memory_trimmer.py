@@ -8,7 +8,7 @@ Unit Tests — _trim_messages (Sliding Window Memory Trimmer)
 import pytest
 from langchain_core.messages import HumanMessage, AIMessage
 
-from src.services.search_service import _trim_messages
+from src.services.cognitive_search import _trim_messages
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -12,10 +12,15 @@ import structlog
 
 from google.genai import types
 from src.core.config import settings
-from src.services.cdp_agent_service import cdp_agent_service
-from src.services.forms_catalog_service import forms_catalog_service
-from src.services.vision_grounding_service import vision_grounding_service
-from src.services.agentic_stepper.prompts import get_stepper_screen_resolver_prompt
+class _CdpProxy:
+    def __getattr__(self, name):
+        from src.services.erp_copilot.cdp import cdp_agent_service
+        return getattr(cdp_agent_service, name)
+
+cdp_agent_service = _CdpProxy()
+from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot.vision_grounding_service import vision_grounding_service
+from src.services.erp_copilot.agentic_stepper.prompts import get_stepper_screen_resolver_prompt
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
 logger = structlog.get_logger()
@@ -70,7 +75,7 @@ class ScreenResolver:
     """
 
     def __init__(self, catalog_path: Optional[Path] = None) -> None:
-        self.catalog_path = catalog_path or (Path(__file__).resolve().parent.parent.parent / "data" / "screens_metadata.json")
+        self.catalog_path = catalog_path or (Path(__file__).resolve().parent.parent.parent.parent / "data" / "screens_metadata.json")
         self._catalog: Optional[list[dict[str, Any]]] = None
         self._session_screens_cache: dict[str, list[dict[str, Any]]] = {}
 

@@ -6,7 +6,7 @@ Verifies submodule initialization, legacy imports, Arabic NLP rules, and payload
 from unittest.mock import MagicMock, patch
 import pytest
 
-from src.services.agentic_stepper import (
+from src.services.erp_copilot.agentic_stepper import (
     AgenticStepperService,
     PayloadExtractor,
     ScreenResolver,
@@ -14,8 +14,8 @@ from src.services.agentic_stepper import (
     agentic_stepper_service,
     append_session_event,
 )
-from src.services.agentic_stepper.screen_resolver import clean_token, tokenize
-from src.services.agentic_stepper_service import (
+from src.services.erp_copilot.agentic_stepper.screen_resolver import clean_token, tokenize
+from src.services.erp_copilot import (
     AgenticStepperService as LegacyAgenticStepperService,
     agentic_stepper_service as legacy_agentic_stepper_service,
 )
@@ -81,7 +81,7 @@ async def test_payload_extractor_delegation():
     fake_response = MagicMock()
     fake_response.text = '{"header": {"EmpId": "محمود السيد", "Amount": 5000, "Months": 6}, "items": [], "target_page_id": 7158, "document_title": "طلب سلفة"}'
 
-    with patch("src.services.vision_grounding_service.vision_grounding_service._client") as mock_client:
+    with patch("src.services.erp_copilot.vision_grounding_service.vision_grounding_service._client") as mock_client:
         mock_client.models.generate_content.return_value = fake_response
 
         # Via extractor

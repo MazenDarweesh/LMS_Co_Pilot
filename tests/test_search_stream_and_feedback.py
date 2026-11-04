@@ -14,8 +14,7 @@ from src.models.search_models import (
     FeedbackResponse,
     FeedbackRating,
 )
-from src.services.search_service import search_service, _format_sse
-from src.services.exact_cache_service import exact_cache_service
+from src.services.cognitive_search import search_service, _format_sse, exact_cache_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.api.v1.router import search_feedback_endpoint, _feedback_cache
 
@@ -151,9 +150,9 @@ async def test_search_stream_client_disconnect_abort(sample_user_context):
     mock_req = MagicMock()
     mock_req.is_disconnected = AsyncMock(return_value=True)
 
-    with patch("src.services.search_service.qdrant_service.hybrid_search", new_callable=AsyncMock) as mock_qdrant, \
-         patch("src.services.search_service.reranker_service.rerank", new_callable=AsyncMock) as mock_reranker, \
-         patch("src.services.search_service.embedding_service.get_both_embeddings", new_callable=AsyncMock) as mock_embed:
+    with patch("src.services.cognitive_search.search_service.qdrant_service.hybrid_search", new_callable=AsyncMock) as mock_qdrant, \
+         patch("src.services.cognitive_search.search_service.reranker_service.rerank", new_callable=AsyncMock) as mock_reranker, \
+         patch("src.services.cognitive_search.search_service.embedding_service.get_both_embeddings", new_callable=AsyncMock) as mock_embed:
 
         mock_embed.return_value = ([0.1] * 1024, {})
         mock_qdrant.return_value = [{"content_type": "video_chunk", "source_url": "http://vid", "start_time": 0, "end_time": 10, "lesson_id": "lesson_stream_01", "text_msa": "شرح الصنف"}]
@@ -269,7 +268,7 @@ async def test_feedback_service_crud_and_ragas_export():
     - Aggregate analytics calculation.
     - Formatted Ragas export mapping.
     """
-    from src.services.feedback_service import FeedbackService
+    from src.services.shared_infrastructure import FeedbackService
 
     service = FeedbackService()
     mock_pool = MagicMock()
@@ -356,7 +355,7 @@ async def test_get_admin_feedback_endpoint(admin_user_context, mock_fastapi_requ
     - format='ragas' export format.
     """
     from src.api.v1.router import get_admin_feedback
-    from src.services.feedback_service import feedback_service
+    from src.services.shared_infrastructure import feedback_service
 
     mock_pool = MagicMock()
     mock_conn = AsyncMock()

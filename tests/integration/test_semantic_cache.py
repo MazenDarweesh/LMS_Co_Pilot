@@ -17,7 +17,7 @@ from httpx import AsyncClient
 
 from src.models.auth_models import UserContext, UserPermissions, TokenClaims
 from src.models.search_models import SearchResponse, SourceItem
-from src.services.semantic_cache_service import semantic_cache_service
+from src.services.cognitive_search import semantic_cache_service
 from tests.conftest import make_jwt_token
 
 

@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from src.core.config import settings
 from src.models.auth_models import TokenClaims, UserPermissions, UserContext
-from src.services.lms_client import lms_client_service
+from src.services.lms_bridge.lms_client import lms_client_service
 
 logger = structlog.get_logger()
 bearer_scheme = HTTPBearer()

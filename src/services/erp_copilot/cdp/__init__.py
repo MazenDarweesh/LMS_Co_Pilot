@@ -9,11 +9,11 @@ import httpx
 from pydoll.connection.connection_handler import ConnectionHandler
 import structlog
 
-from src.services.cdp.connection_manager import CdpConnectionManager
-from src.services.cdp.input_dispatcher import CdpInputDispatcher
-from src.services.cdp.visual_grounding import CdpVisualGrounding
-from src.services.cdp.erp_navigator import CdpErpNavigator
-from src.services.cdp.form_bridge import CdpFormBridge
+from src.services.erp_copilot.cdp.connection_manager import CdpConnectionManager
+from src.services.erp_copilot.cdp.input_dispatcher import CdpInputDispatcher
+from src.services.erp_copilot.cdp.visual_grounding import CdpVisualGrounding
+from src.services.erp_copilot.cdp.erp_navigator import CdpErpNavigator
+from src.services.erp_copilot.cdp.form_bridge import CdpFormBridge
 
 logger = structlog.get_logger()
 

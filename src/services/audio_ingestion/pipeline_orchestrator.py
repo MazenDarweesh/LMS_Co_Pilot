@@ -8,10 +8,10 @@ import structlog
 from pathlib import Path
 from typing import List
 from src.models.schemas import NormalizedTranscriptionSegment, LessonMetadata, extract_video_id
-from src.services.audio_downloader import audio_downloader
-from src.services.transcription_service import TranscriptionService
-from src.services.transcript_normalizer import transcript_normalizer
-from src.services.lms_client import lms_client_service
+from src.services.audio_ingestion.audio_downloader import audio_downloader
+from src.services.audio_ingestion.transcription_service import TranscriptionService
+from src.services.audio_ingestion.transcript_normalizer import transcript_normalizer
+from src.services.lms_bridge.lms_client import lms_client_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.db.event_store import EventStoreRepository
 from src.core.metrics import (
@@ -122,7 +122,7 @@ class PipelineOrchestrator:
 
         # 0. فحص المعالجة المسبقة (Process Once Fast Path):
         # إذا كان الفيديو موجوداً مسبقاً في Qdrant، نقوم فقط بربط الدرس والموديول الجديد في < 10ms!
-        from src.services.qdrant_service import qdrant_service
+        from src.services.cognitive_search import qdrant_service
         clean_vid_id = extract_video_id(youtube_url)
         meta = lesson_metadata or LessonMetadata(
             lesson_id=lesson_id,
@@ -207,8 +207,7 @@ class PipelineOrchestrator:
 
                     # ④ التخزين في Qdrant (Embedding + Upsert) بشكل متزامن
                     if results:
-                        from src.services.qdrant_service import qdrant_service
-                        from src.services.embedding_service import embedding_service
+                        from src.services.cognitive_search import qdrant_service, embedding_service
                         from src.models.schemas import QdrantChunkPayload, LessonMetadata
                         from src.models.entities import ContentType, SourceType
                         import uuid

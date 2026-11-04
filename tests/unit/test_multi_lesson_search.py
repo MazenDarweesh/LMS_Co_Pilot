@@ -11,7 +11,7 @@ import pytest
 from qdrant_client.models import MatchAny, MatchValue, Filter
 
 from src.models.search_models import SearchRequest
-from src.services.search_service import _build_scope_filter
+from src.services.cognitive_search import _build_scope_filter
 from src.core.prompts import get_rag_system_prompt, RAG_SYSTEM_PROMPT
 
 

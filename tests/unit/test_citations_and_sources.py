@@ -6,7 +6,7 @@ and SourceItem objects contain human-friendly, readable titles for the frontend.
 """
 from src.core.prompts import RAG_SYSTEM_PROMPT, get_rag_system_prompt
 from src.models.search_models import SourceItem
-from src.services.search_service import _build_source_items
+from src.services.cognitive_search import _build_source_items
 from src.api.v1.router import _SOURCE_FIELDS
 
 
@@ -92,7 +92,7 @@ def test_valid_chunks_filtering_and_sequential_reindexing():
     Verify that _filter_valid_chunks discards incomplete chunks (e.g. video without source_url)
     and _build_source_items + _build_rag_context_str re-index valid chunks sequentially 1..N.
     """
-    from src.services.search_service import _filter_valid_chunks, _build_rag_context_str
+    from src.services.cognitive_search import _filter_valid_chunks, _build_rag_context_str
 
     raw_chunks = [
         {"content_type": "video_chunk", "source_url": "http://v1", "text_msa": "chunk 1"},

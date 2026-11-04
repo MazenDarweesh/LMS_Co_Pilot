@@ -1,5 +1,5 @@
 import pytest
-from src.services.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot import forms_catalog_service
 
 def test_sales_invoice_resolution_strict_244():
     """Verify that any sales invoice query resolves strictly to page_id 244 (never 290)."""

@@ -11,7 +11,7 @@ from src.models.erp_models import (
     NavCandidateIn,
     NavRequest,
 )
-from src.services.erp_service import erp_service
+from src.services.erp_copilot import erp_service
 
 erp_app = FastAPI()
 erp_app.state.limiter = limiter

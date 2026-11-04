@@ -39,8 +39,8 @@ from qdrant_client.models import (
 
 from src.core.config import settings
 from src.models.erp_models import NavCandidateIn, NavResolution
-from src.services.embedding_service import embedding_service
-from src.services.qdrant_service import qdrant_service
+from src.services.cognitive_search.embedding_service import embedding_service
+from src.services.cognitive_search.qdrant_service import qdrant_service
 
 logger = structlog.get_logger()
 

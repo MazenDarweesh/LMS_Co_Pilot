@@ -1,7 +1,7 @@
 import pytest
 import json
 from src.core.prompts import ERP_PAYMENT_RULES, get_erp_form_extraction_prompt
-from src.services.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot import forms_catalog_service
 
 
 def test_erp_payment_rules_content():

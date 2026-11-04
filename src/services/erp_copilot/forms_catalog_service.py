@@ -16,7 +16,7 @@ class FormsCatalogService:
     def __init__(self, catalog_path: Optional[Path] = None) -> None:
         self.catalog_path = (
             catalog_path
-            or Path(__file__).resolve().parent.parent / "data" / "forms_metadata.json"
+            or Path(__file__).resolve().parent.parent.parent / "data" / "forms_metadata.json"
         )
         self.screens_metadata_path = (
             self.catalog_path.parent / "screens_metadata.json"

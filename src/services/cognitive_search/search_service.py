@@ -26,13 +26,13 @@ from src.core.prompts import (
 from src.agents.base_agent import AgentState, agent_service
 from src.models.search_models import SearchRequest, SearchResponse, SourceItem
 from src.models.auth_models import UserContext
-from src.services.embedding_service import embedding_service
-from src.services.qdrant_service import qdrant_service
-from src.services.reranker_service import reranker_service
-from src.services.semantic_cache_service import semantic_cache_service
-from src.services.forms_catalog_service import forms_catalog_service
-from src.services.exact_cache_service import exact_cache_service
-from src.services.intent_router import intent_router, IntentType
+from src.services.cognitive_search.embedding_service import embedding_service
+from src.services.cognitive_search.qdrant_service import qdrant_service
+from src.services.cognitive_search.reranker_service import reranker_service
+from src.services.cognitive_search.semantic_cache_service import semantic_cache_service
+from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.services.cognitive_search.exact_cache_service import exact_cache_service
+from src.services.cognitive_search.intent_router import intent_router, IntentType
 from src.core.metrics import (
     record_cache_lookup,
     record_exact_cache_lookup,

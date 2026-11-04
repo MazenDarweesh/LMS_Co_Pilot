@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.security import HTTPAuthorizationCredentials
 
 from src.models.auth_models import TokenClaims, AccessibleModule, UserPermissions, UserContext
-from src.services.auth_service import _build_user_entities, get_current_user, auth_validator_service
+from src.services.shared_infrastructure.auth_service import _build_user_entities, get_current_user, auth_validator_service
 
 
 def test_token_claims_decoding_dotnet_identity():
@@ -99,7 +99,7 @@ async def test_admin_get_current_user_zero_hop():
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="dummy.token")
 
     with patch.object(auth_validator_service, "decode_jwt", return_value=claims), \
-         patch("src.services.auth_service.lms_client_service.get_user_permissions", new_callable=AsyncMock) as mock_lms:
+         patch("src.services.shared_infrastructure.auth_service.lms_client_service.get_user_permissions", new_callable=AsyncMock) as mock_lms:
 
         user_ctx = await get_current_user(credentials=creds)
 
@@ -125,7 +125,7 @@ async def test_student_graceful_fallback_when_lms_down():
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="dummy.token")
 
     with patch.object(auth_validator_service, "decode_jwt", return_value=claims), \
-         patch("src.services.auth_service.lms_client_service.get_user_permissions", new_callable=AsyncMock, side_effect=RuntimeError("Connection refused")):
+         patch("src.services.shared_infrastructure.auth_service.lms_client_service.get_user_permissions", new_callable=AsyncMock, side_effect=RuntimeError("Connection refused")):
 
         user_ctx = await get_current_user(credentials=creds)
 

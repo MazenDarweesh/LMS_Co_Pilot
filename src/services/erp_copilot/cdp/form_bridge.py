@@ -8,12 +8,12 @@ import json
 from typing import Any, Optional
 import structlog
 
-from src.services.agentic_stepper.session_telemetry import (
+from src.services.erp_copilot.agentic_stepper.session_telemetry import (
     TelemetryStage,
     append_session_event,
 )
-from src.services.cdp.input_dispatcher import CdpInputDispatcher
-from src.services.cdp.script_loader import get_script
+from src.services.erp_copilot.cdp.input_dispatcher import CdpInputDispatcher
+from src.services.erp_copilot.cdp.script_loader import get_script
 
 logger = structlog.get_logger()
 
@@ -103,7 +103,7 @@ class CdpFormBridge:
         فحص وتسجيل الشاشة الحالية في المتصفح الحي تلقائياً في كتالوج النماذج
         (Self-Learning Auto-Cataloging on Live Navigation).
         """
-        from src.services.forms_catalog_service import forms_catalog_service
+        from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
 
         inspection = await self.inspect_active_page_dom(ws_url)
         if not inspection or "error" in inspection or not inspection.get("page_id"):

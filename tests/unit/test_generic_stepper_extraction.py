@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.services.agentic_stepper_service import AgenticStepperService
+from src.services.erp_copilot import AgenticStepperService
 
 
 @pytest.mark.asyncio
@@ -55,7 +55,7 @@ async def test_generic_extract_transaction_prompt_loan():
     fake_response = MagicMock()
     fake_response.text = '{"header": {"EmpId": "محمود السيد", "Amount": 5000, "Months": 6}, "items": [], "target_page_id": 7158, "document_title": "طلب سلفة"}'
 
-    with patch("src.services.vision_grounding_service.vision_grounding_service._client") as mock_client:
+    with patch("src.services.erp_copilot.vision_grounding_service.vision_grounding_service._client") as mock_client:
         mock_client.models.generate_content.return_value = fake_response
 
         res = await stepper.extract_transaction_payload(

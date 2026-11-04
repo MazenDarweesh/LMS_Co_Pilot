@@ -19,12 +19,12 @@ from src.models.erp_models import (
     NavResolution,
     NavScored,
 )
-from src.services.erp_decision_memory_service import (
+from src.services.erp_copilot.erp_decision_memory_service import (
     candidate_fingerprint,
     erp_decision_memory_service,
     navigation_fingerprint,
 )
-from src.services.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
 logger = structlog.get_logger()

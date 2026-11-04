@@ -1,6 +1,6 @@
 import time
 import pytest
-from src.services.forms_catalog_service import FormsCatalogService, forms_catalog_service
+from src.services.erp_copilot import FormsCatalogService, forms_catalog_service
 
 
 def test_archetype_auto_inference_across_domains():
