@@ -1138,6 +1138,7 @@ class SearchService:
                             "fields": f_data,
                             "rows": r_data,
                             "screenKey": req.erp_key,
+                            "pageId": getattr(req, "page_id", None) or parsed_json.get("page_id") or parsed_json.get("pageId"),
                             "batch_mode": is_batch,
                             "batch_items": b_items,
                         }

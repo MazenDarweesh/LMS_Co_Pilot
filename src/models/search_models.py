@@ -60,6 +60,11 @@ class SearchRequest(BaseModel):
         validation_alias=AliasChoices("erp_key", "erpKey", "ErpKey", "screen_key", "screenKey"),
         description="كود شاشة الـ ERP الحالية"
     )
+    page_id: int | None = Field(
+        default=None,
+        validation_alias=AliasChoices("page_id", "pageId", "PageId"),
+        description="معرف الشاشة الرقمي"
+    )
     erp_intent: str | None = Field(
         default=None,
         validation_alias=AliasChoices("erp_intent", "erpIntent", "ErpIntent"),
