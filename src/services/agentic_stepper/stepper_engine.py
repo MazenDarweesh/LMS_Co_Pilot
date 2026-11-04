@@ -11,7 +11,10 @@ import structlog
 
 from src.services.agentic_stepper.payload_extractor import PayloadExtractor
 from src.services.agentic_stepper.screen_resolver import ScreenResolver
-from src.services.agentic_stepper.session_telemetry import append_session_event
+from src.services.agentic_stepper.session_telemetry import (
+    TelemetryStage,
+    append_session_event,
+)
 from src.services.cdp_agent_service import cdp_agent_service
 from src.services.forms_catalog_service import forms_catalog_service
 from src.services.vision_grounding_service import vision_grounding_service
@@ -51,7 +54,7 @@ class StepperEngine:
         append_session_event(
             session_id,
             "INFO",
-            "VISION_AGENT",
+            TelemetryStage.STEPPER_ENGINE,
             f"Vision Agent goal started: '{goal}'",
             {
                 "goal": goal,
@@ -68,7 +71,7 @@ class StepperEngine:
         }
 
         # 1. التحقق من توفر منفذ CDP مع التشغيل الذاتي المعزول إذا كان الاتصال محلياً
-        is_cdp_up = await cdp_agent_service.ensure_cdp_available(port=cdp_port, host=cdp_host)
+        is_cdp_up = await cdp_agent_service.ensure_cdp_available(port=cdp_port, host=cdp_host, session_id=session_id)
         if not is_cdp_up:
             yield {
                 "step": 0,
@@ -81,7 +84,9 @@ class StepperEngine:
             return
 
         # 2. البحث عن التبويب النشط
-        tab = await cdp_agent_service.get_active_erp_tab(port=cdp_port, host=cdp_host, title_match=title_match)
+        tab = await cdp_agent_service.get_active_erp_tab(
+            port=cdp_port, host=cdp_host, title_match=title_match, session_id=session_id
+        )
         if not tab or not (tab.get("clean_ws_url") or tab.get("webSocketDebuggerUrl")):
             yield {
                 "step": 0,
@@ -189,7 +194,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "VISION_AGENT",
+                            TelemetryStage.STEPPER_RESOLVER,
                             f"Step {step_idx}: Target screen '{target_title}' is already open!",
                             {
                                 "url": curr_url,
@@ -208,7 +213,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "VISION_AGENT",
+                            TelemetryStage.CDP_NAVIGATOR,
                             f"Step {step_idx}: Navigating directly to resolved screen '{target_title}' (PageID {target_pid})...",
                         )
                         yield {
@@ -216,7 +221,7 @@ class StepperEngine:
                             "status": "acting",
                             "message": f"الانتقال المباشر إلى شاشة '{target_title}' (رقم {target_pid})...",
                         }
-                        nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, target_pid)
+                        nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, target_pid, session_id=session_id)
                         settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=2.5)
 
                         # التحقق الاستباقي من الوصول الفعلي للشاشة المستهدفة (Per-Step Verification)
@@ -233,7 +238,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO" if arrived else "WARN",
-                            "STEP_VERIFY",
+                            TelemetryStage.STEPPER_VERIFY,
                             f"Step {step_idx}: Navigation verify {'PASSED' if arrived else 'FAILED'} (settle={settle_ms:.0f}ms)",
                             {"target_pid": target_pid, "verify_url": verify_url, "arrived": arrived},
                         )
@@ -251,7 +256,7 @@ class StepperEngine:
                     append_session_event(
                         session_id,
                         "INFO",
-                        "VISION_AGENT",
+                        TelemetryStage.STEPPER_ENGINE,
                         f"Step {step_idx}: Transaction goal active on screen '{curr_title}'. Checking screen readiness...",
                     )
 
@@ -269,7 +274,13 @@ class StepperEngine:
                             goal, target_screen=target_screen, target_page_id=tx_page_id
                         )
                         timings["payload_extract_ms"] = round((time.perf_counter() - t_extract_start) * 1000, 1)
-                        append_session_event(session_id, "INFO", "VISION_AGENT", "Extracted transaction payload", tx_payload)
+                        append_session_event(
+                            session_id,
+                            "INFO",
+                            TelemetryStage.STEPPER_EXTRACTOR,
+                            "Extracted transaction payload",
+                            tx_payload,
+                        )
 
                     active_screen = page_state.get("activeScreen") or {}
                     curr_pid = active_screen.get("pageId")
@@ -284,7 +295,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "VISION_AGENT",
+                            TelemetryStage.CDP_NAVIGATOR,
                             f"Step {step_idx}: Navigating directly to Target Transaction Screen (Page {tx_page_id})...",
                         )
                         yield {
@@ -298,12 +309,16 @@ class StepperEngine:
                             append_session_event(
                                 session_id,
                                 "INFO",
-                                "VISION_AGENT",
+                                TelemetryStage.CDP_NAVIGATOR,
                                 f"Step {step_idx}: Using fallback DOM-click navigation to page {tx_page_id}",
                             )
-                            nav_ok = await cdp_agent_service.navigate_to_erp_screen_dom_click(ws_url, tx_page_id)
+                            nav_ok = await cdp_agent_service.navigate_to_erp_screen_dom_click(
+                                ws_url, tx_page_id, session_id=session_id
+                            )
                         else:
-                            nav_ok = await cdp_agent_service.navigate_to_erp_screen(ws_url, tx_page_id)
+                            nav_ok = await cdp_agent_service.navigate_to_erp_screen(
+                                ws_url, tx_page_id, session_id=session_id
+                            )
 
                         settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=2.5)
 
@@ -331,7 +346,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO" if tx_arrived else "WARN",
-                            "STEP_VERIFY",
+                            TelemetryStage.STEPPER_VERIFY,
                             f"Step {step_idx}: TX Screen Navigation verify {'PASSED' if tx_arrived else 'FAILED'} (settle={settle_ms:.0f}ms)",
                             {
                                 "target_pid": tx_page_id,
@@ -347,7 +362,7 @@ class StepperEngine:
                                 append_session_event(
                                     session_id,
                                     "ERROR",
-                                    "VISION_AGENT",
+                                    TelemetryStage.CDP_NAVIGATOR,
                                     f"Navigation aborted after {consecutive_nav_fails} consecutive failed attempts to reach page {tx_page_id}",
                                 )
                                 yield {
@@ -374,11 +389,11 @@ class StepperEngine:
                             "message": f"جاري تعبئة حقول '{target_title}' بدقة عبر الجسر البرمجي المباشر...",
                         }
                         # 2.5 ضمان فتح فورم الإنشاء (إضافة جديد) قبل التعبئة - مرحلة ensure_form_open
-                        open_res = await cdp_agent_service.ensure_erp_form_open(ws_url)
+                        open_res = await cdp_agent_service.ensure_erp_form_open(ws_url, session_id=session_id)
                         append_session_event(
                             session_id,
                             "INFO" if open_res.get("opened") else "WARN",
-                            "VISION_AGENT",
+                            TelemetryStage.CDP_FORM_BRIDGE,
                             f"Step {step_idx}: ensure_form_open",
                             open_res,
                         )
@@ -391,18 +406,20 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "FORM_SNAPSHOT",
+                            TelemetryStage.CDP_FORM_BRIDGE,
                             f"Step {step_idx}: form fields discovered before fill",
                             pre_snapshot,
                         )
 
                         t_fill_start = time.perf_counter()
-                        fill_report = await cdp_agent_service.fill_erp_form_bridge(ws_url, tx_payload)
+                        fill_report = await cdp_agent_service.fill_erp_form_bridge(
+                            ws_url, tx_payload, session_id=session_id
+                        )
                         timings["bridge_fill_ms"] = round((time.perf_counter() - t_fill_start) * 1000, 1)
                         append_session_event(
                             session_id,
                             "INFO",
-                            "VISION_AGENT",
+                            TelemetryStage.CDP_FORM_BRIDGE,
                             f"Step {step_idx}: Bridge fill executed",
                             fill_report,
                         )
@@ -410,7 +427,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "FORM_SNAPSHOT",
+                            TelemetryStage.CDP_FORM_BRIDGE,
                             f"Step {step_idx}: form model after fill",
                             {"model": post_snapshot.get("model"), "totals": post_snapshot.get("totals")},
                         )
@@ -425,7 +442,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "INFO",
-                            "VISION_AGENT",
+                            TelemetryStage.CDP_VISUAL,
                             f"Step {step_idx + 1}: Visual verification screenshot captured",
                         )
 
@@ -520,7 +537,7 @@ class StepperEngine:
                         append_session_event(
                             session_id,
                             "WARN",
-                            "VISION_AGENT",
+                            TelemetryStage.STEPPER_ENGINE,
                             "Loop Guard triggered: repeated identical click without navigation. Stopping.",
                         )
                         yield {
@@ -533,7 +550,7 @@ class StepperEngine:
                 append_session_event(
                     session_id,
                     "INFO",
-                    "VISION_AGENT",
+                    TelemetryStage.STEPPER_ENGINE,
                     f"Step {step_idx}: Action='{action}'",
                     {
                         "step": step_idx,
@@ -561,7 +578,7 @@ class StepperEngine:
                     append_session_event(
                         session_id,
                         "INFO",
-                        "VISION_AGENT",
+                        TelemetryStage.STEPPER_ENGINE,
                         f"Step {step_idx}: Goal achieved successfully!",
                     )
                     done_msg = (
@@ -640,11 +657,11 @@ class StepperEngine:
                     history.append({"step": step_idx, "action": "wait", "thought": thought, "url": curr_url})
 
                 timings["total_step_ms"] = round((time.perf_counter() - t_step_start) * 1000, 1)
-                append_session_event(session_id, "INFO", "VISION_AGENT", f"Step {step_idx} timings", timings)
+                append_session_event(session_id, "INFO", TelemetryStage.STEPPER_ENGINE, f"Step {step_idx} timings", timings)
 
             except Exception as step_err:
                 logger.error("Error during agent step execution", step=step_idx, error=str(step_err))
-                append_session_event(session_id, "ERROR", "VISION_AGENT", f"Step {step_idx} error: {str(step_err)}")
+                append_session_event(session_id, "ERROR", TelemetryStage.STEPPER_ENGINE, f"Step {step_idx} error: {str(step_err)}")
                 yield {
                     "step": step_idx,
                     "status": "step_error",
@@ -653,7 +670,7 @@ class StepperEngine:
                 await asyncio.sleep(0.3)
 
         else:
-            append_session_event(session_id, "WARN", "VISION_AGENT", f"Max steps reached ({limit_steps}). Safety stop.")
+            append_session_event(session_id, "WARN", TelemetryStage.STEPPER_ENGINE, f"Max steps reached ({limit_steps}). Safety stop.")
             yield {
                 "step": limit_steps,
                 "status": "max_steps_reached",

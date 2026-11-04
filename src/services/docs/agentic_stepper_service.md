@@ -173,22 +173,38 @@ flowchart TD
 
 ---
 
-### الوحدة 1: `session_telemetry` (سجل الصندوق الأسود للجلسات)
+### الوحدة 1: `session_telemetry` (سجل الصندوق الأسود للجلسات والوسم الهرمي)
 - **الملف:** [`src/services/agentic_stepper/session_telemetry.py`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/agentic_stepper/session_telemetry.py)
-- **المسؤولية:** كتابة الأحداث التفصيلية والتوقيتات في ملف الجلسة المستقل وملف السجل الموحد لتوفير تتبع كامل (Audit Trail).
+- **المسؤولية:** كتابة الأحداث التفصيلية والتوقيتات بالوسوم الهرمية الصريحة (`TelemetryStage`) في ملف الجلسة المستقل وملف السجل الموحد لتوفير تتبع كامل لجذر المشاكل (Root-Cause Observability).
 
 ```text
+├── class TelemetryStage(str, Enum)
+│   ├── STEPPER_ENGINE    = "STEPPER.ENGINE"
+│   ├── STEPPER_RESOLVER  = "STEPPER.RESOLVER"
+│   ├── STEPPER_EXTRACTOR = "STEPPER.EXTRACTOR"
+│   ├── STEPPER_VERIFY    = "STEPPER.VERIFY"
+│   ├── CDP_CONNECT       = "CDP.CONNECT"
+│   ├── CDP_NAVIGATOR     = "CDP.NAVIGATOR"
+│   ├── CDP_FORM_BRIDGE   = "CDP.FORM_BRIDGE"
+│   ├── CDP_VISUAL        = "CDP.VISUAL"
+│   └── CDP_DISPATCHER    = "CDP.DISPATCHER"
 ├── append_session_event(session_id, level, stage, message, details) -> None
+├── read_session_events(session_id, stage_prefix, level, limit) -> list[dict]
 └── _append_session_event (Backward-Compatible Alias)
 ```
 
-#### تفصيل الدوال:
-1. **`append_session_event(session_id: Optional[str], level: str, stage: str, message: str, details: Optional[dict[str, Any]] = None) -> None`**:
-   - **الهدف:** كتابة سجل زمني دقيق لكل خطوة أو تحذير أو خطأ.
+#### تفصيل الدوال والكائنات:
+1. **`class TelemetryStage(str, Enum)`**:
+   - قاموس موحد للوسوم الهرمية يربط كل سطر لوج بالموديول البرمجي المسؤول مباشرة.
+   - يدعم الوراثة من `str` ليتوافق بسلاسة مع أي كود يمرر وسوماً نصية تقليدية.
+2. **`append_session_event(session_id: Optional[str], level: str, stage: str | TelemetryStage, message: str, details: Optional[dict[str, Any]] = None) -> None`**:
+   - **الهدف:** كتابة سجل زمني دقيق لكل خطوة أو تحذير أو خطأ مع وسم هرمي صريح.
    - **الآلية:**
      - يسجل في مسارين بالتوازي: مجلد الجلسات المحلي `logs/erp_sessions/` ومجلد الجلسات المشترك `e:/Mazen/shared_logs/erp_sessions/`.
      - يكتب في ملفين: ملف الجلسة المنفصل `session_{id}.log` وملف السجل الموحد `agent_unified_debug.log`.
      - يتجاهل الاستدعاء بهدوء ودون أي استثناء إذا كان `session_id` فارغاً أو في بيئات الاختبار غير المربوطة بجلسة.
+3. **`read_session_events(session_id: str, stage_prefix: Optional[str] = None, level: Optional[str] = None, limit: int = 300) -> list[dict[str, Any]]`**:
+   - **الهدف:** قراءة وفلترة أحداث الصندوق الأسود للجلسة بدقة فائقة بحسب بادئة المرحلة (مثلاً: `CDP` أو `STEPPER.VERIFY`) أو مستوى الخطورة (`WARN`, `ERROR`).
 
 ---
 
@@ -282,7 +298,9 @@ flowchart TD
 
 | الوحدة المسؤولة | اسم الدالة / الكائن | نوعها | المدخلات الرئيسية | المخرجات | الدور باختصار |
 |---|---|---|---|---|---|
+| **session_telemetry** | `TelemetryStage` | Enum | `str, Enum` | `Enum` | معجم الوسوم الهرمية الصريحة للأحداث (`STEPPER.*`, `CDP.*`, `BROWSER.*`) |
 | **session_telemetry** | `append_session_event` | Sync | `session_id, level, stage, message, details` | `None` | تسجيل الأحداث في الصندوق الأسود للجلسة والسجل الموحد |
+| **session_telemetry** | `read_session_events` | Sync | `session_id, stage_prefix, level, limit` | `list[dict]` | قراءة وفلترة أحداث الصندوق الأسود للجلسة بدقة فائقة |
 | **session_telemetry** | `_append_session_event` | Sync | نفس المدخلات | `None` | اسم بديل متوافق تماماً مع الاستدعاءات القديمة |
 | **screen_resolver** | `clean_token` | Sync | `w: str` | `set[str]` | تفكيك الكلمة العربية وإرجاع الجذور وجموع التكسير |
 | **screen_resolver** | `tokenize` | Sync | `text: str` | `set[str]` | تنقية النص العربي وتفكيكه لرموز دلالية صرفية |
@@ -308,8 +326,10 @@ flowchart TD
        ScreenResolver,
        PayloadExtractor,
        StepperEngine,
+       TelemetryStage,
        append_session_event,
        _append_session_event,
+       read_session_events,
    )
    ```
 4. يواصل الكود الخارجي في راوتر الـ API العمل دون أي تعديل:

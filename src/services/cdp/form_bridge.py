@@ -5,9 +5,13 @@ resolves automated totals, captures form states, and auto-catalogs screens into 
 """
 
 import json
-from typing import Any
+from typing import Any, Optional
 import structlog
 
+from src.services.agentic_stepper.session_telemetry import (
+    TelemetryStage,
+    append_session_event,
+)
 from src.services.cdp.input_dispatcher import CdpInputDispatcher
 from src.services.cdp.script_loader import get_script
 
@@ -23,7 +27,9 @@ class CdpFormBridge:
     def __init__(self, dispatcher: CdpInputDispatcher) -> None:
         self.dispatcher = dispatcher
 
-    async def fill_erp_form_bridge(self, ws_url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def fill_erp_form_bridge(
+        self, ws_url: str, payload: dict[str, Any], session_id: Optional[str] = None
+    ) -> dict[str, Any]:
         """
         حقن وتعبئة الفاتورة وجدول الأصناف مباشرة عبر جسر window.DynamicERP.fillFormData(payload)
         أو عبر استدعاء محرك التعبئة المباشر فائق الدقة المحمل من form_injector.js.
@@ -32,9 +38,26 @@ class CdpFormBridge:
         script = get_script("form_injector.js", PAYLOAD=payload_json)
         try:
             res = await self.dispatcher.evaluate_script(ws_url, script, timeout=25.0)
-            return res if isinstance(res, dict) else {"success": bool(res), "method": "bridge_raw"}
+            result = res if isinstance(res, dict) else {"success": bool(res), "method": "bridge_raw"}
+            if not result.get("success") and session_id:
+                append_session_event(
+                    session_id,
+                    "WARN",
+                    TelemetryStage.CDP_FORM_BRIDGE,
+                    "Form fill bridge returned failure status",
+                    result,
+                )
+            return result
         except Exception as e:
             logger.error("Failed to execute bridge/precision form fill", error=str(e))
+            if session_id:
+                append_session_event(
+                    session_id,
+                    "ERROR",
+                    TelemetryStage.CDP_FORM_BRIDGE,
+                    f"Form bridge execution exception: {str(e)}",
+                    {"error": str(e)},
+                )
             return {"success": False, "error": str(e)}
 
     async def snapshot_form_state(self, ws_url: str) -> dict[str, Any]:

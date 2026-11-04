@@ -51,13 +51,15 @@ class CdpAgentService:
     async def is_cdp_available(self, port: int | None = None, host: str = "127.0.0.1") -> bool:
         return await self.connection.is_cdp_available(port=port, host=host)
 
-    async def ensure_cdp_available(self, port: int | None = None, host: str = "127.0.0.1") -> bool:
-        return await self.connection.ensure_cdp_available(port=port, host=host)
+    async def ensure_cdp_available(
+        self, port: int | None = None, host: str = "127.0.0.1", session_id: Any = None
+    ) -> bool:
+        return await self.connection.ensure_cdp_available(port=port, host=host, session_id=session_id)
 
     async def get_active_erp_tab(
-        self, port: int | None = None, host: str = "127.0.0.1", title_match: str = ""
+        self, port: int | None = None, host: str = "127.0.0.1", title_match: str = "", session_id: Any = None
     ) -> dict[str, Any] | None:
-        return await self.connection.get_active_erp_tab(port=port, host=host, title_match=title_match)
+        return await self.connection.get_active_erp_tab(port=port, host=host, title_match=title_match, session_id=session_id)
 
     # ─── 2. Low-Level Protocol & Hardware Input Delegation ───────────────
 
@@ -120,22 +122,30 @@ class CdpAgentService:
 
     # ─── 4. ERP Host Navigation Delegation ───────────────────────────────
 
-    async def navigate_to_erp_screen(self, ws_url: str, screen_id_or_name: Any) -> bool:
-        return await self.navigator.navigate_to_erp_screen(ws_url, screen_id_or_name)
+    async def navigate_to_erp_screen(
+        self, ws_url: str, screen_id_or_name: Any, session_id: Any = None
+    ) -> bool:
+        return await self.navigator.navigate_to_erp_screen(ws_url, screen_id_or_name, session_id=session_id)
 
-    async def navigate_to_erp_screen_dom_click(self, ws_url: str, screen_id_or_name: Any) -> bool:
-        return await self.navigator.navigate_to_erp_screen_dom_click(ws_url, screen_id_or_name)
+    async def navigate_to_erp_screen_dom_click(
+        self, ws_url: str, screen_id_or_name: Any, session_id: Any = None
+    ) -> bool:
+        return await self.navigator.navigate_to_erp_screen_dom_click(ws_url, screen_id_or_name, session_id=session_id)
 
     async def get_user_authorized_screens(self, ws_url: str) -> list[dict[str, Any]]:
         return await self.navigator.get_user_authorized_screens(ws_url)
 
-    async def ensure_erp_form_open(self, ws_url: str, timeout_sec: float = 8.0) -> dict[str, Any]:
-        return await self.navigator.ensure_erp_form_open(ws_url, timeout_sec=timeout_sec)
+    async def ensure_erp_form_open(
+        self, ws_url: str, timeout_sec: float = 8.0, session_id: Any = None
+    ) -> dict[str, Any]:
+        return await self.navigator.ensure_erp_form_open(ws_url, timeout_sec=timeout_sec, session_id=session_id)
 
     # ─── 5. Form Bridge & Auto-Cataloging Delegation ─────────────────────
 
-    async def fill_erp_form_bridge(self, ws_url: str, payload: dict[str, Any]) -> dict[str, Any]:
-        return await self.form.fill_erp_form_bridge(ws_url, payload)
+    async def fill_erp_form_bridge(
+        self, ws_url: str, payload: dict[str, Any], session_id: Any = None
+    ) -> dict[str, Any]:
+        return await self.form.fill_erp_form_bridge(ws_url, payload, session_id=session_id)
 
     async def snapshot_form_state(self, ws_url: str) -> dict[str, Any]:
         return await self.form.snapshot_form_state(ws_url)

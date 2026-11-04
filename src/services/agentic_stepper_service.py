@@ -11,9 +11,11 @@ from src.services.agentic_stepper import (
     PayloadExtractor,
     ScreenResolver,
     StepperEngine,
+    TelemetryStage,
     _append_session_event,
     agentic_stepper_service,
     append_session_event,
+    read_session_events,
 )
 
 __all__ = [
@@ -22,8 +24,11 @@ __all__ = [
     "ScreenResolver",
     "PayloadExtractor",
     "StepperEngine",
+    "TelemetryStage",
     "append_session_event",
     "_append_session_event",
+    "read_session_events",
     "ERP_LOGS_DIR",
     "SHARED_LOGS_DIR",
 ]
+

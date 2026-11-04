@@ -364,11 +364,14 @@ flowchart TD
 - **المسؤولية:** الملاحة الذكية والتنقل بين شاشات الـ ERP عبر الجسر البرمجي أو الـ DOM، استخراج صلاحيات المستخدم، وضمان فتح نموذج الإدخال الرئيسي.
 
 ```text
-├── navigate_to_erp_screen(ws_url, screen_id_or_name) -> bool
-├── navigate_to_erp_screen_dom_click(ws_url, screen_id_or_name) -> bool
+├── navigate_to_erp_screen(ws_url, screen_id_or_name, session_id=None) -> bool
+├── navigate_to_erp_screen_dom_click(ws_url, screen_id_or_name, session_id=None) -> bool
 ├── get_user_authorized_screens(ws_url) -> list[dict[str, Any]]
-└── ensure_erp_form_open(ws_url, timeout_sec) -> dict[str, Any]
+└── ensure_erp_form_open(ws_url, timeout_sec=8.0, session_id=None) -> dict[str, Any]
 ```
+
+> **ملاحظة تتبع الأخطاء الصندوق الأسود (Root-Cause Telemetry):**
+> كافة دوال الملاحة وتعبئة النماذج تدعم تمرير المعرف الاختياري `session_id: Optional[str] = None`. عند تمريره، تُسجل الدالة أي فشل أو استثناء مباشرة في ملف الجلسة الأسود وسجل الديباج الجامع بالوسم الهرمي الصريح `[CDP.NAVIGATOR]` أو `[CDP.FORM_BRIDGE]`، مما يتيح للمطور معرفة سبب وجذر المشكلة الدقيق بدون أي تخمين.
 
 #### تفصيل الدوال:
 

@@ -11,14 +11,19 @@ import re
 import shutil
 import subprocess
 import sys
-from typing import Any
+from typing import Any, Optional
 import httpx
 from pydoll.connection.connection_handler import ConnectionHandler
 import structlog
 
 from src.core.config import settings
+from src.services.agentic_stepper.session_telemetry import (
+    TelemetryStage,
+    append_session_event,
+)
 
 logger = structlog.get_logger()
+
 
 
 class CdpConnectionManager:
@@ -127,7 +132,9 @@ class CdpConnectionManager:
                     await asyncio.sleep(0.35)
         return False
 
-    async def ensure_cdp_available(self, port: int | None = None, host: str = "127.0.0.1") -> bool:
+    async def ensure_cdp_available(
+        self, port: int | None = None, host: str = "127.0.0.1", session_id: Optional[str] = None
+    ) -> bool:
         """
         فحص توفر منفذ تصحيح الأخطاء، وإذا كان الاتصال محلياً والمنفذ مغلقاً،
         يقوم تلقائياً بتشغيل متصفح Chrome بمنفذ تصحيح الأخطاء 9222 وبروفايل معزول لضمان عمل الوكيل فوراً بدون أوامر يدوية.
@@ -141,6 +148,14 @@ class CdpConnectionManager:
         clean_h = h.lower().replace("http://", "").replace("https://", "").split(":")[0]
         if clean_h in ("127.0.0.1", "localhost"):
             logger.info("Local Chrome CDP offline; auto-spawning Chrome with remote debugging...", port=p)
+            if session_id:
+                append_session_event(
+                    session_id,
+                    "INFO",
+                    TelemetryStage.CDP_CONNECT,
+                    f"Local Chrome CDP offline; auto-spawning Chrome instance on port {p}...",
+                    {"port": p, "host": h},
+                )
             try:
                 chrome_candidates = [
                     r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -185,14 +200,43 @@ class CdpConnectionManager:
                         await asyncio.sleep(0.5)
                         if await self.is_cdp_available(p, h):
                             logger.info("Auto-spawned Chrome CDP is now online and reachable ✅", port=p)
+                            if session_id:
+                                append_session_event(
+                                    session_id,
+                                    "INFO",
+                                    TelemetryStage.CDP_CONNECT,
+                                    f"Auto-spawned Chrome CDP is online and reachable on port {p}",
+                                    {"port": p, "pid": self._chrome_proc.pid},
+                                )
                             return True
             except Exception as e:
                 logger.error("Failed to auto-launch Chrome with CDP", error=str(e))
+                if session_id:
+                    append_session_event(
+                        session_id,
+                        "ERROR",
+                        TelemetryStage.CDP_CONNECT,
+                        f"Failed to auto-launch Chrome with CDP: {str(e)}",
+                        {"error": str(e), "port": p},
+                    )
+        else:
+            if session_id:
+                append_session_event(
+                    session_id,
+                    "WARN",
+                    TelemetryStage.CDP_CONNECT,
+                    f"Remote CDP endpoint unreachable: {h}:{p}",
+                    {"host": h, "port": p},
+                )
 
         return False
 
     async def get_active_erp_tab(
-        self, port: int | None = None, host: str = "127.0.0.1", title_match: str = ""
+        self,
+        port: int | None = None,
+        host: str = "127.0.0.1",
+        title_match: str = "",
+        session_id: Optional[str] = None,
     ) -> dict[str, Any] | None:
         """
         البحث عن التبويب النشط لنظام DynamicPro ERP واستخراج عنوان الـ WebSocket للتصحيح مع إعادة المحاولة.
@@ -245,9 +289,26 @@ class CdpConnectionManager:
                     ws_url = f"{clean_ws_base}/devtools/page/{tab_id}"
                     target_tab["webSocketDebuggerUrl"] = ws_url
                     target_tab["clean_ws_url"] = ws_url
+                if session_id:
+                    append_session_event(
+                        session_id,
+                        "INFO",
+                        TelemetryStage.CDP_CONNECT,
+                        f"Attached to active ERP tab: '{target_tab.get('title')}'",
+                        {"ws_url": target_tab.get("clean_ws_url"), "url": target_tab.get("url")},
+                    )
                 return target_tab
             except Exception as e:
                 logger.debug("get_active_erp_tab attempt failed", attempt=attempt, error=str(e))
                 if attempt == 0:
                     await asyncio.sleep(0.35)
+
+        if session_id:
+            append_session_event(
+                session_id,
+                "WARN",
+                TelemetryStage.CDP_CONNECT,
+                f"No active ERP tab found on {base_http}/json after retries",
+                {"host": h, "port": p, "title_match": title_match},
+            )
         return None

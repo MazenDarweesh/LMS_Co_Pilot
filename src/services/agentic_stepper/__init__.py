@@ -14,8 +14,10 @@ from src.services.agentic_stepper.screen_resolver import ScreenResolver
 from src.services.agentic_stepper.session_telemetry import (
     ERP_LOGS_DIR,
     SHARED_LOGS_DIR,
+    TelemetryStage,
     _append_session_event,
     append_session_event,
+    read_session_events,
 )
 from src.services.agentic_stepper.stepper_engine import StepperEngine
 
@@ -106,6 +108,17 @@ class AgenticStepperService:
             yield event
 
 
+    def read_session_events(
+        self,
+        session_id: str,
+        stage_prefix: Optional[str | TelemetryStage] = None,
+        level: Optional[str] = None,
+        limit: int = 300,
+    ) -> list[dict[str, Any]]:
+        """قراءة وفلترة أحداث الصندوق الأسود للجلسة المحددة"""
+        return read_session_events(session_id, stage_prefix=stage_prefix, level=level, limit=limit)
+
+
 # Singleton default instance
 agentic_stepper_service = AgenticStepperService()
 
@@ -115,8 +128,11 @@ __all__ = [
     "ScreenResolver",
     "PayloadExtractor",
     "StepperEngine",
+    "TelemetryStage",
     "append_session_event",
     "_append_session_event",
+    "read_session_events",
     "ERP_LOGS_DIR",
     "SHARED_LOGS_DIR",
 ]
+
