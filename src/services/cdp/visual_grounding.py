@@ -92,13 +92,7 @@ class CdpVisualGrounding:
         try:
             metrics = await self.dispatcher.evaluate_script(
                 ws_url,
-                """({
-                    innerWidth: window.innerWidth,
-                    innerHeight: window.innerHeight,
-                    devicePixelRatio: window.devicePixelRatio || 1,
-                    scrollX: window.scrollX || 0,
-                    scrollY: window.scrollY || 0
-                })""",
+                get_script("viewport_metrics.js"),
             )
             if isinstance(metrics, dict):
                 return {

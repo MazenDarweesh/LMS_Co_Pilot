@@ -117,6 +117,8 @@ def test_scripts_exist_and_load():
         ("form_snapshot.js", {}),
         ("screen_metadata.js", {}),
         ("page_inspection.js", {}),
+        ("user_authorized_screens.js", {}),
+        ("viewport_metrics.js", {}),
     ]
 
     for script_name, params in scripts:

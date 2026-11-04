@@ -52,19 +52,9 @@ class CdpErpNavigator:
     async def get_user_authorized_screens(self, ws_url: str) -> list[dict[str, Any]]:
         """
         استدعاء مباشر لجسر window.DynamicERP.listUserPages() لجلب الشاشات المسموحة للمستخدم الحالي
-        مباشرة من ذاكرة المتصفح مع اسم الموديول والاسم العربي والإنجليزي ورقم الصفحة.
+        مباشرة من ذاكرة المتصفح من ملف user_authorized_screens.js.
         """
-        script = """
-        (function() {
-            if (window.DynamicERP && typeof window.DynamicERP.listUserPages === 'function') {
-                return window.DynamicERP.listUserPages();
-            }
-            if (window.DynamicERP && typeof window.DynamicERP.listScreens === 'function') {
-                return window.DynamicERP.listScreens();
-            }
-            return [];
-        })()
-        """
+        script = get_script("user_authorized_screens.js")
         try:
             res = await self.dispatcher.evaluate_script(ws_url, script, timeout=8.0)
             return res if isinstance(res, list) else []

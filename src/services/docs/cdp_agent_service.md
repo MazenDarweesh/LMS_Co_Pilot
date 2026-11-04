@@ -97,7 +97,7 @@ src/services/
     ├── form_bridge.py                # محرك تعبئة الفواتير والتعلم الذاتي للشاشات
     ├── script_loader.py              # محمل ذكي مع LRU Cache لتفادي قراءة القرص المتكررة
     │
-    └── scripts/                      # 📁 ملفات JavaScript مستقلة ونظيفة تماماً (11 ملفاً):
+    └── scripts/                      # 📁 ملفات JavaScript مستقلة ونظيفة تماماً (13 ملفاً):
         ├── click_ripple.js           # تموج النقر البصري الأحمر
         ├── dom_click.js              # النقر المباشر لعناصر DOM وتنشيط أحداث Angular
         ├── dom_scanner.js            # فحص واستخراج العناصر التفاعلية الظاهرة وإحداثياتها
@@ -108,7 +108,9 @@ src/services/
         ├── form_injector.js          # محرك الحقن المعمم (الهيدر، ng-select، الأصناف، والمدفوعات)
         ├── form_snapshot.js          # لقطة فورية لجميع حقول وموديل النموذج للصندوق الأسود
         ├── screen_metadata.js        # استخراج ميتاداتا الشاشة في 0ms من ذاكرة RxJS
-        └── page_inspection.js       # فحص الـ DOM الشامل للاكتشاف والتعلم الذاتي
+        ├── page_inspection.js       # فحص الـ DOM الشامل للاكتشاف والتعلم الذاتي
+        ├── user_authorized_screens.js # استخراج الشاشات المسموحة للمستخدم من ذاكرة المتصفح
+        └── viewport_metrics.js       # قراءة مقاييس الـ Viewport ومعدل تكبير الشاشة (DPR)
 ```
 
 ---
@@ -333,7 +335,7 @@ flowchart TD
     - **ماذا تفعل؟** تستدعي سكربت [`page_state.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/page_state.js) لتجمع عنوان المتصفح، ورابط الصفحة الحالية، وأبرز العناوين الظاهرة (`h1`, `h2`, `h3`, `.active`)، ومعلومات الشاشة النشطة من جسر الـ ERP أو `app-base`.
 
 18. **`get_viewport_metrics(self, ws_url: str) -> dict[str, float]`**:
-    - **الهدف:** استخراج مقاسات الشاشة ومعدل التكبير.
+    - **الهدف:** استخراج مقاسات الشاشة ومعدل التكبير عبر سكربت [`viewport_metrics.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/viewport_metrics.js).
     - **ماذا تفعل؟** تقرأ `innerWidth` و `innerHeight` ومعدل `devicePixelRatio` (معدل تكبير شاشات الويندوز 125% أو 150%) لضمان إسقاط إحداثيات النقر البصري بدقة مطلقة دون انحراف.
 
 19. **`show_click_ripple(self, ws_url: str, x: int, y: int) -> None`**:
@@ -381,7 +383,7 @@ flowchart TD
 
 25. **`get_user_authorized_screens(self, ws_url: str) -> list[dict[str, Any]]`**:
     - **الهدف:** استخراج قائمة الشاشات المسموحة للمستخدم الحالي مباشرة من ذاكرة المتصفح.
-    - **ماذا تفعل؟** تستدعي `window.DynamicERP.listUserPages()` لتجلب أسماء الشاشات وأرقامها والموديولات التابعة لها دون الحاجة للاستعلام من قاعدة البيانات أو قراءة القوائم.
+    - **ماذا تفعل؟** تستدعي سكربت [`user_authorized_screens.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/user_authorized_screens.js) للتخاطب المباشر مع `window.DynamicERP.listUserPages()` أو `listScreens()` لتجلب أسماء الشاشات وأرقامها والموديولات التابعة لها دون الحاجة للاستعلام من قاعدة البيانات أو قراءة القوائم.
 
 26. **`ensure_erp_form_open(self, ws_url: str, timeout_sec: float = 8.0) -> dict[str, Any]`**:
     - **الهدف:** ضمان أن نافذة الإدخال (AddOrEdit Form) مفتوحة وجاهزة لاستقبال البيانات.
@@ -447,6 +449,8 @@ flowchart TD
 | [`form_snapshot.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/form_snapshot.js) | لقطة لكافة حقول النموذج وحالتها وقيم dataObject | لا يوجد |
 | [`screen_metadata.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/screen_metadata.js) | قراءة ميتاداتا الشاشة في 0ms من ذاكرة columnList في Angular | لا يوجد |
 | [`page_inspection.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/page_inspection.js) | الفحص الشامل لحقول وجداول الشاشة للتعلم الذاتي | لا يوجد |
+| [`user_authorized_screens.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/user_authorized_screens.js) | استعلام الشاشات والموديولات المصرح بها للمستخدم من ذاكرة المتصفح | لا يوجد |
+| [`viewport_metrics.js`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/scripts/viewport_metrics.js) | استخراج أبعاد نافذة العرض ومعدل تكبير الشاشة (DPR) وإزاحة التمرير | لا يوجد |
 
 ### محمل السكربتات فائق السرعة ([`script_loader.py`](file:///e:/Mazen/EgyDynamic/LMS_CO_Pilot/src/services/cdp/script_loader.py)):
 - يستخدم المزخرف `@lru_cache(maxsize=32)`، مما يعني قراءة الملف من القرص **مرة واحدة فقط** وتخزينه في ذاكرة الـ RAM.
