@@ -145,21 +145,24 @@ class LeftoverResponse(BaseModel):
 
 class TelemetryEvent(BaseModel):
     """حدث تليميتري فردي تم رصده في المتصفح"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     timestamp: str = Field(default="", description="ISO timestamp")
     level: str = Field(default="INFO", description="DEBUG, INFO, WARN, ERROR")
-    stage: str = Field(default="GENERAL", description="USER_QUERY, BRIDGE, SCAN, AI_EXTRACT, FILL, GRID, ERROR")
+    stage: str = Field(default="GENERAL", description="USER_QUERY, BRIDGE, SCAN, AI_EXTRACT, FILL, GRID, NAV, ERROR, SESSION_END")
     event: str = Field(description="وصف سريع للحدث")
+    trace_id: str | None = Field(default=None, alias="traceId", description="معرف تتبع العملية")
+    duration_ms: float | None = Field(default=None, alias="durationMs", description="زمن التنفيذ بالميلي ثانية")
     details: dict[str, Any] | None = Field(default=None, description="تفاصيل وسياق الحدث")
 
 
 class TelemetryBatchRequest(BaseModel):
     """حزمة أحداث التليميتري لجلسة الشات"""
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     session_id: str = Field(description="معرف جلسة الشات الفريد")
     screen_key: str | None = Field(default=None, description="اسم الشاشة النشطة")
+    trace_id: str | None = Field(default=None, alias="traceId", description="معرف تتبع العملية للدفعة")
     events: list[TelemetryEvent] = Field(description="قائمة الأحداث الزمنية")
 
 

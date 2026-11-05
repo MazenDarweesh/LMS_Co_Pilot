@@ -119,10 +119,9 @@ async def test_search_stream_exact_cache_hit_ordering(sample_user_context, mock_
         sources=[SourceItem(type="video", url="http://video/1", start=15, end=45, lesson_id="lesson_stream_01")],
         query_used=query,
     )
-    norm_query = normalize_arabic_text_leaderboard(query)
-    exact_cache_service.store(norm_query, cached_resp, sample_user_context)
-
     req = SearchRequest(query=query)
+    norm_query = normalize_arabic_text_leaderboard(query)
+    exact_cache_service.store(norm_query, cached_resp, sample_user_context, scope_fingerprint=req.scope_fingerprint)
     events = []
     async for chunk in search_service.search_stream(req, sample_user_context, mock_fastapi_request):
         events.append(chunk)

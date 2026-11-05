@@ -166,9 +166,14 @@ async def record_erp_telemetry(
 
     formatted_lines = []
     for ev in payload.events:
-        details_str = json.dumps(ev.details, ensure_ascii=False) if ev.details else ""
+        details_dict = dict(ev.details) if ev.details else {}
+        if ev.duration_ms is not None and "durationMs" not in details_dict:
+            details_dict["durationMs"] = ev.duration_ms
+        details_str = json.dumps(details_dict, ensure_ascii=False) if details_dict else ""
         screen_tag = f"[{payload.screen_key}] " if payload.screen_key else ""
-        line = f"[{ev.timestamp}] [{ev.level.upper()}] [{ev.stage.upper()}] {screen_tag}{ev.event} | {details_str}\n"
+        eff_trace = ev.trace_id or payload.trace_id
+        trace_tag = f"[trc:{eff_trace}] " if eff_trace else ""
+        line = f"[{ev.timestamp}] [{ev.level.upper()}] [{ev.stage.upper()}] {screen_tag}{trace_tag}{ev.event} | {details_str}\n"
         formatted_lines.append(line)
 
     payload_text = "".join(formatted_lines)
