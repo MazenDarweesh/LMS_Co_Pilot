@@ -28,7 +28,11 @@ class FormsCatalogService:
         self._screens_catalog_by_id: dict[int, dict[str, Any]] = {}
         self._screens_catalog_by_key: dict[str, dict[str, Any]] = {}
         self._initialized = False
-        self._load_catalog()
+
+    def _ensure_loaded(self) -> None:
+        """تحميل الكتالوج بصورة كسولة (Lazy) عند أول حاجة فقط لتسريع إقلاع التطبيق"""
+        if not self._initialized:
+            self._load_catalog()
 
     def _load_catalog(self) -> None:
         """تحميل الفهارس في الذاكرة لمرة واحدة فقط (Singleton Memory Cache)"""
@@ -72,11 +76,13 @@ class FormsCatalogService:
 
     def get_form_by_page_id(self, page_id: int | str) -> Optional[dict[str, Any]]:
         """استرجاع مخطط النموذج بواسطة page_id في O(1)"""
+        self._ensure_loaded()
         pid_str = str(page_id)
         return self._by_page_id.get(pid_str)
 
     def get_form_by_screen_key(self, screen_key: str) -> Optional[dict[str, Any]]:
         """استرجاع مخطط النموذج بواسطة screen_key في O(1)"""
+        self._ensure_loaded()
         clean_key = (screen_key or "").strip().lower()
         pid = self._by_screen_key.get(clean_key)
         if pid:
@@ -91,6 +97,7 @@ class FormsCatalogService:
         """
         if not text:
             return None
+        self._ensure_loaded()
         norm_text = text.strip()
 
         # 1. المطابقة التامة أولاً في O(1)
@@ -261,6 +268,7 @@ class FormsCatalogService:
         يمكن استدعاؤها آلياً عند اكتشاف شاشة جديدة عبر الـ DOM أو الـ API،
         مما يسمح بالتوسع الفوري لـ 821 شاشة دون تعديل كود بايثون إطلاقاً.
         """
+        self._ensure_loaded()
         pid = form_dict.get("page_id")
         if not pid:
             return
@@ -439,6 +447,7 @@ class FormsCatalogService:
 
     def list_all_forms(self) -> list[dict[str, Any]]:
         """قائمة بجميع النماذج المسجلة"""
+        self._ensure_loaded()
         return list(self._by_page_id.values())
 
 

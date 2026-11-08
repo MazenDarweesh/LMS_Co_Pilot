@@ -39,8 +39,7 @@ from qdrant_client.models import (
 
 from src.core.config import settings
 from src.models.erp_models import NavCandidateIn, NavResolution
-from src.services.cognitive_search.embedding_service import embedding_service
-from src.services.cognitive_search.qdrant_service import qdrant_service
+
 
 logger = structlog.get_logger()
 
@@ -67,6 +66,16 @@ class ErpDecisionMemoryService:
         self._pool: asyncpg.Pool | None = None
 
     @property
+    def _embedding_service(self):
+        from src.services.cognitive_search.embedding_service import embedding_service
+        return embedding_service
+
+    @property
+    def _qdrant_service(self):
+        from src.services.cognitive_search.qdrant_service import qdrant_service
+        return qdrant_service
+
+    @property
     def ready(self) -> bool:
         return self.enabled and self._pool is not None
 
@@ -76,7 +85,7 @@ class ErpDecisionMemoryService:
         if not self.enabled:
             logger.info("ERP decision memory is disabled in settings")
             return
-        client = qdrant_service.client
+        client = self._qdrant_service.client
         if not await client.collection_exists(self.collection_name):
             await client.create_collection(
                 collection_name=self.collection_name,
@@ -105,9 +114,9 @@ class ErpDecisionMemoryService:
         if not self.ready:
             return None
         try:
-            vector = await embedding_service.get_dense_embedding(query)
+            vector = await self._embedding_service.get_dense_embedding(query)
             cutoff = int(time.time()) - self.ttl_seconds
-            results = await qdrant_service.client.query_points(
+            results = await self._qdrant_service.client.query_points(
                 collection_name=self.collection_name,
                 query=vector,
                 query_filter=Filter(
@@ -194,7 +203,7 @@ class ErpDecisionMemoryService:
                 await self._remember(decision_id, tenant_id, row)
             else:
                 point_ids = [decision_id] + ([row["matched_point_id"]] if row["matched_point_id"] else [])
-                await qdrant_service.client.delete(
+                await self._qdrant_service.client.delete(
                     collection_name=self.collection_name,
                     points_selector=PointIdsList(points=point_ids),
                 )
@@ -210,8 +219,8 @@ class ErpDecisionMemoryService:
             return
         # A memory hit that was applied again keeps its original point id.
         point_id = row["matched_point_id"] or decision_id
-        vector = await embedding_service.get_dense_embedding(row["query_text"])
-        await qdrant_service.client.upsert(
+        vector = await self._embedding_service.get_dense_embedding(row["query_text"])
+        await self._qdrant_service.client.upsert(
             collection_name=self.collection_name,
             points=[
                 PointStruct(

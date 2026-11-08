@@ -14,9 +14,12 @@ Best Practices Applied (2026):
 """
 
 import asyncio
+from typing import TYPE_CHECKING
 import structlog
-from fastembed import SparseTextEmbedding
-from sentence_transformers import SentenceTransformer
+
+if TYPE_CHECKING:
+    from fastembed import SparseTextEmbedding
+    from sentence_transformers import SentenceTransformer
 
 logger = structlog.get_logger()
 
@@ -31,8 +34,8 @@ class EmbeddingService:
     """
 
     def __init__(self):
-        self._dense_model: SentenceTransformer | None = None
-        self._sparse_model: SparseTextEmbedding | None = None
+        self._dense_model: 'SentenceTransformer | None' = None
+        self._sparse_model: 'SparseTextEmbedding | None' = None
         # One lock per model — prevents concurrent thread access to the Rust tokenizer
         # which raises `RuntimeError: Already borrowed` under parallel asyncio.gather.
         self._dense_lock = asyncio.Lock()
@@ -46,6 +49,9 @@ class EmbeddingService:
         """
 
         def _load_models():
+            from fastembed import SparseTextEmbedding
+            from sentence_transformers import SentenceTransformer
+
             dense = SentenceTransformer(
                 "BAAI/bge-m3",
                 device="cpu"
