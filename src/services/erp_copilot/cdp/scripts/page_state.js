@@ -15,7 +15,7 @@
         }
     } catch(e) {}
 
-    if (!activeScreen) {
+    if (!activeScreen || !activeScreen.pageId) {
         try {
             const baseEl = document.querySelector('app-base');
             if (window.ng && window.ng.getComponent && baseEl) {

@@ -278,6 +278,15 @@ class StepperEngine:
                         tx_payload = await self.extractor.extract_transaction_payload(
                             goal, target_screen=target_screen, target_page_id=tx_page_id
                         )
+                        if isinstance(tx_payload, dict) and any(
+                            kw in goal.lower() for kw in ("نقد", "كاش", "سدد", "مدفوع", "محصل", "cash")
+                        ):
+                            hdr = tx_payload.setdefault("header", {})
+                            if isinstance(hdr, dict) and not any(
+                                any(pk in k.lower() for pk in ("popaid", "cashpaid", "madfou", "مدفوع", "محصل"))
+                                for k in hdr
+                            ):
+                                hdr["POPaidCurrancy"] = "$TOTAL"
                         timings["payload_extract_ms"] = round((time.perf_counter() - t_extract_start) * 1000, 1)
                         append_session_event(
                             session_id,

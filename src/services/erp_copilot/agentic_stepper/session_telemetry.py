@@ -11,6 +11,7 @@ import re
 from typing import Any, Optional
 
 ERP_LOGS_DIR = Path("logs/erp_sessions")
+ERP_TEST_LOGS_DIR = Path("logs/erp_sessions_test")
 SHARED_LOGS_DIR = Path("e:/Mazen/shared_logs/erp_sessions")
 
 
@@ -63,7 +64,12 @@ def append_session_event(
     unified_filename = "agent_unified_debug.log"
     unified_line = f"[{iso_now}] [{clean_id}] [{level.upper()}] [{stage_str}] {message} | {det_str}\n"
 
-    for target_dir in [ERP_LOGS_DIR, SHARED_LOGS_DIR]:
+    target_dirs = (
+        [ERP_TEST_LOGS_DIR]
+        if clean_id.lower().startswith("test_")
+        else [ERP_LOGS_DIR, SHARED_LOGS_DIR]
+    )
+    for target_dir in target_dirs:
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
             # 1. ملف الجلسة المنفصل (للأرشفة المستقلة)
@@ -98,11 +104,19 @@ def read_session_events(
         return []
     clean_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", session_id)
     filename = f"session_{clean_id}.log"
-    file_path = ERP_LOGS_DIR / filename
-    if not file_path.exists():
-        file_path = SHARED_LOGS_DIR / filename
-        if not file_path.exists():
-            return []
+    candidate_dirs = (
+        [ERP_TEST_LOGS_DIR, ERP_LOGS_DIR, SHARED_LOGS_DIR]
+        if clean_id.lower().startswith("test_")
+        else [ERP_LOGS_DIR, SHARED_LOGS_DIR, ERP_TEST_LOGS_DIR]
+    )
+    file_path = None
+    for d in candidate_dirs:
+        p = d / filename
+        if p.exists():
+            file_path = p
+            break
+    if file_path is None:
+        return []
 
     prefix_str = str(stage_prefix.value if isinstance(stage_prefix, Enum) else (stage_prefix or "")).upper()
     level_filter = level.upper() if level else None

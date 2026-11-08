@@ -151,21 +151,38 @@
             }
         }
 
-        await new Promise(r => setTimeout(r, 350));
-        const qtyInp = document.querySelector('input#productQty, [formcontrolname="productQty"], input[type="number"]');
-        const continueBtn = Array.from(document.querySelectorAll('button')).find(b => {
-            const t = (b.textContent || '').trim();
-            return t === 'متابعة' || t === 'تأكيد' || t === 'موافق' || t === 'إضافة';
-        });
-        if (qtyInp && continueBtn && (item.productQty !== undefined || item.qty !== undefined)) {
-            const qVal = item.productQty !== undefined ? item.productQty : item.qty;
+        // انتظار ذكي (Polling حتى 1500ms) لظهور نافذة إدخال الكمية المنبثقة (#productQty)
+        let qtyInp = null;
+        for (let waitAttempt = 0; waitAttempt < 10; waitAttempt++) {
+            await new Promise(r => setTimeout(r, 150));
+            qtyInp = document.querySelector(
+                'input#productQty, [formcontrolname="productQty"], input[name="productQty"], .modal input[type="number"], ngb-modal-window input[type="number"], mat-dialog-container input[type="number"]'
+            );
+            if (qtyInp) break;
+        }
+        if (qtyInp && (item.productQty !== undefined || item.qty !== undefined || item.quantity !== undefined)) {
+            const qVal = item.productQty ?? item.qty ?? item.quantity ?? 1;
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
             qtyInp.focus();
-            qtyInp.value = qVal;
+            if (setter) {
+                setter.call(qtyInp, String(qVal));
+            } else {
+                qtyInp.value = qVal;
+            }
             qtyInp.dispatchEvent(new Event('input', { bubbles: true }));
             qtyInp.dispatchEvent(new Event('change', { bubbles: true }));
             await new Promise(r => setTimeout(r, 120));
-            continueBtn.click();
+            const continueBtn = Array.from(document.querySelectorAll('button')).find(b => {
+                const t = (b.textContent || '').trim();
+                return t === 'متابعة' || t === 'تأكيد' || t === 'موافق' || t === 'إضافة';
+            });
+            if (continueBtn) {
+                continueBtn.click();
+            } else {
+                qtyInp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }));
+            }
             await new Promise(r => setTimeout(r, 300));
+            itemFilled = true;
         }
 
         if (itemFilled) itemsAdded++;
