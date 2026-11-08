@@ -1,4 +1,8 @@
-from src.core.prompts import get_erp_control_roles_prompt, get_erp_navigation_prompt
+from src.core.prompts import (
+    get_erp_control_roles_prompt,
+    get_erp_leftover_resolution_prompt,
+    get_erp_navigation_prompt,
+)
 import asyncio
 import json
 import re
@@ -296,21 +300,24 @@ class ErpService:
         source = "ai"
         if self._gemini_client:
             try:
-                # If candidate catalog is large (e.g. all 50 ERP screens), pre-filter to top 15
-                # to eliminate LLM timeouts and ensure fast sub-2-second response
+                # Provide a wide window (up to 60 candidates) so the AI model has broad visibility
+                # across modules, primary screens, and related workflows without premature lexical clipping
                 candidates_to_score = req.candidates
-                if len(candidates_to_score) > 15:
+                if len(candidates_to_score) > 60:
                     scored_pre = sorted(
                         candidates_to_score,
-                        key=lambda c: _compute_lexical_similarity(user_msg, c.label or c.id, c.path),
+                        key=lambda c: (
+                            1.0 if "الوحدات والبرامج الرئيسية" in (c.path or []) else 0.0,
+                            _compute_lexical_similarity(user_msg, c.label or c.id, c.path),
+                        ),
                         reverse=True
                     )
-                    candidates_to_score = scored_pre[:15]
+                    candidates_to_score = scored_pre[:60]
                     # Ensure matching catalog candidate is NEVER pruned out of LLM window
                     if matched_catalog_candidate_id and matched_catalog_candidate_id in candidates_map:
                         cat_cand = candidates_map[matched_catalog_candidate_id]
                         if cat_cand not in candidates_to_score:
-                            candidates_to_score = [cat_cand] + candidates_to_score[:14]
+                            candidates_to_score = [cat_cand] + candidates_to_score[:59]
 
                 candidates_payload = [
                     {"id": c.id, "label": c.label, "path": c.path} for c in candidates_to_score
@@ -341,8 +348,17 @@ class ErpService:
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
 
-        # 2.5 Catalog-boost: if transaction form matched with action intent, grant top confidence and demote rival generic screens
-        if matched_catalog_candidate_id and intent in ("action", "navigate", "unknown"):
+        # 2.5 Catalog-boost: if transaction form matched with action intent (or navigate when AI had no strong distinct winner),
+        # grant top confidence and demote rival generic screens
+        top_ai_conf = max((s.confidence for s in scored_candidates), default=0.0)
+        should_boost_catalog = bool(
+            matched_catalog_candidate_id
+            and (
+                intent in ("action", "unknown")
+                or (intent == "navigate" and (source != "ai" or top_ai_conf < 0.75))
+            )
+        )
+        if should_boost_catalog:
             cat_doc_name = catalog_form.get("name_ar", "المعاملة المطلوبة") if catalog_form else "المعاملة المطلوبة"
             matched_existing = False
             for s in scored_candidates:
@@ -469,8 +485,8 @@ class ErpService:
 
     async def resolve_leftover(self, req: LeftoverRequest) -> LeftoverResponse:
         """
-        حل وتعبئة الحقول الجديدة التي ظهرت ديناميكياً (Leftover Form Fill)
-        بناءً على البيانات المستخرجة وخيارات الحقول المتاحة.
+        حل وتعبئة الحقول الجديدة أو غير المحسومة التي ظهرت ديناميكياً (Leftover Form Fill)
+        باستخدام الذكاء الاصطناعي والمطابقة الدلالية لربط قيم المستخدم بالخيارات المتاحة فعلياً في القوائم المنسدلة.
         """
         logger.info(
             "ERP Leftover resolve requested",
@@ -485,15 +501,57 @@ class ErpService:
         # تجاهل الحقول المعطلة (disabled) وتجهيز الحقول الصالحة
         active_fields = [f for f in req.new_fields if not f.disabled]
         active_keys = {f.key for f in active_fields}
+        if not active_fields:
+            return LeftoverResponse(fields={}, ask_user=[])
 
-        # تجهيز خريطة للبيانات المستخرجة لتسهيل المطابقة (Exact, Lowercase, Normalized Label)
+        # مرادفات دلالية ثنائية اللغة للخيارات الشائعة (مثل العملات وطرق الشراء)
+        OPTION_SYNONYM_GROUPS: list[set[str]] = [
+            {"egp", "مصري", "مصرى", "جنيه", "جنية", "جنيه مصري", "جنية مصري", "جم"},
+            {"usd", "دولار", "دولار امريكي", "دولار أمريكي"},
+            {"eur", "euro", "يورو"},
+            {"aed", "اماراتي", "إماراتي", "درهم", "دينار اماراتي", "درهم اماراتي"},
+            {"sar", "سعودي", "ريال", "ريال سعودي"},
+        ]
+
+        def _match_option_semantically(val_str: str, options: list[str]) -> str | None:
+            norm_v = normalize_arabic_text_leaderboard(val_str).strip().lower()
+            if not norm_v:
+                return None
+            # 1. تطابق حرفي أو معجمي مباشر
+            for opt in options:
+                norm_opt = normalize_arabic_text_leaderboard(opt).strip().lower()
+                if val_str.lower() == opt.lower() or norm_v == norm_opt:
+                    return opt
+            # 2. تطابق المرادفات الدلالية (مثل مصري <-> EGP)
+            for grp in OPTION_SYNONYM_GROUPS:
+                if norm_v in grp or any(g in norm_v for g in grp if len(g) >= 3):
+                    for opt in options:
+                        norm_opt = normalize_arabic_text_leaderboard(opt).strip().lower()
+                        if norm_opt in grp:
+                            return opt
+            # 3. تطابق جزئي مع استبعاد النفي ("غير")
+            wants_neg = "غير" in norm_v
+            for opt in options:
+                norm_opt = normalize_arabic_text_leaderboard(opt).strip().lower()
+                if not wants_neg and "غير" in norm_opt:
+                    continue
+                if norm_v in norm_opt or norm_opt in norm_v:
+                    return opt
+            return None
+
+        # تجهيز خريطة للبيانات المستخرجة لتسهيل المطابقة (Exact, Lowercase, Normalized Label, Technical Aliases)
         norm_extracted: dict[str, Any] = {}
         for k, v in req.extracted_data.items():
             if v is not None:
                 norm_extracted[k] = v
                 norm_extracted[k.lower()] = v
                 norm_extracted[normalize_arabic_text_leaderboard(str(k))] = v
+                # إذا وضع الـ AI قيمة طريقة الشراء في custom_select أو InsertType، نوفرها لـ POSetting / ContractType
+                if k.lower() in ("custom_select", "inserttype", "طريقة الشراء", "نوع الشراء"):
+                    norm_extracted.setdefault("posetting", v)
+                    norm_extracted.setdefault("contracttype", v)
 
+        needs_ai_resolution = False
         for field in active_fields:
             matched_val: Any = None
             field_key_norm = normalize_arabic_text_leaderboard(field.key)
@@ -504,38 +562,75 @@ class ErpService:
                 matched_val = req.extracted_data[field.key]
             elif field.key.lower() in norm_extracted:
                 matched_val = norm_extracted[field.key.lower()]
-            elif field.label in req.extracted_data:
+            elif field.label and field.label in req.extracted_data:
                 matched_val = req.extracted_data[field.label]
-            elif field_label_norm in norm_extracted:
+            elif field_label_norm and field_label_norm in norm_extracted:
                 matched_val = norm_extracted[field_label_norm]
-            elif field_key_norm in norm_extracted:
+            elif field_key_norm and field_key_norm in norm_extracted:
                 matched_val = norm_extracted[field_key_norm]
 
             # فحص خيارات الحقل (options) إن وجدت
             if field.options and len(field.options) > 0:
                 if matched_val is not None:
                     str_val = str(matched_val).strip()
-                    matched_opt: str | None = None
-                    norm_val = normalize_arabic_text_leaderboard(str_val)
-
-                    # المطابقة الحرفية أو المعجمية مع الخيارات المتاحة
-                    for opt in field.options:
-                        if str_val.lower() == opt.lower() or norm_val == normalize_arabic_text_leaderboard(opt):
-                            matched_opt = opt
-                            break
-
+                    matched_opt = _match_option_semantically(str_val, field.options)
                     if matched_opt is not None:
                         fields_res[field.key] = matched_opt
                     else:
-                        # القيمة لا تطابق الخيارات المتاحة حرفياً -> توضع في ask_user
+                        needs_ai_resolution = True
                         ask_user_res.append(field.key)
                 else:
-                    # لم يُذكر له قيمة واضحة في البيانات المستخرجة
-                    pass
+                    needs_ai_resolution = True
             else:
-                # حقل عادي بدون خيارات مقيدة
                 if matched_val is not None:
                     fields_res[field.key] = matched_val
+                else:
+                    needs_ai_resolution = True
+
+        # الاستعانة بموديل الذكاء الاصطناعي للتفكير الدلالي وربط الحقول والخيارات المتاحة
+        if needs_ai_resolution and self._gemini_client and req.user_message.strip():
+            try:
+                new_fields_payload = [
+                    {
+                        "key": f.key,
+                        "label": f.label,
+                        "kind": f.kind,
+                        "options": f.options[:30] if f.options else [],
+                    }
+                    for f in active_fields
+                    if f.key not in fields_res
+                ]
+                if new_fields_payload:
+                    prompt = get_erp_leftover_resolution_prompt(
+                        user_message=req.user_message,
+                        extracted_json=json.dumps(req.extracted_data, ensure_ascii=False),
+                        filled_json=json.dumps({**req.filled, **fields_res}, ensure_ascii=False),
+                        new_fields_json=json.dumps(new_fields_payload, ensure_ascii=False),
+                    )
+                    ai_parsed = await self._generate_json(prompt, timeout=10.0)
+                    if isinstance(ai_parsed, dict):
+                        ai_fields = ai_parsed.get("fields") or {}
+                        ai_ask = ai_parsed.get("ask_user") or []
+                        fields_by_key = {f.key: f for f in active_fields}
+                        if isinstance(ai_fields, dict):
+                            for k, v in ai_fields.items():
+                                if k in fields_by_key and v is not None and str(v).strip():
+                                    f_obj = fields_by_key[k]
+                                    if f_obj.options:
+                                        # التحقق من أن الخيار الذي اختاره الـ AI موجود في القائمة أو يطابقها
+                                        verified_opt = _match_option_semantically(str(v).strip(), f_obj.options)
+                                        if verified_opt is not None:
+                                            fields_res[k] = verified_opt
+                                            if k in ask_user_res:
+                                                ask_user_res.remove(k)
+                                    else:
+                                        fields_res[k] = v
+                        if isinstance(ai_ask, list):
+                            for ak in ai_ask:
+                                if ak in active_keys and ak not in fields_res and ak not in ask_user_res:
+                                    ask_user_res.append(ak)
+            except Exception as e:
+                logger.warning("AI leftover resolution failed, using deterministic matches", error=str(e))
 
         # ضمان أن جميع المفاتيح في fields و ask_user تنتمي حصراً لمفاتيح new_fields النشطة
         final_fields = {k: v for k, v in fields_res.items() if k in active_keys}

@@ -890,6 +890,49 @@ class SearchService:
                             page_id=resolved_page_id,
                             doc_name=resolved_doc_name,
                         )
+                    else:
+                        # Enrich live DOM schema with Arabic labels from catalog_schema & semantic defaults
+                        cat_label_map = {
+                            str(cf.get("key", "")).lower(): str(cf.get("label", "")).strip()
+                            for cf in catalog_schema
+                            if isinstance(cf, dict) and cf.get("key") and cf.get("label")
+                        }
+                        semantic_label_defaults = {
+                            "posetting": "طريقة الشراء",
+                            "contracttype": "طريقة البيع",
+                            "currancyid": "العملة",
+                            "currencyid": "العملة",
+                            "safeaccounid": "الخزينة",
+                            "safeaccountid": "الخزينة",
+                            "safeaccount": "الخزينة",
+                            "costitemid": "مركز التكلفة",
+                            "projectid": "المشروع",
+                            "storeid": "المخزن",
+                            "supplierid": "المورد",
+                            "customerid": "العميل",
+                        }
+                        has_method_field = any(
+                            str(f.get("key", "")).lower() in ("posetting", "contracttype")
+                            for f in effective_schema
+                            if isinstance(f, dict)
+                        )
+                        enriched_schema = []
+                        for f in effective_schema:
+                            if not isinstance(f, dict):
+                                continue
+                            f_key_low = str(f.get("key", "")).strip().lower()
+                            f_label = str(f.get("label", "")).strip()
+                            # Filter out unlabeled custom_select or sub-modal InsertType when POSetting/ContractType exists
+                            if has_method_field and f_key_low in ("custom_select", "inserttype", "defultvalue") and (
+                                not f_label or f_label.lower() == f_key_low
+                            ):
+                                continue
+                            if not f_label or f_label.lower() == f_key_low:
+                                enriched_label = cat_label_map.get(f_key_low) or semantic_label_defaults.get(f_key_low, "")
+                                if enriched_label:
+                                    f = {**f, "label": enriched_label}
+                            enriched_schema.append(f)
+                        effective_schema = enriched_schema
 
             if effective_fields or effective_schema:
                 raw_extracted = await self._extract_form_fields_if_needed(
@@ -922,6 +965,22 @@ class SearchService:
                         "metrics": {"total_latency_ms": latency_ms},
                     })
                     return
+
+        # 1.1b Pure Navigation Fast-Path: Never run Qdrant lecture RAG when erp_intent is 'navigate'
+        if (req.erp_intent or "").strip().lower() == "navigate":
+            record_stage_duration("total", time.time() - t0)
+            latency_ms = round((time.time() - t0) * 1000, 2)
+            logger.info("Emitting navigation confirmation SSE (navigate fast-path)", query=req.query)
+            yield _format_sse("sources", {"sources": []})
+            yield _format_sse("token", {"text": "✅ تم توجيهك إلى الشاشة المطلوبة في النظام."})
+            yield _format_sse("done", {
+                "thread_id": req.thread_id or str(uuid.uuid4()),
+                "provenance": "ERP_NAVIGATION",
+                "cache_hit": False,
+                "latency_ms": latency_ms,
+                "metrics": {"total_latency_ms": latency_ms},
+            })
+            return
 
         # 1.2 Embedding & Semantic Cache
         t_emb = time.time()

@@ -113,111 +113,114 @@ CREATE INDEX IF NOT EXISTS idx_erp_routing_audit_tenant_time
 async def lifespan(app: FastAPI):
     """
     استخدام Lifespan Context Manager بدلاً من @app.on_event القديم.
-    يضمن تهيئة الـ Pool مرة واحدة وإغلاقه بأمان حتى لو حدث Crash.
+    يهيئ قواعد البيانات والخدمات الشبكية بالتوازي (asyncio.gather)، ويبدأ تسخين
+    موديلات الذكاء الاصطناعي الثقيلة (Embedding + Reranker) في الخلفية لتمكين الإقلاع الفوري.
     """
     app.state.is_ready = False
     t_startup = time.time()
 
-    # ① تهيئة قاعدة البيانات
-    logger.info("Database pool initializing...")
-    app.state.db_pool = await asyncpg.create_pool(
-        dsn=settings.DATABASE_URL,
-        min_size=5,
-        max_size=20,
-        timeout=30.0,
-        init=init_connection
+    from src.services.cognitive_search import (
+        embedding_service,
+        exact_cache_service,
+        intent_router,
+        qdrant_service,
+        reranker_service,
+        search_service,
+        semantic_cache_service,
     )
-    async with app.state.db_pool.acquire() as conn:
-        await conn.execute(CREATE_EVENTS_TABLE_SQL)
-        await conn.execute(CREATE_FEEDBACK_TABLE_SQL)
-        await conn.execute(CREATE_ERP_AUDIT_TABLE_SQL)
-    logger.info("Database pool ready ✅")
+    from src.services.lms_bridge import lms_client_service
+    from src.services.shared_infrastructure import (
+        auth_validator_service,
+        event_logger_service,
+        feedback_service,
+    )
+    from src.agents.base_agent import agent_service
+    from src.services.erp_copilot import erp_decision_memory_service, erp_service
 
-    # ② تحميل نماذج الـ Embedding مرة واحدة عند بدء التشغيل
-    # (Best Practice 2026: initialize inside lifespan → stored in app.state)
-    from src.services.cognitive_search import embedding_service
-    await embedding_service.initialize()
-    app.state.embedding_service = embedding_service
-    logger.info("Embedding service ready ✅")
+    async def _init_db() -> None:
+        logger.info("Database pool initializing...")
+        app.state.db_pool = await asyncpg.create_pool(
+            dsn=settings.DATABASE_URL,
+            min_size=2,
+            max_size=20,
+            timeout=30.0,
+            init=init_connection,
+        )
+        async with app.state.db_pool.acquire() as conn:
+            await conn.execute(
+                f"{CREATE_EVENTS_TABLE_SQL}\n{CREATE_FEEDBACK_TABLE_SQL}\n{CREATE_ERP_AUDIT_TABLE_SQL}"
+            )
+        logger.info("Database pool ready ✅")
 
-    # ③ تحميل نموذج الـ Reranker مرة واحدة عند بدء التشغيل
-    from src.services.cognitive_search import reranker_service
-    await reranker_service.initialize()
-    app.state.reranker_service = reranker_service
-    logger.info("Reranker service ready ✅")
+    async def _init_qdrant_and_caches() -> None:
+        await qdrant_service.initialize()
+        app.state.qdrant_service = qdrant_service
+        await semantic_cache_service.initialize()
+        app.state.semantic_cache_service = semantic_cache_service
+        logger.info("Semantic cache service ready ✅")
 
-    # ④ تهيئة Qdrant Service
-    from src.services.cognitive_search import qdrant_service
-    await qdrant_service.initialize()
-    app.state.qdrant_service = qdrant_service
-    logger.info("Qdrant service ready ✅")
+    async def _init_agent() -> None:
+        await agent_service.initialize()
+        app.state.agent_service = agent_service
 
-    # ④.1 تهيئة Exact In-Memory Cache Service (Tier-1)
-    from src.services.cognitive_search import exact_cache_service
+    # ① تهيئة متوازية لـ PostgreSQL و Qdrant و LangGraph Checkpointer في نفس اللحظة
+    await asyncio.gather(_init_db(), _init_qdrant_and_caches(), _init_agent())
+
+    # ② تهيئة الخدمات الفورية خفيفة الوزن (In-Memory & Clients)
     exact_cache_service.initialize()
     app.state.exact_cache_service = exact_cache_service
 
-    # ④.2 تهيئة Semantic Cache Service (Tier-2)
-    from src.services.cognitive_search import semantic_cache_service
-    await semantic_cache_service.initialize()
-    app.state.semantic_cache_service = semantic_cache_service
-    logger.info("Semantic cache service ready ✅")
-
-    # تشغيل مهمة التنظيف الدوري للمتجهات المنتهية في الكاش الدلالي (Background Task)
-    eviction_task = asyncio.create_task(
-        _periodic_semantic_cache_eviction(settings.CACHE_EVICTION_INTERVAL_HOURS)
-    )
-
-    # ④.3 تهيئة Fast Ingress Intent Router
-    from src.services.cognitive_search import intent_router
     intent_router.initialize()
     app.state.intent_router = intent_router
 
-    # ⑤ تهيئة Search Service (Gemini client for RAG answers)
-    from src.services.cognitive_search import search_service
     search_service.initialize()
     app.state.search_service = search_service
     logger.info("Search service ready ✅")
 
-    # ⑥ تهيئة LMS Client (للاتصال بـ .NET ERP)
-    from src.services.lms_bridge import lms_client_service
     lms_client_service.initialize()
     app.state.lms_client_service = lms_client_service
 
-    # ⑦ تهيئة Auth Validator Service
-    from src.services.shared_infrastructure import auth_validator_service
     auth_validator_service.initialize()
     app.state.auth_validator_service = auth_validator_service
 
-    # ⑧ تهيئة Agent Service (LangGraph Checkpointer)
-    from src.agents.base_agent import agent_service
-    await agent_service.initialize()
-    app.state.agent_service = agent_service
-    
-    # ⑨ تهيئة Event Logger Service
-    from src.services.shared_infrastructure import event_logger_service
     event_logger_service.initialize(app.state.db_pool)
     app.state.event_logger_service = event_logger_service
 
-    # ⑩ تهيئة Feedback Service (M07 Feedback Engine)
-    from src.services.shared_infrastructure import feedback_service
     feedback_service.initialize(app.state.db_pool)
     app.state.feedback_service = feedback_service
 
-    # ⑪ تهيئة ERP Service (DynamicPro Smart Assistant)
-    from src.services.erp_copilot import erp_service
     erp_service.initialize()
     app.state.erp_service = erp_service
 
-    # ⑪.1 تهيئة ذاكرة قرارات التوجيه (Qdrant للبحث + PostgreSQL للتدقيق)
-    from src.services.erp_copilot import erp_decision_memory_service
+    # ③ تهيئة ذاكرة قرارات التوجيه (تعتمد على جاهزية db_pool و qdrant_service)
     try:
         await erp_decision_memory_service.initialize(app.state.db_pool)
     except Exception as e:
         logger.error("ERP decision memory initialization failed; routing continues without memory", error=str(e))
     app.state.erp_decision_memory_service = erp_decision_memory_service
 
-    # تم اكتمال كافة النماذج والخدمات وجاهزية النظام للاستقبال
+    # ④ تسجيل مراجع خدمات الـ Embedding والـ Reranker وتهيئتهما في الخلفية لعدم حجز الإقلاع
+    app.state.embedding_service = embedding_service
+    app.state.reranker_service = reranker_service
+
+    async def _bg_ml_warmup() -> None:
+        try:
+            await asyncio.gather(
+                embedding_service.initialize(),
+                reranker_service.initialize(),
+            )
+            logger.info("Background ML models (Embedding + Reranker) warmed up ✅")
+        except Exception as e:
+            logger.error("Background ML warmup encountered an error", error=str(e))
+
+    ml_warmup_task = asyncio.create_task(_bg_ml_warmup())
+
+    # تشغيل مهمة التنظيف الدوري للمتجهات المنتهية في الكاش الدلالي (Background Task)
+    eviction_task = asyncio.create_task(
+        _periodic_semantic_cache_eviction(settings.CACHE_EVICTION_INTERVAL_HOURS)
+    )
+
+    # تم اكتمال كافة الخدمات الأساسية وجاهزية النظام للاستقبال الفوري
     startup_duration = round(time.time() - t_startup, 3)
     app.state.startup_duration = startup_duration
     app.state.is_ready = True
@@ -228,11 +231,13 @@ async def lifespan(app: FastAPI):
     yield  # ← التطبيق يعمل هنا ويستقبل الطلبات
 
     # ③ إغلاق الموارد عند إيقاف السيرفر
-    eviction_task.cancel()
-    try:
-        await eviction_task
-    except asyncio.CancelledError:
-        pass
+    for bg_task in (ml_warmup_task, eviction_task):
+        if not bg_task.done():
+            bg_task.cancel()
+            try:
+                await bg_task
+            except asyncio.CancelledError:
+                pass
 
     exact_cache_service.close()
     intent_router.close()

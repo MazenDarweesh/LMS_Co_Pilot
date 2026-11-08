@@ -40,34 +40,56 @@ class EmbeddingService:
         # which raises `RuntimeError: Already borrowed` under parallel asyncio.gather.
         self._dense_lock = asyncio.Lock()
         self._sparse_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """
         Load both models into memory once at startup.
         Runs in a thread to avoid blocking the event loop during the heavy
-        model download / initialization.
+        model download / initialization. Uses local_files_only=True first to avoid
+        slow HuggingFace Hub network checks when cached locally.
         """
+        if self._dense_model is not None and self._sparse_model is not None:
+            return
 
-        def _load_models():
-            from fastembed import SparseTextEmbedding
-            from sentence_transformers import SentenceTransformer
+        async with self._init_lock:
+            if self._dense_model is not None and self._sparse_model is not None:
+                return
 
-            dense = SentenceTransformer(
-                "BAAI/bge-m3",
-                device="cpu"
+            def _load_models():
+                from fastembed import SparseTextEmbedding
+                from sentence_transformers import SentenceTransformer
+
+                try:
+                    dense = SentenceTransformer(
+                        "BAAI/bge-m3",
+                        device="cpu",
+                        local_files_only=True,
+                    )
+                except Exception:
+                    dense = SentenceTransformer(
+                        "BAAI/bge-m3",
+                        device="cpu",
+                    )
+                try:
+                    sparse = SparseTextEmbedding(
+                        model_name="Qdrant/bm25",
+                        cache_dir="./.model_cache",
+                        local_files_only=True,
+                    )
+                except Exception:
+                    sparse = SparseTextEmbedding(
+                        model_name="Qdrant/bm25",
+                        cache_dir="./.model_cache",
+                    )
+                return dense, sparse
+
+            self._dense_model, self._sparse_model = await asyncio.to_thread(_load_models)
+            logger.info(
+                "Embedding models loaded ✅",
+                dense="BAAI/bge-m3 (via sentence-transformers)",
+                sparse="Qdrant/bm25",
             )
-            sparse = SparseTextEmbedding(
-                model_name="Qdrant/bm25",
-                cache_dir="./.model_cache",
-            )
-            return dense, sparse
-
-        self._dense_model, self._sparse_model = await asyncio.to_thread(_load_models)
-        logger.info(
-            "Embedding models loaded ✅",
-            dense="BAAI/bge-m3 (via sentence-transformers)",
-            sparse="Qdrant/bm25",
-        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -81,6 +103,8 @@ class EmbeddingService:
         🔒 Uses _dense_lock to prevent concurrent tokenizer access
            (RuntimeError: Already borrowed from the Rust tokenizers library).
         """
+        if self._dense_model is None:
+            await self.initialize()
         assert self._dense_model is not None, "EmbeddingService not initialized"
 
         def _embed() -> list[float]:
@@ -101,6 +125,8 @@ class EmbeddingService:
 
         🔒 Uses _sparse_lock for consistency and future-safety.
         """
+        if self._sparse_model is None:
+            await self.initialize()
         assert self._sparse_model is not None, "EmbeddingService not initialized"
 
         def _embed():

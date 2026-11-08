@@ -239,9 +239,8 @@ ERP_PAYMENT_RULES = """Payment & Settlement Rules:
 - If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً", "المحصل نقدا"), assign "$TOTAL" to a numeric payment field like "POPaid", "CashPaid", "Paid", or "المدفوع نقداً"."""
 
 
-ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction Assistant for DynamicPro ERP.
-Analyze the user's Arabic message and the active ERP form structure.
-Extract all concrete data explicitly mentioned by the user.
+ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction & Semantic Mapping Assistant for DynamicPro ERP.
+Analyze the user's Arabic message and map every piece of data to the best matching field from the active ERP form structure.
 
 CRITICAL INSTRUCTION - Detect Batch Mode:
 If the user asks to record multiple documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document.
@@ -260,14 +259,18 @@ Available Form Context:
 User Message:
 "{query}"
 
-Rules:
-1. Map values strictly to the matching field keys from the form context.
+Semantic Reasoning & Mapping Rules:
+1. Map values to the most semantically appropriate field key from the Available Form Context.
+   - Use both `key` and `label` (and `options` if present) to infer a field's purpose even when its `label` is empty or technical:
+     * Purchase method / invoice type ("طريقة الشراء", "نوع الشراء", "مشتريات مباشرة") -> map to `POSetting` (on Purchases) or `ContractType` (on Sales). NEVER map purchase/sales method to generic `custom_select` or `InsertType` when `POSetting` or `ContractType` exists in the form context!
+     * Currency ("العملة", "عملة الشراء", "عملة الفاتورة") -> map to `CurrancyID` or `CurrencyID`.
+     * Semantic Value Normalization for Dropdowns/Currencies: Think semantically about standard ERP option values. If the user says a colloquial currency name like "مصري", "جنيه", "جنية مصري" and the field is `CurrancyID` (or options contain ISO codes), output `"EGP"` (or the matching option from the field's options list if provided). If they say "يورو", output `"EURO"`. If they say "دولار", keep `"دولار"`.
+     * Safe / Treasury ("الخزينة", "الصندوق") -> map to `SafeAccounId` or `SafeAccount`.
+     * Cost Center / Project ("مركز التكلفة", "المشروع") -> map to `CostItemId` or `ProjectID` according to what the user specified.
 2. {payment_rules}
-3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
-4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
-3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. "product", "Qty", "UnitePrice") or standard Arabic keys ("الصنف", "الكمية", "السعر").
-4. Keep values literal as spoken (Arabic names of suppliers, customers, items, warehouses, safes).
-5. If the user is only asking a question or explanation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
+3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. "اسم المنتج", "الكمية", "السعر", or "product", "Qty") or standard Arabic keys ("اسم المنتج", "الكمية").
+4. Keep entity names (suppliers, customers, products, warehouses, projects) faithful to the user's message.
+5. If the user is only asking a question or navigation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
 """
 
 
@@ -277,6 +280,48 @@ def get_erp_form_extraction_prompt(query: str, fields_ctx_json: str) -> str:
         query=query,
         fields_ctx_json=fields_ctx_json,
         payment_rules=ERP_PAYMENT_RULES
+    )
+
+
+ERP_LEFTOVER_RESOLUTION_PROMPT_TEMPLATE = """You are an intelligent ERP Form Field & Dropdown Option Resolver for DynamicPro ERP.
+A user gave this instruction in Arabic:
+"{user_message}"
+
+Previously extracted data (some keys or values may not have matched the live DOM literally):
+{extracted_json}
+
+Already filled fields:
+{filled_json}
+
+Unresolved / Newly revealed live DOM fields (with their actual available dropdown `options` if observed):
+{new_fields_json}
+
+Your Task:
+1. Match any remaining user intent or previously extracted values to the correct field `key` in `new_fields`.
+   - Note technical ERP keys: `POSetting` = طريقة الشراء (Purchase Method), `ContractType` = طريقة البيع (Sales Method), `CurrancyID` = العملة (Currency), `SafeAccounId` = الخزينة (Safe).
+   - Never map to `custom_select` if a specific field (`POSetting`, `SupplierID`, `CurrancyID`, etc.) fits.
+2. When a target field in `new_fields` has a non-empty `options` list (the actual options visible in the dropdown!), you MUST select the single option string from `options` that is semantically equivalent to what the user asked for:
+   - Example: User said "مصري" or "جنيه" and `options` is `["EGP", "دولار", "EURO", "دينار اماراتي"]` -> you MUST return `"EGP"`!
+   - Example: User said "مباشرة" or "مشتريات مباشرة" and `options` contains `"مشتريات مباشره"` or `"مباشر"` -> return the exact string from `options`!
+3. If a field has `options` and NO option is semantically plausible for the user's request, put the field key in `ask_user`.
+
+Return ONLY a valid JSON object:
+{{"fields": {{"field_key": "exact_option_or_value"}}, "ask_user": []}}
+"""
+
+
+def get_erp_leftover_resolution_prompt(
+    user_message: str,
+    extracted_json: str,
+    filled_json: str,
+    new_fields_json: str,
+) -> str:
+    """Constructs prompt for AI-driven semantic matching of leftover fields and live dropdown options."""
+    return ERP_LEFTOVER_RESOLUTION_PROMPT_TEMPLATE.format(
+        user_message=user_message,
+        extracted_json=extracted_json,
+        filled_json=filled_json,
+        new_fields_json=new_fields_json,
     )
 
 
@@ -298,9 +343,12 @@ STEP 1 - Classify the user's intent:
 - "navigate": the user only wants to open / go to / view a screen and gives no data to enter.
 - "question": the user asks for knowledge (how / why / what happens / explain / difference) and gives no command to open a screen or enter data.
 
-STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label, NOT by word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
-- STRICT DISQUALIFICATION FOR ACTION INTENT: If the intent is "action" (creating, recording, or entering documents, transactions, invoices, entries, or counts), secondary read-only report, detail, inquiry, log, or configuration/setting screens (e.g. any screen starting with or containing "Details", "Setting", "Settings", "Setup", "Config", "تفاصيل", "تقرير", "Report", "Log", "Inquiry", "استعلام", "إعدادات", "اعدادات", "تهيئة", such as "Details purchases" or "Purchases Setting") MUST receive 0.0 confidence! They can NEVER be chosen for recording or creating transactions. You MUST strictly select the PRIMARY transactional entry screen (e.g. "Purchases", "Sales", "CustomerOrder", "General Journal").
+STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label and path, NOT by blind word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
 - STRICT DISQUALIFICATION FOR ACTION INTENT: If the intent is "action" (creating, recording, or entering documents, transactions, invoices, entries, or counts), secondary read-only report, detail, inquiry, log, or configuration/setting/types screens (e.g. any screen starting with or containing "Details", "Setting", "Settings", "Setup", "Config", "Types", "تفاصيل", "تقرير", "Report", "Log", "Inquiry", "استعلام", "إعدادات", "اعدادات", "تهيئة", "انواع", "أنواع", such as "Details purchases", "Purchases Setting", or "انواع المبيعات") MUST receive 0.0 confidence! They can NEVER be chosen for recording or creating transactions. You MUST strictly select the PRIMARY transactional entry screen (e.g. "فواتير المبيعات" page 244, "فواتير المشتريات" page 289, "Purchases", "Sales", "CustomerOrder", "General Journal").
+- NAVIGATION INTENT PRECISION: If the intent is "navigate" (e.g. "اذهب للموردين والمشتريات", "افتح فواتير المشتريات"):
+  * If a candidate represents the exact main module or primary screen requested (e.g., module "الموردين والمشتريات" or primary screen "فواتير المشتريات" 289 / "الموردين"), score it highest.
+  * Avoid obscure secondary/report/linking screens (high 4-digit IDs or detail/setup sub-screens) unless the user explicitly asked for that exact report or setting by name.
+  * If the user's navigation phrase refers to two primary screens equally (e.g. "الموردين والمشتريات" when only individual screens exist), give the top 2-3 primary screens (e.g. "فواتير المشتريات" and "الموردين") close high scores (e.g. 0.85 and 0.82) so the user can choose or navigate cleanly.
 - CURRENT SCREEN RETENTION: If Current User Path shows the user is ALREADY inside an appropriate screen for this task (e.g. currently on "Purchases" and user wants to record a purchase invoice), score that current screen highest (1.0) and NEVER suggest switching to a secondary detail screen of the same domain.
 - If the intent is "question", every confidence MUST be 0.0.
 - If two screens are equally plausible, give them close proportional scores.

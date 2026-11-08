@@ -31,29 +31,36 @@ class RerankerService:
     def __init__(self):
         self._ranker: Ranker | None = None
         self._lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         """
         Load the quantized ONNX reranker model once at startup inside a worker thread.
         Avoids blocking the FastAPI event loop during model load.
         """
-        def _load():
-            ranker = Ranker(
-                model_name=settings.RERANKER_MODEL_NAME,
+        if self._ranker is not None:
+            return
+        async with self._init_lock:
+            if self._ranker is not None:
+                return
+
+            def _load():
+                ranker = Ranker(
+                    model_name=settings.RERANKER_MODEL_NAME,
+                    cache_dir=settings.RERANKER_CACHE_DIR,
+                )
+                # 🚀 Warm up ONNX session graph and memory buffers during startup
+                # Eliminates 1.5s-2.0s cold-start penalty from the first student query
+                dummy_req = RerankRequest(query="warmup", passages=[{"id": 0, "text": "warmup"}])
+                ranker.rerank(dummy_req)
+                return ranker
+
+            self._ranker = await asyncio.to_thread(_load)
+            logger.info(
+                "FlashRank Quantized ONNX Reranker ready and warmed up ✅",
+                model=settings.RERANKER_MODEL_NAME,
                 cache_dir=settings.RERANKER_CACHE_DIR,
             )
-            # 🚀 Warm up ONNX session graph and memory buffers during startup
-            # Eliminates 1.5s-2.0s cold-start penalty from the first student query
-            dummy_req = RerankRequest(query="warmup", passages=[{"id": 0, "text": "warmup"}])
-            ranker.rerank(dummy_req)
-            return ranker
-
-        self._ranker = await asyncio.to_thread(_load)
-        logger.info(
-            "FlashRank Quantized ONNX Reranker ready and warmed up ✅",
-            model=settings.RERANKER_MODEL_NAME,
-            cache_dir=settings.RERANKER_CACHE_DIR,
-        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -91,6 +98,8 @@ class RerankerService:
                 top_passages.append(cp)
             return top_passages
 
+        if self._ranker is None:
+            await self.initialize()
         assert self._ranker is not None, "RerankerService not initialized. Call initialize() first."
 
         # 🚀 Quadratic Complexity Optimization: O(N * L^2)

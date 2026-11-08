@@ -51,8 +51,9 @@ class QdrantService:
             api_key=settings.QDRANT_API_KEY or None,
             timeout=60,
         )
-        await self._ensure_collection()
-        await self._ensure_payload_indexes()
+        created = await self._ensure_collection()
+        if created:
+            await self._ensure_payload_indexes()
         logger.info("Qdrant service ready ✅", collection=COLLECTION)
 
     @property
@@ -68,12 +69,12 @@ class QdrantService:
     # Collection Setup (idempotent)
     # ------------------------------------------------------------------
 
-    async def _ensure_collection(self) -> None:
-        """ينشئ الـ collection إذا لم تكن موجودة — آمن للتكرار."""
+    async def _ensure_collection(self) -> bool:
+        """ينشئ الـ collection إذا لم تكن موجودة — آمن للتكرار. يرجع True إذا تم إنشاؤها حديثاً."""
         exists = await self._client.collection_exists(COLLECTION)  # type: ignore
         if exists:
             logger.info("Qdrant collection already exists", collection=COLLECTION)
-            return
+            return False
 
         await self._client.create_collection(  # type: ignore
             collection_name=COLLECTION,
@@ -87,6 +88,7 @@ class QdrantService:
             },
         )
         logger.info("Qdrant collection created ✅", collection=COLLECTION)
+        return True
 
     async def _ensure_payload_indexes(self) -> None:
         """ينشئ indexes على الحقول المستخدمة في الفلترة."""

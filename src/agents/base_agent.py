@@ -32,6 +32,7 @@ class AgentService:
         # 1. Create a dedicated connection pool for agents (autocommit=True is MANDATORY for Saver)
         self._pool = AsyncConnectionPool(
             conninfo=settings.DATABASE_URL,
+            min_size=1,
             max_size=20,
             kwargs={"autocommit": True}
         )

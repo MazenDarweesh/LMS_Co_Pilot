@@ -37,21 +37,21 @@ from src.services.erp_copilot.erp_service import (
     _stem_arabic_token,
     erp_service,
 )
-from src.services.erp_copilot.agentic_stepper import (
-    ERP_LOGS_DIR,
-    SHARED_LOGS_DIR,
-    AgenticStepperService,
-    PayloadExtractor,
-    ScreenResolver,
-    StepperEngine,
-    TelemetryStage,
-    _append_session_event,
-    agentic_stepper_service,
-    append_session_event,
-    read_session_events,
-)
 
 if TYPE_CHECKING:
+    from src.services.erp_copilot.agentic_stepper import (
+        ERP_LOGS_DIR,
+        SHARED_LOGS_DIR,
+        AgenticStepperService,
+        PayloadExtractor,
+        ScreenResolver,
+        StepperEngine,
+        TelemetryStage,
+        _append_session_event,
+        agentic_stepper_service,
+        append_session_event,
+        read_session_events,
+    )
     from src.services.erp_copilot.cdp import (
         CdpAgentService,
         CdpConnectionManager,
@@ -62,15 +62,36 @@ if TYPE_CHECKING:
         cdp_agent_service,
     )
 
-_LAZY_ATTR_MAP: dict[str, str] = {
-    "CdpAgentService": "src.services.erp_copilot.cdp",
-    "cdp_agent_service": "src.services.erp_copilot.cdp",
-    "CdpConnectionManager": "src.services.erp_copilot.cdp",
-    "CdpInputDispatcher": "src.services.erp_copilot.cdp",
-    "CdpVisualGrounding": "src.services.erp_copilot.cdp",
-    "CdpErpNavigator": "src.services.erp_copilot.cdp",
-    "CdpFormBridge": "src.services.erp_copilot.cdp",
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "CdpAgentService": ("src.services.erp_copilot.cdp", "CdpAgentService"),
+    "cdp_agent_service": ("src.services.erp_copilot.cdp", "cdp_agent_service"),
+    "CdpConnectionManager": ("src.services.erp_copilot.cdp", "CdpConnectionManager"),
+    "CdpInputDispatcher": ("src.services.erp_copilot.cdp", "CdpInputDispatcher"),
+    "CdpVisualGrounding": ("src.services.erp_copilot.cdp", "CdpVisualGrounding"),
+    "CdpErpNavigator": ("src.services.erp_copilot.cdp", "CdpErpNavigator"),
+    "CdpFormBridge": ("src.services.erp_copilot.cdp", "CdpFormBridge"),
+    "AgenticStepperService": ("src.services.erp_copilot.agentic_stepper", "AgenticStepperService"),
+    "agentic_stepper_service": ("src.services.erp_copilot.agentic_stepper", "agentic_stepper_service"),
+    "ScreenResolver": ("src.services.erp_copilot.agentic_stepper", "ScreenResolver"),
+    "PayloadExtractor": ("src.services.erp_copilot.agentic_stepper", "PayloadExtractor"),
+    "StepperEngine": ("src.services.erp_copilot.agentic_stepper", "StepperEngine"),
+    "TelemetryStage": ("src.services.erp_copilot.agentic_stepper", "TelemetryStage"),
+    "append_session_event": ("src.services.erp_copilot.agentic_stepper", "append_session_event"),
+    "_append_session_event": ("src.services.erp_copilot.agentic_stepper", "_append_session_event"),
+    "read_session_events": ("src.services.erp_copilot.agentic_stepper", "read_session_events"),
+    "ERP_LOGS_DIR": ("src.services.erp_copilot.agentic_stepper", "ERP_LOGS_DIR"),
+    "SHARED_LOGS_DIR": ("src.services.erp_copilot.agentic_stepper", "SHARED_LOGS_DIR"),
 }
+
+
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_IMPORTS:
+        module_path, attr_name = _LAZY_IMPORTS[name]
+        module = import_module(module_path)
+        val = getattr(module, attr_name)
+        globals()[name] = val
+        return val
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "FormsCatalogService",
@@ -106,14 +127,3 @@ __all__ = [
     "ERP_LOGS_DIR",
     "SHARED_LOGS_DIR",
 ]
-
-
-def __getattr__(name: str) -> Any:
-    module_path = _LAZY_ATTR_MAP.get(name)
-    if module_path is not None:
-        mod = import_module(module_path)
-        for attr_name, attr_mod in _LAZY_ATTR_MAP.items():
-            if attr_mod == module_path:
-                globals()[attr_name] = getattr(mod, attr_name)
-        return globals()[name]
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
