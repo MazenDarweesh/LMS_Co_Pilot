@@ -60,7 +60,7 @@ DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
     "total", "details", "detail", "report", "log", "inquiry",
     "setting", "settings", "setup", "config", "configuration",
     "اجمالي", "إجمالي", "تفاصيل", "تقرير", "استعلام", "ارصدة", "أرصدة",
-    "إعدادات", "اعدادات", "تهيئة", "تهيئه"
+    "إعدادات", "اعدادات", "تهيئة", "تهيئه", "انواع", "أنواع"
 ]
 
 
@@ -200,12 +200,14 @@ class ErpService:
         if intent == "question":
             scored = [s.model_copy(update={"confidence": 0.0}) for s in scored]
         elif intent == "action":
-            # Demote secondary details/report/setting screens so they never hijack transactional entry
+            # Demote secondary details/report/setting/types screens so they never hijack transactional entry
             for i, s in enumerate(scored):
-                s_lower = s.id.lower()
+                cand_obj = candidates_map.get(s.id)
+                s_lower = f"{s.id} {cand_obj.label if cand_obj else ''} {' '.join(cand_obj.path if cand_obj else [])}".lower()
                 if any(kw in s_lower for kw in (
                     "details", "detail", "تقرير", "report", "تفاصيل", "استعلام", "inquiry",
-                    "total", "اجمالي", "إجمالي", "setting", "إعدادات", "اعدادات", "setup", "config", "تهيئة"
+                    "total", "اجمالي", "إجمالي", "setting", "إعدادات", "اعدادات", "setup", "config", "تهيئة",
+                    "انواع", "أنواع"
                 )):
                     scored[i] = s.model_copy(update={"confidence": 0.0})
         return intent, scored
@@ -264,15 +266,29 @@ class ErpService:
         catalog_form = forms_catalog_service.resolve_form_by_text(user_msg)
         matched_catalog_candidate_id = None
         if catalog_form:
-            cat_pid = str(catalog_form.get("page_id", "")).strip()
+            cat_pid = str(catalog_form.get("page_id", "")).strip().lower()
             cat_key = str(catalog_form.get("screen_key", "")).strip().lower()
             cat_name = str(catalog_form.get("name_ar", "")).strip()
+            cat_name_norm = normalize_arabic_text_leaderboard(cat_name) if cat_name else ""
+
+            # Pass 1: Strict match by numeric page_id or exact Arabic screen name (avoids shared screen_key collision like "Sales Types" 225 vs 244)
             for c in req.candidates:
                 c_id_str = str(c.id).strip().lower()
                 c_label_clean = (c.label or "").strip()
-                if (cat_pid and c_id_str == cat_pid.lower()) or (cat_key and c_id_str == cat_key) or (cat_name and (cat_name == c_label_clean or normalize_arabic_text_leaderboard(cat_name) == normalize_arabic_text_leaderboard(c_label_clean))):
+                if (cat_pid and c_id_str == cat_pid) or (
+                    cat_name and (cat_name == c_label_clean or cat_name_norm == normalize_arabic_text_leaderboard(c_label_clean))
+                ):
                     matched_catalog_candidate_id = c.id
                     break
+
+            # Pass 2: Fallback to screen_key only if no page_id/name_ar match was found
+            if not matched_catalog_candidate_id and cat_key:
+                for c in req.candidates:
+                    c_id_str = str(c.id).strip().lower()
+                    c_label_clean = (c.label or "").strip()
+                    if c_id_str == cat_key and not ("انواع" in c_label_clean or "أنواع" in c_label_clean):
+                        matched_catalog_candidate_id = c.id
+                        break
 
         # 1. AI router
         intent = "unknown"
@@ -354,16 +370,17 @@ class ErpService:
         for s in scored_candidates:
             if intent == "action":
                 cand_obj = candidates_map.get(s.id)
-                label_lower = (cand_obj.label if cand_obj else s.id).lower()
+                label_lower = f"{cand_obj.label if cand_obj else s.id} {' '.join(cand_obj.path if cand_obj else [])}".lower()
                 id_lower = s.id.lower()
                 if any(k in id_lower or k in label_lower for k in [
                     "detail", "تفاصيل", "report", "تقرير", "inquiry", "استعلام", "log", "total", "اجمالي", "إجمالي",
-                    "setting", "settings", "setup", "config", "configuration", "إعدادات", "اعدادات", "تهيئة", "تهيئه"
+                    "setting", "settings", "setup", "config", "configuration", "إعدادات", "اعدادات", "تهيئة", "تهيئه",
+                    "انواع", "أنواع"
                 ]):
                     # Do not penalize if this was the explicitly matched transaction form
                     if s.id != matched_catalog_candidate_id:
                         s.confidence = 0.0
-                        s.reason = "شاشة إعدادات/تفاصيل/تقرير/إجماليات غير صالحة لتسجيل أو إنشاء المعاملات"
+                        s.reason = "شاشة إعدادات/أنواع/تفاصيل/تقرير غير صالحة لتسجيل أو إنشاء المعاملات"
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]

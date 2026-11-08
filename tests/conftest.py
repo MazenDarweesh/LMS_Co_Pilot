@@ -1,10 +1,6 @@
-# ─── Windows ProactorEventLoop Fix ───────────────────────────────────────────
-# MUST be before any asyncio/psycopg imports to take effect.
+# ─── Standard Library ─────────────────────────────────────────────────────────
 import sys
 import asyncio
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 # ─── Standard Library ─────────────────────────────────────────────────────────
 import json
@@ -18,7 +14,6 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 
 # ─── Local ────────────────────────────────────────────────────────────────────
-from src.main import app
 from src.core.config import settings
 from src.models.auth_models import UserPermissions
 
@@ -99,6 +94,8 @@ async def async_client():
       - LLM         → _mock_call_model() بدلاً من Gemini API
       - Reranker    → _mock_rerank() بدلاً من BAAI/bge-reranker-v2-m3
     """
+    from src.main import app
+
     patch_lms = patch(
         "src.services.lms_bridge.lms_client.lms_client_service.get_user_permissions",
         new_callable=AsyncMock,
@@ -134,3 +131,11 @@ def admin_headers() -> dict:
 def student_headers() -> dict:
     """Authorization headers لمستخدم Student."""
     return {"Authorization": f"Bearer {make_jwt_token(role='Student')}"}
+
+
+@pytest.fixture(autouse=True)
+def _prevent_live_gemini_in_unit_tests(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch):
+    """يمنع اختبارات الوحدة (tests/unit) من فتح اتصال شبكي حي بـ Gemini API عن طريق الخطأ."""
+    if "unit" in str(request.fspath):
+        from src.services.erp_copilot.vision_grounding_service import vision_grounding_service
+        monkeypatch.setattr(vision_grounding_service, "initialize", lambda: None)

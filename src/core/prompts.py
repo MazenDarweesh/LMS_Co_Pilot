@@ -265,6 +265,8 @@ Rules:
 2. {payment_rules}
 3. Table items: each item is an object in "rows" with keys like "الصنف", "الكمية", "السعر".
 4. Keep values literal as spoken (Arabic names of suppliers, items, warehouses).
+3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. "product", "Qty", "UnitePrice") or standard Arabic keys ("الصنف", "الكمية", "السعر").
+4. Keep values literal as spoken (Arabic names of suppliers, customers, items, warehouses, safes).
 5. If the user is only asking a question or explanation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
 """
 
@@ -298,6 +300,7 @@ STEP 1 - Classify the user's intent:
 
 STEP 2 - Score every screen from 0.0 to 1.0 by how well it is the place where that action or navigation is performed. Judge by the meaning of the screen label, NOT by word overlap. Names of products, warehouses or customers inside the message are data, not screen names.
 - STRICT DISQUALIFICATION FOR ACTION INTENT: If the intent is "action" (creating, recording, or entering documents, transactions, invoices, entries, or counts), secondary read-only report, detail, inquiry, log, or configuration/setting screens (e.g. any screen starting with or containing "Details", "Setting", "Settings", "Setup", "Config", "تفاصيل", "تقرير", "Report", "Log", "Inquiry", "استعلام", "إعدادات", "اعدادات", "تهيئة", such as "Details purchases" or "Purchases Setting") MUST receive 0.0 confidence! They can NEVER be chosen for recording or creating transactions. You MUST strictly select the PRIMARY transactional entry screen (e.g. "Purchases", "Sales", "CustomerOrder", "General Journal").
+- STRICT DISQUALIFICATION FOR ACTION INTENT: If the intent is "action" (creating, recording, or entering documents, transactions, invoices, entries, or counts), secondary read-only report, detail, inquiry, log, or configuration/setting/types screens (e.g. any screen starting with or containing "Details", "Setting", "Settings", "Setup", "Config", "Types", "تفاصيل", "تقرير", "Report", "Log", "Inquiry", "استعلام", "إعدادات", "اعدادات", "تهيئة", "انواع", "أنواع", such as "Details purchases", "Purchases Setting", or "انواع المبيعات") MUST receive 0.0 confidence! They can NEVER be chosen for recording or creating transactions. You MUST strictly select the PRIMARY transactional entry screen (e.g. "فواتير المبيعات" page 244, "فواتير المشتريات" page 289, "Purchases", "Sales", "CustomerOrder", "General Journal").
 - CURRENT SCREEN RETENTION: If Current User Path shows the user is ALREADY inside an appropriate screen for this task (e.g. currently on "Purchases" and user wants to record a purchase invoice), score that current screen highest (1.0) and NEVER suggest switching to a secondary detail screen of the same domain.
 - If the intent is "question", every confidence MUST be 0.0.
 - If two screens are equally plausible, give them close proportional scores.

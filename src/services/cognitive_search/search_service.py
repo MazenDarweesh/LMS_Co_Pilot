@@ -848,19 +848,24 @@ class SearchService:
         resolved_doc_name = None
 
         if await self._classify_form_action_intent(req.query, req.erp_intent):
-            # Compound Intent (NAVIGATE_AND_FILL): If client didn't supply live form DOM schema, resolve from catalog
-            if not effective_fields and not effective_schema:
-                target_form = None
-                if resolved_screen_key:
-                    target_form = forms_catalog_service.get_form_by_screen_key(resolved_screen_key) or forms_catalog_service.get_form_by_page_id(resolved_screen_key)
-                if not target_form:
-                    target_form = forms_catalog_service.resolve_form_by_text(req.query)
+            # Always check catalog for authoritative page_id & document_name matching the user's query
+            target_form = forms_catalog_service.resolve_form_by_text(req.query)
+            if not target_form and resolved_screen_key:
+                target_form = (
+                    forms_catalog_service.get_form_by_page_id(resolved_screen_key)
+                    or forms_catalog_service.get_form_by_screen_key(resolved_screen_key)
+                )
 
-                if target_form:
-                    resolved_page_id = target_form.get("page_id")
-                    resolved_screen_key = target_form.get("screen_key") or resolved_screen_key
-                    resolved_doc_name = target_form.get("name_ar") or target_form.get("document_name")
-                    effective_schema = _build_schema_from_catalog(target_form)
+            if target_form:
+                resolved_page_id = target_form.get("page_id")
+                resolved_screen_key = target_form.get("screen_key") or resolved_screen_key
+                resolved_doc_name = target_form.get("name_ar") or target_form.get("document_name")
+
+                # If client didn't supply live form DOM schema, OR if live DOM schema belongs to a mismatched
+                # setup screen (e.g., lacking core catalog fields like AccountId/StoreId), use catalog schema
+                catalog_schema = _build_schema_from_catalog(target_form)
+                if not effective_fields and not effective_schema:
+                    effective_schema = catalog_schema
                     logger.info(
                         "Resolved cross-screen form schema from catalog for compound intent",
                         page_id=resolved_page_id,
@@ -868,6 +873,23 @@ class SearchService:
                         doc_name=resolved_doc_name,
                         fields_count=len(effective_schema),
                     )
+                elif effective_schema and catalog_schema:
+                    live_keys = {str(f.get("key", "")).lower() for f in effective_schema if isinstance(f, dict)}
+                    cat_header_keys = {
+                        str(f.get("key", "")).lower()
+                        for f in (target_form.get("expected_header") or [])
+                        if isinstance(f, dict) and f.get("key")
+                    }
+                    # If live DOM has 0 overlap with catalog header keys (e.g. user was on Sales Types 225 instead of 244),
+                    # override with authoritative catalog schema so extraction doesn't hallucinate onto setup fields
+                    if cat_header_keys and not live_keys.intersection(cat_header_keys):
+                        effective_schema = catalog_schema
+                        effective_fields = None
+                        logger.info(
+                            "Replaced mismatched DOM schema with authoritative catalog schema",
+                            page_id=resolved_page_id,
+                            doc_name=resolved_doc_name,
+                        )
 
             if effective_fields or effective_schema:
                 raw_extracted = await self._extract_form_fields_if_needed(
@@ -1053,6 +1075,7 @@ class SearchService:
         first_token_time: float | None = None
         token_count = 0
         form_fill_detected = False
+        form_fill_emitted = False
 
         try:
             while True:
