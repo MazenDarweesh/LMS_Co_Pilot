@@ -63,5 +63,9 @@ pages.json
 modul.json
 menumaster.json
 
-
-
+# Temporary Session Trajectory & Prompt Dumps
+scratch/*prompts*
+scratch/*trajectory*
+scratch/extracted_*
+scratch/dump_prompts.py
+scratch/extract_steps.py
