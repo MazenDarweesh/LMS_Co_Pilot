@@ -13,54 +13,23 @@ from google import genai
 from google.genai import types
 
 from src.core.config import settings
+from src.core.prompts import (
+    VISION_DOM_FIRST_PROMPT_TEMPLATE,
+    VISION_GROUNDING_SYSTEM_PROMPT,
+    get_vision_dom_first_prompt,
+    get_vision_grounding_prompt,
+)
 
 logger = structlog.get_logger()
 
-VISION_GROUNDING_SYSTEM_PROMPT = """You are an autonomous ERP Visual Operator for DynamicPro ERP (an Arabic enterprise accounting & warehouse web system).
-You inspect a high-resolution screenshot of the user's active browser window, observe the open screens, dialogs, dropdowns, and data tables, and determine the single next physical action (mouse click or keyboard typing) required to make progress toward the user's goal.
-
-TARGET GOAL:
-"{goal}"
-
-ACTIVE BROWSER VIEWPORT:
-Width: {viewport_width}px, Height: {viewport_height}px, DevicePixelRatio: {dpr}
-
-ACTION HISTORY SO FAR:
-{history_json}
-
-RULES & UI CHARACTERISTICS IN DYNAMICPRO ERP:
-1. Arabic RTL Layout:
-   - Primary action buttons (like "اضافة جديد" / "حفظ" / "بحث") are located on the TOP-RIGHT or within dedicated toolbars.
-   - Form field labels appear to the RIGHT of (or directly above) their input or dropdown boxes. Always target the input field box itself, NOT the text label!
-   - For dropdowns (<ng-select> / <eg-select>), click inside the dropdown container box or the small downward arrow on the left to reveal options.
-2. In-Grid Editing:
-   - To add a row to an invoice or transaction grid, look for a button labeled "اضافة جديد" or "اضافة صفوف" located directly below or within the grid section.
-   - To edit a cell in a row, click directly inside the target column cell.
-3. Terminal Condition:
-   - When all required header fields are populated and all line items are inserted, or when reaching the confirmation step, select action "done".
-   - NEVER click "اعتماد" (Approve) or "حفظ نهائي" (Final Post) automatically. The agent stops at "done" once the draft is ready for user review.
-
-COORDINATE & SET-OF-MARK (SoM) SPECIFICATION:
-- Interactive elements on the screenshot may be annotated with red Set-of-Mark (SoM) bounding boxes and numbered badges [0], [1], [2], ...
-- Whenever your target element has a visible red numbered badge [ID], return its integer in "element_id" (and you may also provide its approximate [x, y] in "coordinate").
-- Return physical pixel coordinates [x, y] strictly within [0..{viewport_width}] for x and [0..{viewport_height}] for y.
-- Target the visual CENTER of the clickable button, input field, or menu item.
-- Do NOT click on static labels or empty background margins.
-- Provide the exact visible text of the button/menu item in "target_text" whenever clicking a labeled element.
-
-OUTPUT FORMAT:
-Return ONLY a valid JSON object matching this schema:
-{{
-  "thought": "شرح موجز بالعربية لما تراه في الشاشة والخطوة التالية التي ستقوم بها",
-  "action": "click" | "type" | "press_key" | "wait" | "done",
-  "element_id": integer SoM badge ID if visible on the target element, else null,
-  "coordinate": [x, y],
-  "target_text": "اسم أو نص الزر أو العنصر المراد النقر عليه بالعربية (مثل: الموردين والمشتريات، فواتير المشتريات، اضافة جديد)، أو null",
-  "text": "text to type if action is type, else null",
-  "key": "Enter|Tab|Escape if action is press_key, else null",
-  "is_terminal": true or false
-}}
-"""
+__all__ = [
+    "VISION_DOM_FIRST_PROMPT_TEMPLATE",
+    "VISION_GROUNDING_SYSTEM_PROMPT",
+    "VisionGroundingService",
+    "get_vision_dom_first_prompt",
+    "get_vision_grounding_prompt",
+    "vision_grounding_service",
+]
 
 
 class VisionGroundingService:
@@ -102,12 +71,13 @@ class VisionGroundingService:
 
         vp = viewport_metrics or {"width": 1280.0, "height": 720.0, "dpr": 1.0}
         image_bytes = base64.b64decode(screenshot_b64)
-        prompt = VISION_GROUNDING_SYSTEM_PROMPT.format(
+        history_json = json.dumps(history[-6:], ensure_ascii=False, indent=2) if history else "[]"
+        prompt = get_vision_grounding_prompt(
             goal=goal,
             viewport_width=int(vp.get("width", 1280)),
             viewport_height=int(vp.get("height", 720)),
-            dpr=vp.get("dpr", 1.0),
-            history_json=json.dumps(history[-6:], ensure_ascii=False, indent=2) if history else "[]",
+            dpr=float(vp.get("dpr", 1.0)),
+            history_json=history_json,
         )
 
         try:
@@ -170,35 +140,14 @@ class VisionGroundingService:
             if txt:
                 elements_text.append(f"[{idx}] {tag}: \"{txt}\"")
 
-        dom_prompt = f"""You are an ERP Navigation & Form Operator for DynamicPro ERP.
-GOAL: "{goal}"
-CURRENT PAGE: URL="{page_state.get('url', '')}", Title="{page_state.get('title', '')}", Headings={json.dumps(page_state.get('headings', []), ensure_ascii=False)}
-
-RECENT ACTIONS:
-{json.dumps(history[-4:], ensure_ascii=False, indent=1) if history else "[]"}
-
-INTERACTIVE ELEMENTS ON SCREEN:
-{chr(10).join(elements_text) if elements_text else "No elements found"}
-
-TASK:
-Decide the single next action to achieve the user's goal.
-- If the entire user's request (including all data entries/transactions) is completely finished, return action="done" and is_terminal=true.
-  CRITICAL: If the goal asks to create, register, or enter data (e.g. create invoice, add items, set vendor), DO NOT return "done" just because you are on the screen! You must first click "اضافة جديد" (New) or target input fields.
-- To click a button, link, or tab, choose its EXACT integer [ID] from the list above with action="click".
-- To type into an input/select field, choose its integer [ID] with action="type", and specify "text".
-- To press keyboard keys (e.g. Tab, Enter), use action="press_key" and specify "key".
-- If the element you need is NOT in the list or requires visual table/grid inspection, return element_id=null so vision fallback will handle it.
-
-OUTPUT FORMAT (JSON only):
-{{
-  "thought": "شرح موجز بالعربية للخطوة التالية",
-  "action": "click" | "type" | "press_key" | "done" | "wait",
-  "element_id": integer ID from list or null,
-  "text": "text to type if action is type, else null",
-  "key": "Enter|Tab|Escape if action is press_key, else null",
-  "is_terminal": true or false
-}}
-"""
+        dom_prompt = get_vision_dom_first_prompt(
+            goal=goal,
+            page_url=page_state.get("url", ""),
+            page_title=page_state.get("title", ""),
+            headings_json=json.dumps(page_state.get("headings", []), ensure_ascii=False),
+            history_json=json.dumps(history[-4:], ensure_ascii=False, indent=1) if history else "[]",
+            elements_text="\n".join(elements_text) if elements_text else "No elements found",
+        )
         try:
             resp = await asyncio.wait_for(
                 asyncio.to_thread(
