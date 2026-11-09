@@ -616,12 +616,23 @@ class StepperEngine:
                         y=int(coord[1]),
                         target_text=target_text or thought,
                         interactive_elements=interactive_elements,
+                        viewport_metrics=viewport_metrics,
                     )
                     timings["click_ms"] = round((time.perf_counter() - t_exec_start) * 1000, 1)
 
                     # انتظار ذكي بدلاً من sleep ثابت (Settle Detection)
                     settle_ms = await cdp_agent_service.wait_for_settle(ws_url, initial_url=curr_url, max_wait_sec=0.7)
                     timings["settle_ms"] = round(settle_ms, 1)
+
+                    # فحص رسائل التنبيه (#toast-container) أو القوائم الفرعية (span.dp-menu_text) بعد النقر
+                    active_toasts = await cdp_agent_service.get_active_toasts_and_alerts(ws_url)
+                    error_toasts = [t["text"] for t in active_toasts if t.get("kind") == "error"]
+                    if error_toasts:
+                        yield {
+                            "step": step_idx,
+                            "status": "acting",
+                            "message": f"⚠️ تنبيه من النظام: {' — '.join(error_toasts)} (جاري التصحيح الذاتي...)",
+                        }
 
                     history.append({
                         "step": step_idx,
@@ -631,6 +642,7 @@ class StepperEngine:
                         "target_text": target_text,
                         "thought": thought,
                         "url": curr_url,
+                        "erp_toasts": [t["text"] for t in active_toasts] if active_toasts else None,
                     })
 
                 elif action == "type":
@@ -642,11 +654,13 @@ class StepperEngine:
                             y=int(coord[1]),
                             target_text=target_text or thought,
                             interactive_elements=interactive_elements,
+                            viewport_metrics=viewport_metrics,
                         )
                         await asyncio.sleep(0.15)
                     text_to_type = prediction.get("text") or ""
                     if text_to_type:
                         await cdp_agent_service.type_text(ws_url, str(text_to_type))
+                    active_toasts = await cdp_agent_service.get_active_toasts_and_alerts(ws_url)
                     history.append({
                         "step": step_idx,
                         "action": "type",
@@ -654,6 +668,7 @@ class StepperEngine:
                         "text": text_to_type,
                         "thought": thought,
                         "url": curr_url,
+                        "erp_toasts": [t["text"] for t in active_toasts] if active_toasts else None,
                     })
 
                 elif action == "press_key" and prediction.get("key"):

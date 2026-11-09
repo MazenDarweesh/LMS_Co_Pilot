@@ -108,6 +108,9 @@ class CdpAgentService:
     ) -> float:
         return await self.visual.wait_for_settle(ws_url, initial_url=initial_url, max_wait_sec=max_wait_sec)
 
+    async def get_active_toasts_and_alerts(self, ws_url: str) -> list[dict[str, str]]:
+        return await self.visual.get_active_toasts_and_alerts(ws_url)
+
     async def click_element_or_coordinate(
         self,
         ws_url: str,
@@ -115,9 +118,15 @@ class CdpAgentService:
         y: int,
         target_text: str | None = None,
         interactive_elements: list[dict[str, Any]] | None = None,
+        viewport_metrics: dict[str, float] | None = None,
     ) -> tuple[int, int, bool]:
         return await self.visual.click_element_or_coordinate(
-            ws_url, x, y, target_text=target_text, interactive_elements=interactive_elements
+            ws_url,
+            x,
+            y,
+            target_text=target_text,
+            interactive_elements=interactive_elements,
+            viewport_metrics=viewport_metrics,
         )
 
     # ─── 4. ERP Host Navigation Delegation ───────────────────────────────

@@ -1,359 +1,78 @@
+"""
+SearchService Facade — Cognitive Search Pipeline Orchestrator.
+
+Delegates specialized domain logic to `src.services.cognitive_search.search`:
+- `rag_context_builder`: Qdrant scope filters, chunk validation, RAG context strings, SourceItems
+- `memory_budget_manager`: Sliding-window + token-budget message trimming & LangGraph agent node
+- `search_debug_tracer`: Conditional JSON diagnostic trace writer
+- `erp_action_extractor`: AI form action intent classifier, catalog schema enricher, JSON extractor
+- `sse_stream_producer`: Threaded Gemini SSE token producer, backpressure queue, heartbeat, cache persistence
+"""
 import asyncio
-import os
-import json
 import re
 import time
 import uuid
-import threading
-from datetime import datetime, timezone
 from typing import Any, AsyncIterator
-import structlog
 from fastapi import Request
 from google import genai
-from google.genai import types
+from langchain_core.messages import HumanMessage
+from langgraph.graph import END, START, StateGraph
+import structlog
 
-from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage, AIMessage
-
-
-from src.core.config import settings
-from src.core.prompts import (
-    RAG_SYSTEM_PROMPT,
-    get_rag_system_prompt,
-    get_erp_intent_classification_prompt,
-    get_erp_form_extraction_prompt,
-)
 from src.agents.base_agent import AgentState, agent_service
-from src.models.search_models import SearchRequest, SearchResponse, SourceItem
-from src.models.auth_models import UserContext
-from src.services.cognitive_search.embedding_service import embedding_service
-from src.services.cognitive_search.qdrant_service import qdrant_service
-from src.services.cognitive_search.reranker_service import reranker_service
-from src.services.cognitive_search.semantic_cache_service import semantic_cache_service
-from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
-from src.services.cognitive_search.exact_cache_service import exact_cache_service
-from src.services.cognitive_search.intent_router import intent_router, IntentType
+from src.core.config import settings
 from src.core.metrics import (
     record_cache_lookup,
     record_exact_cache_lookup,
+    record_guardrail_refusal,
     record_stage_duration,
     record_token_usage,
-    record_streaming_ttft,
-    record_streaming_tpot,
-    record_guardrail_refusal,
 )
+from src.models.auth_models import UserContext
+from src.models.search_models import SearchRequest, SearchResponse
+from src.services.cognitive_search.embedding_service import embedding_service
+from src.services.cognitive_search.exact_cache_service import exact_cache_service
+from src.services.cognitive_search.intent_router import IntentType, intent_router
+from src.services.cognitive_search.qdrant_service import qdrant_service
+from src.services.cognitive_search.reranker_service import reranker_service
+from src.services.cognitive_search.search import (
+    FORM_FILL_CONFIRMATION,
+    build_action_guide_message,
+    build_form_fill_payload,
+    build_rag_context_str,
+    build_schema_from_catalog,
+    build_scope_filter,
+    build_source_items,
+    classify_form_action_intent,
+    execute_langgraph_agent_node,
+    extract_form_fields_if_needed,
+    filter_valid_chunks,
+    format_sse,
+    resolve_and_enrich_erp_action_schema,
+    stream_gemini_rag_tokens,
+    trim_messages,
+    write_search_debug_file,
+)
+from src.services.cognitive_search.semantic_cache_service import semantic_cache_service
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
-from qdrant_client.models import Filter, FieldCondition, MatchAny, MatchValue
 
 logger = structlog.get_logger()
 
-def _build_scope_filter(req: SearchRequest) -> Filter | None:
-    must = []
-    
-    # 1. Scope Content Type Filtering
-    if req.scope == "course":
-        must.append(FieldCondition(key="content_type", match=MatchAny(any=["video_chunk", "pdf_chunk"])))
-    elif req.scope == "standalone":
-        must.append(FieldCondition(key="content_type", match=MatchValue(value="standalone_video_chunk")))
-    elif req.scope == "playlist":
-        must.append(FieldCondition(key="content_type", match=MatchValue(value="playlist_video_chunk")))
-        
-    # 2. Hierarchical Scope ID Filtering
-    # Explicit binding: only filter by lesson/unit/module when scope specifically targets that level.
-    # Matches both single fields and multi-reference array fields (Process Once, Reference Everywhere).
-    if (req.scope in ("lessons", "multi_lesson") or req.lesson_ids) and req.lesson_ids:
-        must.append(Filter(should=[
-            FieldCondition(key="lesson_id", match=MatchAny(any=req.lesson_ids)),
-            FieldCondition(key="lesson_ids", match=MatchAny(any=req.lesson_ids)),
-        ]))
-    elif req.scope == "lesson" and req.lesson_id:
-        must.append(Filter(should=[
-            FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
-            FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
-        ]))
-    elif req.scope == "unit" and req.unit_id:
-        must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
-    elif req.scope == "module" and req.module_id:
-        must.append(Filter(should=[
-            FieldCondition(key="module_id", match=MatchValue(value=req.module_id)),
-            FieldCondition(key="module_ids", match=MatchValue(value=req.module_id)),
-        ]))
-    elif req.scope not in {"all", "module", "unit", "lesson", "lessons", "multi_lesson"}:
-        # Backward compatibility for direct ID queries or legacy playlist/video requests
-        if req.lesson_ids:
-            must.append(Filter(should=[
-                FieldCondition(key="lesson_id", match=MatchAny(any=req.lesson_ids)),
-                FieldCondition(key="lesson_ids", match=MatchAny(any=req.lesson_ids)),
-            ]))
-        elif req.lesson_id:
-            must.append(Filter(should=[
-                FieldCondition(key="lesson_id", match=MatchValue(value=req.lesson_id)),
-                FieldCondition(key="lesson_ids", match=MatchValue(value=req.lesson_id)),
-            ]))
-        elif req.unit_id:
-            must.append(FieldCondition(key="unit_id", match=MatchValue(value=req.unit_id)))
-        elif req.module_id:
-            must.append(Filter(should=[
-                FieldCondition(key="module_id", match=MatchValue(value=req.module_id)),
-                FieldCondition(key="module_ids", match=MatchValue(value=req.module_id)),
-            ]))
-
-    if req.playlist_id:
-        must.append(FieldCondition(key="playlist_id", match=MatchValue(value=req.playlist_id)))
-    if req.video_id:
-        must.append(FieldCondition(key="video_id", match=MatchValue(value=req.video_id)))
-
-    # 3. Level & Content Type Filtering
-    if req.level_id:
-        must.append(FieldCondition(key="level_id", match=MatchValue(value=req.level_id)))
-    if req.type_id:
-        must.append(FieldCondition(key="type_id", match=MatchValue(value=req.type_id)))
-        
-    return Filter(must=must) if must else None
-
-def _filter_valid_chunks(chunks: list[dict]) -> list[dict]:
-    """
-    تصفية المقاطع لاستبعاد أي مقطع غير مكتمل التوصيف قبل بناء السياق والمصادر.
-    تضمن هذه الخطوة المطابقة الكاملة بين عدد وأرقام المقاطع المرسلة إلى Gemini
-    وبين المصفوفة النهائية للمصادر المرجعة للواجهة الأمامية.
-    """
-    valid = []
-    for chunk in chunks:
-        c_type = chunk.get("content_type")
-        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"]:
-            if chunk.get("source_url"):
-                valid.append(chunk)
-        elif c_type == "pdf_chunk":
-            valid.append(chunk)
-    return valid
-
-
-def _build_rag_context_str(chunks: list[dict]) -> str:
-    context_blocks = []
-    for i, chunk in enumerate(chunks, 1):
-        text = chunk.get("text_msa", "")
-        url  = chunk.get("source_url", "")
-        start_time = chunk.get("start_time")
-        end_time = chunk.get("end_time")
-        
-        source_info = f"[{i}] {text}\n(المصدر: {url}"
-        if start_time is not None:
-            source_info += f" - من {start_time} إلى {end_time} ثانية"
-        source_info += ")"
-        context_blocks.append(source_info)
-
-    return "\n\n".join(context_blocks)
-
-
-def _build_source_items(chunks: list[dict]) -> list[SourceItem]:
-    """
-    ينشئ كائنات SourceItem مهيكلة مرتبة متسلسلاً من 1 إلى N بناءً على المقاطع المصفاة.
-    يضمن توفير حقل 'title' لعرضه مباشرة في بطاقات المصادر بالواجهة.
-    """
-    sources: list[SourceItem] = []
-    for i, chunk in enumerate(chunks, 1):
-        c_type = chunk.get("content_type")
-        if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"]:
-            start_s = chunk.get("start_time")
-            end_s = chunk.get("end_time")
-            if start_s is not None and end_s is not None:
-                s_min, s_sec = divmod(int(start_s), 60)
-                e_min, e_sec = divmod(int(end_s), 60)
-                title = f"المصدر [{i}] — مقطع فيديو ({s_min:02d}:{s_sec:02d} - {e_min:02d}:{e_sec:02d})"
-            else:
-                title = f"المصدر [{i}] — مقطع فيديو"
-            sources.append(SourceItem(
-                type="video",
-                url=chunk.get("source_url"),
-                title=title,
-                start=start_s,
-                end=end_s,
-                lesson_id=chunk.get("lesson_id"),
-            ))
-        elif c_type == "pdf_chunk":
-            section = chunk.get("section_title")
-            page = chunk.get("page_number")
-            if section:
-                title = f"المصدر [{i}] — {section}"
-            elif page:
-                title = f"المصدر [{i}] — صفحة {page}"
-            else:
-                title = f"المصدر [{i}] — مستند PDF"
-            sources.append(SourceItem(
-                type="pdf",
-                title=title,
-                page=page,
-                section=section,
-                lesson_id=chunk.get("lesson_id"),
-            ))
-    return sources
-
-def _trim_messages(
-    messages: list,
-    max_messages: int,
-    max_tokens_approx: int
-) -> list:
-    """
-    Sliding Window Memory Trimmer — 2026 Best Practice.
-    
-    Strategy (two-layer defense):
-    Layer 1: Keep only the last `max_messages` (hard message count limit).
-    Layer 2: If total chars still too large, trim further from the oldest.
-    
-    Note: We use character count as a cheap proxy for tokens (1 token ≈ 4 chars
-    in Arabic/English mixed text). This avoids the overhead of a full tokenizer call.
-    
-    Always preserves the LAST message (the new student question) intact.
-    """
-    if not messages:
-        return messages
-
-    # Layer 1: Sliding Window — trim by message count
-    trimmed = list(messages[-max_messages:]) if len(messages) > max_messages else list(messages)
-
-    # Layer 2: Token Budget Guard — trim by approximate character budget
-    # 1 token ≈ 4 chars (conservative estimate for Arabic)
-    char_budget = max_tokens_approx * 4
-    total_chars = sum(len(getattr(m, "content", "")) for m in trimmed)
-
-    while total_chars > char_budget and len(trimmed) > 1:
-        # Always drop from the oldest end (index 0), never drop the last message
-        removed = trimmed.pop(0)
-        total_chars -= len(getattr(removed, "content", ""))
-
-    return trimmed
-
-def _write_search_debug_file(
-    query: str, 
-    candidates: list[dict], 
-    reranked: list[dict], 
-    prompt: str, 
-    answer: str,
-    metrics: dict | None = None,
-    token_usage: dict | None = None
-) -> None:
-    """حفظ تفاصيل عملية البحث في ملف JSON عند تفعيل SEARCH_DEBUG_ENABLED فقط لمنع استهلاك القرص."""
-    if not settings.SEARCH_DEBUG_ENABLED:
-        return
-
-    debug_dir = "downloads/search_debugs"
-    os.makedirs(debug_dir, exist_ok=True)
-    
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-    file_path = os.path.join(debug_dir, f"search_{timestamp}.json")
-    
-    debug_data = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "query": query,
-        "metrics": metrics or {},
-        "token_usage": token_usage or {},
-        "qdrant_rrf_candidates": [
-            {
-                "point_id": c.get("_qdrant_point_id"),
-                "chunk_id": c.get("chunk_id"),
-                "content_type": c.get("content_type"),
-                "text_msa": c.get("text_msa"),
-                "source_url": c.get("source_url")
-            } for c in candidates
-        ],
-        "reranker_results": [
-            {
-                "point_id": r.get("_qdrant_point_id"),
-                "chunk_id": r.get("chunk_id"),
-                "content_type": r.get("content_type"),
-                "text_msa": r.get("text_msa"),
-                "source_url": r.get("source_url"),
-                "reranker_score": r.get("_reranker_score")
-            } for r in reranked
-        ],
-        "prompt_sent_to_gemini": prompt,
-        "gemini_answer": answer
-    }
-    
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(debug_data, f, ensure_ascii=False, indent=4)
-    logger.info("Search debug file written", path=file_path)
-
-
-def _format_sse(event_type: str, data: dict) -> str:
-    """Formats a payload dictionary into a standard, UTF-8 compliant SSE message."""
-    payload = json.dumps(data, ensure_ascii=False)
-    lines = payload.split("\n")
-    data_lines = "\n".join(f"data: {line}" for line in lines)
-    return f"event: {event_type}\n{data_lines}\n\n"
-
-
-_FORM_FILL_CONFIRMATION = (
-    "تم تجهيز البيانات المطلوبة وهي جاهزة للإدخال في الشاشة النشطة عبر بطاقة الإجراء أدناه."
-)
-
-
-def _build_form_fill_payload(
-    raw_extracted: Any,
-    screen_key: str | None,
-    page_id: int | str | None = None,
-    document_name: str | None = None,
-) -> dict | None:
-    """
-    Normalizes the AI extraction result into the `form_fill` SSE payload.
-    Returns None when nothing concrete was extracted (so the request falls back to plain RAG).
-    The target screen is ALWAYS the active screen chosen by the AI router (no keyword inference).
-    """
-    if not raw_extracted or not isinstance(raw_extracted, dict):
-        return None
-    fields_dict = raw_extracted.get("fields") if isinstance(raw_extracted.get("fields"), dict) else {}
-    rows_list = raw_extracted.get("rows") if isinstance(raw_extracted.get("rows"), list) else []
-    batch_items = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
-    if not (fields_dict or rows_list or batch_items):
-        return None
-    payload: dict[str, Any] = {
-        "intent": "form_fill",
-        "fields": fields_dict,
-        "rows": rows_list,
-        "screenKey": screen_key,
-        "batch_mode": bool(raw_extracted.get("batch_mode", False)),
-        "batch_items": batch_items,
-    }
-    if page_id:
-        payload["pageId"] = page_id
-    if document_name:
-        payload["documentName"] = document_name
-    return payload
-
-
-def _build_schema_from_catalog(form_meta: dict[str, Any]) -> list[dict[str, Any]]:
-    """Synthesizes a standardized schema from catalog metadata for LLM extraction context."""
-    schema: list[dict[str, Any]] = []
-    # 1. Header fields
-    headers = form_meta.get("header_fields") or form_meta.get("expected_header") or {}
-    if isinstance(headers, dict):
-        for key, val in headers.items():
-            label = val.get("label_ar") if isinstance(val, dict) else str(val)
-            ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
-            req_flag = val.get("is_required", False) if isinstance(val, dict) else False
-            schema.append({
-                "name": key,
-                "label": label or key,
-                "type": ctrl,
-                "required": req_flag,
-                "section": "header"
-            })
-    # 2. Grid fields
-    grids = form_meta.get("grid_fields") or form_meta.get("expected_grid") or {}
-    if isinstance(grids, dict):
-        for key, val in grids.items():
-            label = val.get("label_ar") if isinstance(val, dict) else str(val)
-            ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
-            schema.append({
-                "name": key,
-                "label": label or key,
-                "type": ctrl,
-                "section": "grid"
-            })
-    return schema
+# Backward-compatible private aliases for internal callers & tests
+_build_scope_filter = build_scope_filter
+_filter_valid_chunks = filter_valid_chunks
+_build_rag_context_str = build_rag_context_str
+_build_source_items = build_source_items
+_trim_messages = trim_messages
+_write_search_debug_file = write_search_debug_file
+_format_sse = format_sse
+_FORM_FILL_CONFIRMATION = FORM_FILL_CONFIRMATION
+_build_form_fill_payload = build_form_fill_payload
+_build_schema_from_catalog = build_schema_from_catalog
 
 
 class SearchService:
+    """High-level Facade orchestrating synchronous and streaming RAG + ERP Action pipelines."""
 
     def __init__(self):
         self._gemini_client = None
@@ -361,7 +80,7 @@ class SearchService:
 
     def initialize(self):
         self._gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        
+
         workflow = StateGraph(AgentState)
         workflow.add_node("agent", self._call_model)
         workflow.add_edge(START, "agent")
@@ -369,83 +88,24 @@ class SearchService:
         self.app_graph = workflow.compile(checkpointer=agent_service.checkpointer)
 
     async def _call_model(self, state: AgentState) -> dict:
-        raw_messages = state["messages"]
-        context_str = state["context"].get("context_str", "") if state.get("context") else ""
-        
-        # Apply Sliding Window + Token Budget trimming before sending to Gemini
-        messages = _trim_messages(
-            messages=raw_messages,
-            max_messages=settings.AGENT_MAX_HISTORY_MESSAGES,
-            max_tokens_approx=settings.AGENT_MAX_CONTEXT_TOKENS,
-        )
-        
-        if len(raw_messages) != len(messages):
-            logger.debug(
-                "Memory trimmed",
-                original_count=len(raw_messages),
-                trimmed_count=len(messages),
-            )
-            
-        gemini_contents = []
-        for msg in messages:
-            role = "user" if isinstance(msg, HumanMessage) else "model"
-            gemini_contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg.content)]))
-            
-        num_sources = state["context"].get("num_sources", 1) if state.get("context") else 1
-        is_multi_lesson = state["context"].get("is_multi_lesson", False) if state.get("context") else False
-        visible_fields = state["context"].get("visible_fields") if state.get("context") else None
-        system_instruction = get_rag_system_prompt(
-            context_str=context_str,
-            num_sources=num_sources,
-            is_multi_lesson=is_multi_lesson,
-            visible_fields=visible_fields,
-        )
+        return await execute_langgraph_agent_node(state, self._gemini_client)
 
-        t0 = time.time()
-        response = await asyncio.to_thread(
-            (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
-            model=settings.GEMINI_MODEL,
-            contents=gemini_contents,
-            config=types.GenerateContentConfig(
-                temperature=0.2, 
-                max_output_tokens=1024,
-                system_instruction=system_instruction
-            ),
+    async def _classify_form_action_intent(self, query: str, erp_intent: str | None = None) -> bool:
+        return await classify_form_action_intent(self._gemini_client, query, erp_intent)
+
+    async def _extract_form_fields_if_needed(
+        self, query: str, visible_fields: list[str] | None, form_schema: list[dict] | None = None
+    ) -> dict[str, Any]:
+        return await extract_form_fields_if_needed(
+            self._gemini_client, query, visible_fields, form_schema
         )
-        gemini_latency_ms = round((time.time() - t0) * 1000, 2)
-        
-        token_usage = {}
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            token_usage = {
-                "prompt_tokens": getattr(response.usage_metadata, "prompt_token_count", 0),
-                "completion_tokens": getattr(response.usage_metadata, "candidates_token_count", 0),
-                "total_tokens": getattr(response.usage_metadata, "total_token_count", 0),
-            }
-            
-        if token_usage.get("total_tokens", 0) > settings.AGENT_MAX_CONTEXT_TOKENS * 0.85:
-            logger.warning(
-                "Token usage approaching budget limit",
-                total_tokens=token_usage.get("total_tokens"),
-                budget=settings.AGENT_MAX_CONTEXT_TOKENS
-            )
-            
-        return {
-            "messages": [AIMessage(content=response.text)],
-            "context": {
-                "token_usage": token_usage,
-                "gemini_latency_ms": gemini_latency_ms,
-                "system_prompt_used": system_instruction
-            }
-        }
 
     async def search(self, req: SearchRequest, user_ctx: UserContext) -> SearchResponse:
         logger.info("Search started", query=req.query, scope=req.scope, user_entities_count=len(user_ctx.user_entities))
-        metrics = {}
+        metrics: dict[str, Any] = {}
         t0 = time.time()
 
-        # ──────────────────────────────────────────────
         # 0. Fast Ingress: Intent Router (< 1ms bypass)
-        # ──────────────────────────────────────────────
         if settings.INTENT_ROUTER_ENABLED:
             t_intent = time.time()
             intent_res = intent_router.classify(req.query)
@@ -471,16 +131,10 @@ class SearchService:
                     latency_ms=round((time.time() - t0) * 1000, 2),
                 )
 
-
-        # ──────────────────────────────────────────────
-        # 1. Normalize query
-        # ──────────────────────────────────────────────
+        # 1. Normalize query & check Tier-1 Exact Cache
         normalized_query = normalize_arabic_text_leaderboard(req.query)
         logger.debug("Query normalized for cache & embedding", original=req.query, normalized=normalized_query)
 
-        # ──────────────────────────────────────────────
-        # 1.1 Fast Ingress: Tier-1 Exact In-Memory Cache (< 2ms)
-        # ──────────────────────────────────────────────
         if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_exact = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
@@ -495,7 +149,7 @@ class SearchService:
                 logger.info("Serving from Exact In-Memory Cache ⚡", ms=metrics["total_latency_ms"])
                 if settings.SEARCH_DEBUG_ENABLED:
                     await asyncio.to_thread(
-                        _write_search_debug_file,
+                        write_search_debug_file,
                         query=req.query,
                         candidates=[],
                         reranked=[],
@@ -507,21 +161,15 @@ class SearchService:
                 exact_hit.cache_hit = True
                 exact_hit.latency_ms = metrics["total_latency_ms"]
                 return exact_hit
-            else:
-                record_exact_cache_lookup(hit=False)
+            record_exact_cache_lookup(hit=False)
 
-        # ──────────────────────────────────────────────
-        # 2. Embed → Dense + Sparse
-        # ──────────────────────────────────────────────
+        # 2. Embed → Dense + Sparse & check Tier-2 Semantic Cache
         t_embed = time.time()
         dense_vec, sparse_vec = await embedding_service.get_both_embeddings(normalized_query)
         embedding_duration = time.time() - t_embed
         metrics["embedding_latency_ms"] = round(embedding_duration * 1000, 2)
         record_stage_duration("embedding", embedding_duration)
 
-        # ──────────────────────────────────────────────
-        # 2.1 Tier-2 Semantic Cache (Qdrant Vector Cache)
-        # ──────────────────────────────────────────────
         if settings.SEMANTIC_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_cache = time.time()
             cached_resp = await semantic_cache_service.lookup(
@@ -533,7 +181,6 @@ class SearchService:
             record_stage_duration("cache_lookup", cache_duration)
             if cached_resp is not None:
                 record_cache_lookup(hit=True)
-                # Auto-populate Tier-1 Exact Cache for immediate subsequent hits
                 if settings.EXACT_CACHE_ENABLED:
                     exact_cache_service.store(normalized_query, cached_resp, user_ctx, req.scope_fingerprint)
 
@@ -544,7 +191,7 @@ class SearchService:
                 logger.info("Serving from Semantic Cache", ms=metrics["total_latency_ms"])
                 if settings.SEARCH_DEBUG_ENABLED:
                     await asyncio.to_thread(
-                        _write_search_debug_file,
+                        write_search_debug_file,
                         query=req.query,
                         candidates=[],
                         reranked=[],
@@ -556,11 +203,10 @@ class SearchService:
                 cached_resp.cache_hit = True
                 cached_resp.latency_ms = metrics["total_latency_ms"]
                 return cached_resp
-            else:
-                record_cache_lookup(hit=False)
+            record_cache_lookup(hit=False)
 
-        scope_filter = _build_scope_filter(req)
-
+        # 3. Hybrid Search & Reranking
+        scope_filter = build_scope_filter(req)
         t1 = time.time()
         candidates = await qdrant_service.hybrid_search(
             dense_vector=dense_vec,
@@ -576,13 +222,13 @@ class SearchService:
         if not candidates:
             if settings.SEARCH_DEBUG_ENABLED:
                 await asyncio.to_thread(
-                    _write_search_debug_file,
+                    write_search_debug_file,
                     query=req.query,
                     candidates=[],
                     reranked=[],
                     prompt="",
                     answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
-                    metrics=metrics
+                    metrics=metrics,
                 )
             return SearchResponse(
                 answer="لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع.",
@@ -607,18 +253,16 @@ class SearchService:
         record_stage_duration("reranking", reranker_duration)
         logger.info("Reranked results", top_n=len(top_chunks), ms=metrics["reranker_latency_ms"])
 
-        # ──────────────────────────────────────────────
-        # 5. Build context & Invoke LangGraph
-        # ──────────────────────────────────────────────
-        valid_chunks = _filter_valid_chunks(top_chunks)
-        context_str = _build_rag_context_str(valid_chunks)
-        sources = _build_source_items(valid_chunks)
+        # 4. Build context & Invoke LangGraph
+        valid_chunks = filter_valid_chunks(top_chunks)
+        context_str = build_rag_context_str(valid_chunks)
+        sources = build_source_items(valid_chunks)
         num_sources = len(valid_chunks) if valid_chunks else 1
         is_multi_lesson = bool(req.lesson_ids) or (req.scope in ("lessons", "multi_lesson"))
-        
+
         thread_id = req.thread_id or str(uuid.uuid4())
         config = {"configurable": {"thread_id": thread_id}}
-        
+
         t3 = time.time()
         final_state = await self.app_graph.ainvoke(
             {
@@ -630,14 +274,13 @@ class SearchService:
                     "visible_fields": req.visible_fields,
                 },
             },
-            config=config
+            config=config,
         )
         graph_latency_ms = round((time.time() - t3) * 1000, 2)
         record_stage_duration("gemini_generation", time.time() - t3)
         record_stage_duration("total", time.time() - t0)
-        
+
         answer_text = final_state["messages"][-1].content
-        
         returned_context = final_state.get("context", {})
         metrics["gemini_latency_ms"] = returned_context.get("gemini_latency_ms", 0)
         metrics["total_latency_ms"] = round((time.time() - t0) * 1000, 2)
@@ -648,20 +291,19 @@ class SearchService:
                 completion_tokens=token_usage.get("completion_tokens", 0),
                 total_tokens=token_usage.get("total_tokens", 0),
             )
-        
+
         logger.info("Gemini answer generated via LangGraph", answer_length=len(answer_text), thread_id=thread_id, ms=graph_latency_ms)
 
-        # Write trace log file asynchronously only if diagnostic logging is enabled
         if settings.SEARCH_DEBUG_ENABLED:
             await asyncio.to_thread(
-                _write_search_debug_file,
+                write_search_debug_file,
                 query=req.query,
                 candidates=candidates,
                 reranked=valid_chunks,
                 prompt=returned_context.get("system_prompt_used", ""),
                 answer=answer_text,
                 metrics=metrics,
-                token_usage=token_usage
+                token_usage=token_usage,
             )
 
         final_response = SearchResponse(
@@ -673,9 +315,7 @@ class SearchService:
             latency_ms=metrics["total_latency_ms"],
         )
 
-        # ──────────────────────────────────────────────
-        # 6. Save in Exact Cache & Semantic Cache
-        # ──────────────────────────────────────────────
+        # 5. Save in Exact Cache & Semantic Cache
         if settings.EXACT_CACHE_ENABLED and answer_text:
             exact_cache_service.store(
                 normalized_query=normalized_query,
@@ -699,98 +339,14 @@ class SearchService:
 
         return final_response
 
-    async def _classify_form_action_intent(self, query: str, erp_intent: str | None = None) -> bool:
-        """
-        AI-only intent resolution (no keyword / regex lists):
-        - If the AI navigation router already classified the message (`erp_intent`), reuse it — zero extra LLM calls.
-        - Otherwise ask the lightweight AI classifier. On AI failure we do NOT guess: the message is treated as a
-          plain question (no auto-fill), and the failure is logged.
-        """
-        if erp_intent in ("question", "navigate", "action"):
-            return erp_intent == "action"
-
-        q = query.strip()
-        if not q:
-            return False
-
-        try:
-            intent_prompt = get_erp_intent_classification_prompt(q)
-            resp = await asyncio.to_thread(
-                (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
-                model=settings.GEMINI_MODEL,
-                contents=intent_prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.0,
-                    max_output_tokens=32,
-                ),
-            )
-            if resp and resp.text:
-                detected = json.loads(resp.text).get("intent", "").lower()
-                logger.info("AI intent classification result", detected=detected, query=q)
-                return detected == "form_action"
-        except Exception as e:
-            logger.warning("AI intent classification failed; treating message as a plain question", error=str(e))
-        return False
-
-    async def _extract_form_fields_if_needed(
-        self, query: str, visible_fields: list[str] | None, form_schema: list[dict] | None = None
-    ) -> dict[str, Any]:
-        if not visible_fields and not form_schema:
-            return {}
-        try:
-            fields_ctx = form_schema if form_schema else visible_fields
-            fields_ctx_json = json.dumps(fields_ctx, ensure_ascii=False)
-            prompt = get_erp_form_extraction_prompt(query, fields_ctx_json)
-            # Use gemini-3.5-flash-lite as standard high-performance engine
-            candidate_models = [settings.GEMINI_MODEL]
-            candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
-
-            last_err = None
-            for model_name in candidate_models:
-                try:
-                    resp = await asyncio.to_thread(
-                        (self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)).models.generate_content,
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            temperature=0.0,
-                        ),
-                    )
-                    data = json.loads(resp.text)
-                    if isinstance(data, dict):
-                        if "fields" not in data and "rows" not in data and "batch_items" not in data:
-                            return {"batch_mode": False, "fields": data, "rows": []}
-                        return data
-                except Exception as err:
-                    last_err = err
-                    logger.warning("Batch extraction attempt failed on model, trying next", model=model_name, error=str(err))
-                    continue
-
-            if last_err:
-                logger.error("All candidate models failed for ERP form extraction", error=str(last_err))
-        except Exception as e:
-            logger.error("Failed to extract ERP form data", error=str(e))
-        return {}
     async def search_stream(
         self, req: SearchRequest, user_ctx: UserContext, request: Request
     ) -> AsyncIterator[str]:
-        """
-        Production-grade Server-Sent Events (SSE) streaming search endpoint:
-        - Step 0: Fast Ingress Intent Router (< 0.1ms short-circuit)
-        - Step 1: 2-Tier Caching (Exact LRU + Semantic Qdrant Vector Cache)
-        - Step 2: Dense + Sparse Qdrant retrieval + FlashRank Reranker (< 25ms)
-        - Step 3: Yields 'sources' event first for immediate citation rendering
-        - Step 4: Streams tokens in real time from Gemini SDK with heartbeat & disconnect protection
-        - Step 5: Post-stream exact & semantic cache storage and terminal 'done' event
-        """
+        """Production-grade Server-Sent Events (SSE) streaming search & ERP action pipeline."""
         logger.info("Search stream started", query=req.query, scope=req.scope)
         t0 = time.time()
 
-        # ──────────────────────────────────────────────
         # 0. Fast Ingress: Intent Router (< 1ms bypass)
-        # ──────────────────────────────────────────────
         if settings.INTENT_ROUTER_ENABLED:
             t_stage = time.time()
             intent_res = intent_router.classify(req.query)
@@ -800,9 +356,9 @@ class SearchService:
                     record_guardrail_refusal("security_violation")
                 record_stage_duration("total", time.time() - t0)
                 latency_ms = round((time.time() - t0) * 1000, 2)
-                yield _format_sse("sources", {"sources": []})
-                yield _format_sse("token", {"text": intent_res.canned_response})
-                yield _format_sse("done", {
+                yield format_sse("sources", {"sources": []})
+                yield format_sse("token", {"text": intent_res.canned_response})
+                yield format_sse("done", {
                     "intent": intent_res.intent.value,
                     "provenance": "INTENT_ROUTER",
                     "cache_hit": False,
@@ -811,12 +367,9 @@ class SearchService:
                 })
                 return
 
-        # ──────────────────────────────────────────────
-        # 1. Normalize Query & Check 2-Tier Cache
-        # ──────────────────────────────────────────────
+        # 1. Normalize Query & Check Exact Cache
         normalized_query = normalize_arabic_text_leaderboard(req.query)
 
-        # 1.1 Exact In-Memory Cache
         if settings.EXACT_CACHE_ENABLED and not req.skip_cache and not req.visible_fields and not req.form_schema:
             t_stage = time.time()
             exact_hit = exact_cache_service.lookup(normalized_query, user_ctx, req.scope_fingerprint)
@@ -825,9 +378,9 @@ class SearchService:
                 record_exact_cache_lookup(hit=True)
                 record_stage_duration("total", time.time() - t0)
                 latency_ms = round((time.time() - t0) * 1000, 2)
-                yield _format_sse("sources", {"sources": [s.model_dump() for s in exact_hit.sources]})
-                yield _format_sse("token", {"text": exact_hit.answer})
-                yield _format_sse("done", {
+                yield format_sse("sources", {"sources": [s.model_dump() for s in exact_hit.sources]})
+                yield format_sse("token", {"text": exact_hit.answer})
+                yield format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "exact",
                     "provenance": "EXACT_CACHE",
@@ -835,110 +388,25 @@ class SearchService:
                     "metrics": {"total_latency_ms": latency_ms},
                 })
                 return
-            else:
-                record_exact_cache_lookup(hit=False)
+            record_exact_cache_lookup(hit=False)
 
-        # ──────────────────────────────────────────────
-        # 1.1b ERP Action Fast-Path: AI-routed data-entry commands never need RAG retrieval
-        # ──────────────────────────────────────────────
-        effective_fields = req.visible_fields
-        effective_schema = req.form_schema
-        resolved_screen_key = req.erp_key
-        resolved_page_id = None
-        resolved_doc_name = None
-
+        # 1.1b ERP Action Fast-Path
         if await self._classify_form_action_intent(req.query, req.erp_intent):
-            # Always check catalog for authoritative page_id & document_name matching the user's query
-            target_form = forms_catalog_service.resolve_form_by_text(req.query)
-            if not target_form and resolved_screen_key:
-                target_form = (
-                    forms_catalog_service.get_form_by_page_id(resolved_screen_key)
-                    or forms_catalog_service.get_form_by_screen_key(resolved_screen_key)
-                )
-
-            if target_form:
-                resolved_page_id = target_form.get("page_id")
-                resolved_screen_key = target_form.get("screen_key") or resolved_screen_key
-                resolved_doc_name = target_form.get("name_ar") or target_form.get("document_name")
-
-                # If client didn't supply live form DOM schema, OR if live DOM schema belongs to a mismatched
-                # setup screen (e.g., lacking core catalog fields like AccountId/StoreId), use catalog schema
-                catalog_schema = _build_schema_from_catalog(target_form)
-                if not effective_fields and not effective_schema:
-                    effective_schema = catalog_schema
-                    logger.info(
-                        "Resolved cross-screen form schema from catalog for compound intent",
-                        page_id=resolved_page_id,
-                        screen_key=resolved_screen_key,
-                        doc_name=resolved_doc_name,
-                        fields_count=len(effective_schema),
-                    )
-                elif effective_schema and catalog_schema:
-                    live_keys = {str(f.get("key", "")).lower() for f in effective_schema if isinstance(f, dict)}
-                    cat_header_keys = {
-                        str(f.get("key", "")).lower()
-                        for f in (target_form.get("expected_header") or [])
-                        if isinstance(f, dict) and f.get("key")
-                    }
-                    # If live DOM has 0 overlap with catalog header keys (e.g. user was on Sales Types 225 instead of 244),
-                    # override with authoritative catalog schema so extraction doesn't hallucinate onto setup fields
-                    if cat_header_keys and not live_keys.intersection(cat_header_keys):
-                        effective_schema = catalog_schema
-                        effective_fields = None
-                        logger.info(
-                            "Replaced mismatched DOM schema with authoritative catalog schema",
-                            page_id=resolved_page_id,
-                            doc_name=resolved_doc_name,
-                        )
-                    else:
-                        # Enrich live DOM schema with Arabic labels from catalog_schema & semantic defaults
-                        cat_label_map = {
-                            str(cf.get("key", "")).lower(): str(cf.get("label", "")).strip()
-                            for cf in catalog_schema
-                            if isinstance(cf, dict) and cf.get("key") and cf.get("label")
-                        }
-                        semantic_label_defaults = {
-                            "posetting": "طريقة الشراء",
-                            "contracttype": "طريقة البيع",
-                            "currancyid": "العملة",
-                            "currencyid": "العملة",
-                            "safeaccounid": "الخزينة",
-                            "safeaccountid": "الخزينة",
-                            "safeaccount": "الخزينة",
-                            "costitemid": "مركز التكلفة",
-                            "projectid": "المشروع",
-                            "storeid": "المخزن",
-                            "supplierid": "المورد",
-                            "customerid": "العميل",
-                        }
-                        has_method_field = any(
-                            str(f.get("key", "")).lower() in ("posetting", "contracttype")
-                            for f in effective_schema
-                            if isinstance(f, dict)
-                        )
-                        enriched_schema = []
-                        for f in effective_schema:
-                            if not isinstance(f, dict):
-                                continue
-                            f_key_low = str(f.get("key", "")).strip().lower()
-                            f_label = str(f.get("label", "")).strip()
-                            # Filter out unlabeled custom_select or sub-modal InsertType when POSetting/ContractType exists
-                            if has_method_field and f_key_low in ("custom_select", "inserttype", "defultvalue") and (
-                                not f_label or f_label.lower() == f_key_low
-                            ):
-                                continue
-                            if not f_label or f_label.lower() == f_key_low:
-                                enriched_label = cat_label_map.get(f_key_low) or semantic_label_defaults.get(f_key_low, "")
-                                if enriched_label:
-                                    f = {**f, "label": enriched_label}
-                            enriched_schema.append(f)
-                        effective_schema = enriched_schema
+            (
+                effective_fields,
+                effective_schema,
+                resolved_screen_key,
+                resolved_page_id,
+                resolved_doc_name,
+            ) = resolve_and_enrich_erp_action_schema(
+                req.query, req.visible_fields, req.form_schema, req.erp_key
+            )
 
             if effective_fields or effective_schema:
                 raw_extracted = await self._extract_form_fields_if_needed(
                     req.query, effective_fields, effective_schema
                 )
-                form_payload = _build_form_fill_payload(
+                form_payload = build_form_fill_payload(
                     raw_extracted,
                     resolved_screen_key,
                     page_id=resolved_page_id,
@@ -954,10 +422,10 @@ class SearchService:
                         erp_key=resolved_screen_key,
                         page_id=resolved_page_id,
                     )
-                    yield _format_sse("sources", {"sources": []})
-                    yield _format_sse("form_fill", form_payload)
-                    yield _format_sse("token", {"text": _FORM_FILL_CONFIRMATION})
-                    yield _format_sse("done", {
+                    yield format_sse("sources", {"sources": []})
+                    yield format_sse("form_fill", form_payload)
+                    yield format_sse("token", {"text": FORM_FILL_CONFIRMATION})
+                    yield format_sse("done", {
                         "thread_id": req.thread_id or str(uuid.uuid4()),
                         "provenance": "ERP_FORM_FILL",
                         "cache_hit": False,
@@ -966,14 +434,35 @@ class SearchService:
                     })
                     return
 
-        # 1.1b Pure Navigation Fast-Path: Never run Qdrant lecture RAG when erp_intent is 'navigate'
-        if (req.erp_intent or "").strip().lower() == "navigate":
+            record_stage_duration("total", time.time() - t0)
+            latency_ms = round((time.time() - t0) * 1000, 2)
+            guide_msg = build_action_guide_message(
+                effective_schema, effective_fields, resolved_doc_name, resolved_screen_key
+            )
+            logger.info("Emitting action guide SSE (pure action short-circuit)", erp_key=resolved_screen_key)
+            yield format_sse("sources", {"sources": []})
+            yield format_sse("token", {"text": guide_msg})
+            yield format_sse("done", {
+                "thread_id": req.thread_id or str(uuid.uuid4()),
+                "provenance": "ERP_ACTION_GUIDE",
+                "cache_hit": False,
+                "latency_ms": latency_ms,
+                "metrics": {"total_latency_ms": latency_ms},
+            })
+            return
+
+        # 1.1c Pure Navigation Fast-Path
+        is_explicit_nav_query = bool(
+            (req.visible_fields or req.form_schema or req.erp_key)
+            and re.match(r"^\s*(اذهب|انتقل|افتح|وديني|روح)\s+", req.query)
+        )
+        if (req.erp_intent or "").strip().lower() == "navigate" or is_explicit_nav_query:
             record_stage_duration("total", time.time() - t0)
             latency_ms = round((time.time() - t0) * 1000, 2)
             logger.info("Emitting navigation confirmation SSE (navigate fast-path)", query=req.query)
-            yield _format_sse("sources", {"sources": []})
-            yield _format_sse("token", {"text": "✅ تم توجيهك إلى الشاشة المطلوبة في النظام."})
-            yield _format_sse("done", {
+            yield format_sse("sources", {"sources": []})
+            yield format_sse("token", {"text": "✅ تم توجيهك إلى الشاشة المطلوبة في النظام."})
+            yield format_sse("done", {
                 "thread_id": req.thread_id or str(uuid.uuid4()),
                 "provenance": "ERP_NAVIGATION",
                 "cache_hit": False,
@@ -1001,9 +490,9 @@ class SearchService:
                 latency_ms = round((time.time() - t0) * 1000, 2)
                 if settings.EXACT_CACHE_ENABLED:
                     exact_cache_service.store(normalized_query, cached_resp, user_ctx, req.scope_fingerprint)
-                yield _format_sse("sources", {"sources": [s.model_dump() for s in cached_resp.sources]})
-                yield _format_sse("token", {"text": cached_resp.answer})
-                yield _format_sse("done", {
+                yield format_sse("sources", {"sources": [s.model_dump() for s in cached_resp.sources]})
+                yield format_sse("token", {"text": cached_resp.answer})
+                yield format_sse("done", {
                     "cache_hit": True,
                     "cache_tier": "semantic",
                     "provenance": "SEMANTIC_CACHE",
@@ -1011,14 +500,11 @@ class SearchService:
                     "metrics": {"total_latency_ms": latency_ms},
                 })
                 return
-            else:
-                record_cache_lookup(hit=False)
+            record_cache_lookup(hit=False)
 
-        # ──────────────────────────────────────────────
         # 2. Qdrant Hybrid Search & FlashRank Reranker
-        # ──────────────────────────────────────────────
         t_vec = time.time()
-        scope_filter = _build_scope_filter(req)
+        scope_filter = build_scope_filter(req)
         candidates = await qdrant_service.hybrid_search(
             dense_vector=dense_vec,
             sparse_vector=sparse_vec,
@@ -1031,9 +517,9 @@ class SearchService:
         if not candidates:
             record_stage_duration("total", time.time() - t0)
             latency_ms = round((time.time() - t0) * 1000, 2)
-            yield _format_sse("sources", {"sources": []})
-            yield _format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
-            yield _format_sse("done", {
+            yield format_sse("sources", {"sources": []})
+            yield format_sse("token", {"text": "لا تتوفر معلومات كافية في المحتوى المتاح حول هذا الموضوع."})
+            yield format_sse("done", {
                 "status": "no_candidates",
                 "provenance": "NO_CANDIDATES",
                 "cache_hit": False,
@@ -1051,216 +537,32 @@ class SearchService:
         )
         record_stage_duration("reranking", time.time() - t_rerank)
 
-        valid_chunks = _filter_valid_chunks(top_chunks)
-        sources = _build_source_items(valid_chunks)
+        valid_chunks = filter_valid_chunks(top_chunks)
+        sources = build_source_items(valid_chunks)
 
         # Yield sources event first for immediate citation rendering in frontend
-        yield _format_sse("sources", {"sources": [s.model_dump() for s in sources]})
+        yield format_sse("sources", {"sources": [s.model_dump() for s in sources]})
 
-        # ──────────────────────────────────────────────
-        # 3. Gemini Streaming with Heartbeat & Disconnect Guard
-        # ──────────────────────────────────────────────
-        t_gen = time.time()
-        context_str = _build_rag_context_str(valid_chunks)
+        # 3. Delegate Gemini SSE Streaming + Cache Persistence
+        context_str = build_rag_context_str(valid_chunks)
         num_sources = len(valid_chunks) if valid_chunks else 1
         is_multi_lesson = bool(req.lesson_ids) or (req.scope in ("lessons", "multi_lesson"))
-        system_instruction = get_rag_system_prompt(
+
+        async for sse_event in stream_gemini_rag_tokens(
+            gemini_client=self._gemini_client,
+            req=req,
+            user_ctx=user_ctx,
+            request=request,
             context_str=context_str,
             num_sources=num_sources,
             is_multi_lesson=is_multi_lesson,
-            visible_fields=req.visible_fields,
-        )
-        thread_id = req.thread_id or str(uuid.uuid4())
-
-        user_prompt_text = req.query
-        gemini_contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_prompt_text)])]
-
-        loop = asyncio.get_running_loop()
-        stop_event = threading.Event()
-        # Bounded queue (maxsize=30) enforces Backpressure on slow clients and prevents memory bloat
-        queue: asyncio.Queue[str | Exception | None] = asyncio.Queue(maxsize=30)
-        recorded_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-
-        def _produce_tokens():
-            candidate_models = [settings.GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
-            candidate_models = list(dict.fromkeys([m for m in candidate_models if m]))
-            last_err = None
-            gemini_client = self._gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)
-
-            for model_name in candidate_models:
-                try:
-                    stream_res = gemini_client.models.generate_content_stream(
-                        model=model_name,
-                        contents=gemini_contents,
-                        config=types.GenerateContentConfig(
-                            temperature=0.2,
-                            max_output_tokens=1024,
-                            system_instruction=system_instruction,
-                        ),
-                    )
-                    for chunk in stream_res:
-                        if stop_event.is_set():
-                            break
-                        if getattr(chunk, "usage_metadata", None):
-                            meta = chunk.usage_metadata
-                            recorded_usage["prompt_tokens"] = getattr(meta, "prompt_token_count", 0) or 0
-                            recorded_usage["completion_tokens"] = getattr(meta, "candidates_token_count", 0) or 0
-                            recorded_usage["total_tokens"] = getattr(meta, "total_token_count", 0) or 0
-                        chunk_text = None
-                        try:
-                            chunk_text = chunk.text
-                        except Exception:
-                            pass
-                        if chunk_text:
-                            # Thread-safe put with backpressure: blocks worker thread if queue reaches maxsize
-                            future = asyncio.run_coroutine_threadsafe(queue.put(chunk_text), loop)
-                            future.result(timeout=30.0)
-                    if not stop_event.is_set():
-                        asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=5.0)
-                    return
-                except Exception as e:
-                    last_err = e
-                    logger.warning("Gemini streaming attempt failed on model, attempting fallback", model=model_name, error=str(e))
-                    continue
-
-            if not stop_event.is_set() and last_err:
-                asyncio.run_coroutine_threadsafe(queue.put(last_err), loop).result(timeout=5.0)
-
-        producer_task = asyncio.create_task(asyncio.to_thread(_produce_tokens))
-
-        accumulated_answer: list[str] = []
-        is_client_disconnected = False
-        first_token_received = False
-        first_token_time: float | None = None
-        token_count = 0
-        form_fill_detected = False
-        form_fill_emitted = False
-
-        try:
-            while True:
-                if await request.is_disconnected():
-                    logger.info("Client disconnected during SSE stream — cancelling generation", thread_id=thread_id)
-                    is_client_disconnected = True
-                    break
-
-                try:
-                    item = await asyncio.wait_for(queue.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    # W3C SSE comment keeps reverse proxy sockets alive without consumer consumption
-                    yield ": heartbeat\n\n"
-                    continue
-
-                if item is None:
-                    break
-                elif isinstance(item, Exception):
-                    logger.error("Error during Gemini stream generation", error=str(item))
-                    yield _format_sse("error", {"message": f"حدث خطأ أثناء معالجة الرد: {type(item).__name__}: {str(item)}"})
-                    break
-                else:
-                    now = time.time()
-                    if not first_token_received:
-                        first_token_received = True
-                        first_token_time = now
-                        record_streaming_ttft(now - t0)
-                    token_count += max(1, len(item) // 4)
-                    accumulated_answer.append(item)
-
-                    # لا ترسل كود الـ form_fill للمستخدم كنص عادي مشوه
-                    if form_fill_detected:
-                        continue
-
-                    combined_text = "".join(accumulated_answer)
-                    if "```form_fill" in combined_text:
-                        form_fill_detected = True
-                        if "```form_fill" in item:
-                            prefix = item.split("```form_fill", 1)[0]
-                            if prefix:
-                                yield _format_sse("token", {"text": prefix})
-                        continue
-
-                    yield _format_sse("token", {"text": item})
-        finally:
-            stop_event.set()
-            producer_task.cancel()
-            if first_token_time is not None and token_count > 0:
-                stream_duration = time.time() - first_token_time
-                if stream_duration > 0:
-                    record_streaming_tpot(stream_duration / token_count)
-            record_stage_duration("gemini_generation", time.time() - t_gen)
-            record_stage_duration("total", time.time() - t0)
-
-            pt = recorded_usage["prompt_tokens"]
-            ct = recorded_usage["completion_tokens"]
-            tt = recorded_usage["total_tokens"]
-            if tt == 0:
-                ct = max(1, token_count)
-                pt = max(1, (len(context_str) + len(req.query)) // 4)
-                tt = pt + ct
-            record_token_usage(prompt_tokens=pt, completion_tokens=ct, total_tokens=tt)
-
-        # ──────────────────────────────────────────────
-        # 4. Cache Accumulation, Form Fill Event & Terminal Done Event
-        # ──────────────────────────────────────────────
-        if not is_client_disconnected:
-            full_answer = "".join(accumulated_answer)
-            clean_answer = full_answer
-
-            # بعد انتهاء الرد: افحص هل يوجد بلوك form_fill؟
-            if not form_fill_emitted:
-                match = re.search(r"```(?:form_fill|json)?\s*(\{[\s\S]*?\})\s*```", full_answer)
-                if match:
-                    try:
-                        parsed_json = json.loads(match.group(1))
-                        is_batch = bool(parsed_json.get("batch_mode", False)) or bool(parsed_json.get("batch_items"))
-                        b_items = parsed_json.get("batch_items", [])
-                        f_data = parsed_json.get("fields", parsed_json if not is_batch else {})
-                        r_data = parsed_json.get("rows", [])
-                        payload = {
-                            "intent": "form_fill",
-                            "fields": f_data,
-                            "rows": r_data,
-                            "screenKey": req.erp_key,
-                            "pageId": getattr(req, "page_id", None) or parsed_json.get("page_id") or parsed_json.get("pageId"),
-                            "batch_mode": is_batch,
-                            "batch_items": b_items,
-                        }
-                        logger.info("Emitting late form_fill SSE event", batch_mode=is_batch, items_count=len(b_items), erp_key=req.erp_key)
-                        yield _format_sse("form_fill", payload)
-                        form_fill_emitted = True
-                    except Exception as e:
-                        logger.error("Failed to parse form_fill json", error=str(e))
-            clean_answer = re.sub(r"```form_fill\s*\{.*?\}\s*```", "", full_answer, flags=re.DOTALL).strip()
-
-            if clean_answer:
-                final_resp = SearchResponse(answer=clean_answer, sources=sources, query_used=req.query)
-                if settings.EXACT_CACHE_ENABLED:
-                    exact_cache_service.store(
-                        normalized_query,
-                        final_resp,
-                        user_ctx,
-                        req.scope_fingerprint,
-                    )
-                if settings.SEMANTIC_CACHE_ENABLED and not req.visible_fields:
-                    cache_task = asyncio.create_task(
-                        semantic_cache_service.store(
-                            query=req.query,
-                            query_vector=dense_vec,
-                            response=final_resp,
-                            user_ctx=user_ctx,
-                            scope_fingerprint=req.scope_fingerprint,
-                        )
-                    )
-                    _background_tasks.add(cache_task)
-                    cache_task.add_done_callback(_background_tasks.discard)
-
-            latency_ms = round((time.time() - t0) * 1000, 2)
-            yield _format_sse("done", {
-                "thread_id": thread_id,
-                "provenance": "RAG_GENERATION",
-                "cache_hit": False,
-                "latency_ms": latency_ms,
-                "metrics": {"total_latency_ms": latency_ms},
-            })
+            sources=sources,
+            normalized_query=normalized_query,
+            dense_vec=dense_vec,
+            t0=t0,
+            background_tasks=_background_tasks,
+        ):
+            yield sse_event
 
 
 _background_tasks: set[asyncio.Task] = set()

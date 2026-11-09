@@ -51,7 +51,7 @@ class CdpVisualGrounding:
             try:
                 await self.dispatcher.evaluate_script(
                     ws_url,
-                    """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = 'hidden');""",
+                    """document.querySelectorAll('lms-ai-copilot, app-copilot-chat, lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = 'hidden');""",
                 )
             except Exception as e:
                 logger.debug("Failed to mask chat window before screenshot", error=str(e))
@@ -69,7 +69,7 @@ class CdpVisualGrounding:
                 try:
                     await self.dispatcher.evaluate_script(
                         ws_url,
-                        """document.querySelectorAll('lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = '');""",
+                        """document.querySelectorAll('lms-ai-copilot, app-copilot-chat, lms-copilot-chat, .ai-chat-window, .copilot-window').forEach(el => el.style.visibility = '');""",
                     )
                 except Exception as e:
                     logger.debug("Failed to unmask chat window after screenshot", error=str(e))
@@ -172,6 +172,20 @@ class CdpVisualGrounding:
         logger.debug("DOM settle completed", elapsed_ms=round(elapsed, 1), url_changed=url_changed)
         return elapsed
 
+    async def get_active_toasts_and_alerts(self, ws_url: str) -> list[dict[str, str]]:
+        """
+        يفحص ظهور أي رسائل تنبيه أو خطأ في `#toast-container.dp-toast-top-end` أو `.overlay-container`
+        ويكمل النقر التلقائي على `<span class="dp-menu_text">حفظ</span>` إن فتحت قائمة الحفظ الفرعية
+        باستخدام سكريبت toast_alerts.js المستقل.
+        """
+        script = get_script("toast_alerts.js")
+        try:
+            res = await self.dispatcher.evaluate_script(ws_url, script)
+            return res if isinstance(res, list) else []
+        except Exception as e:
+            logger.debug("get_active_toasts_and_alerts error", error=str(e))
+            return []
+
     async def click_element_or_coordinate(
         self,
         ws_url: str,
@@ -179,15 +193,28 @@ class CdpVisualGrounding:
         y: int,
         target_text: str | None = None,
         interactive_elements: list[dict[str, Any]] | None = None,
+        viewport_metrics: dict[str, float] | None = None,
     ) -> tuple[int, int, bool]:
         """
-        تنفيذ نقرة ذكية منجذبة ذاتياً (DOM-Anchored Snapped Click):
-        1. إذا وجد تطابق لنص العنصر المستهدف (target_text) مع عنصر تفاعلي حقيقي في الصفحة،
+        تنفيذ نقرة ذكية منجذبة ذاتياً (DOM-Anchored Snapped Click) مع تعويض تلقائي لمقياس الـ DPI:
+        1. تعويض DPI Scaling إذا كانت الإحداثيات خارج أبعاد الـ CSS Viewport.
+        2. إذا وجد تطابق لنص العنصر المستهدف (target_text) مع عنصر تفاعلي حقيقي في الصفحة،
            تنجذب النقرة مباشرة إلى مركز العنصر الحقيقي بدقة 100%.
-        2. إذا لم يوجد تطابق نصي، يتم فحص أقرب عنصر تفاعلي ضمن نطاق مسافة قريبة (Radius Snapping 35px).
-        3. إذا لم يوجد، يتم النقر عند الإحداثيات [x, y] كـ Fallback.
+        3. إذا لم يوجد تطابق نصي، يتم فحص أقرب عنصر تفاعلي ضمن نطاق مسافة قريبة (Radius Snapping 60px).
+        4. إذا لم يوجد، يتم النقر عند الإحداثيات [x, y] كـ Fallback.
         ترجع: (final_x, final_y, was_snapped)
         """
+        if viewport_metrics:
+            vp_w = float(viewport_metrics.get("width", 1280.0))
+            vp_h = float(viewport_metrics.get("height", 720.0))
+            dpr = float(viewport_metrics.get("dpr", 1.0))
+            if dpr > 1.05 and (x > vp_w or y > vp_h):
+                x = int(round(x / dpr))
+                y = int(round(y / dpr))
+                logger.info("Applied DPI auto-compensation to Vision coordinates", adjusted_x=x, adjusted_y=y, dpr=dpr)
+            x = max(2, min(int(vp_w) - 2, x))
+            y = max(2, min(int(vp_h) - 2, y))
+
         elements = interactive_elements
         if elements is None and target_text:
             elements = await self.get_interactive_elements(ws_url)
@@ -205,6 +232,8 @@ class CdpVisualGrounding:
                     "قائمة",
                     "خيار",
                     "تبويب",
+                    "حقل",
+                    "خانة",
                     "انقر على",
                     "اضغط على",
                     "الانتقال الى",
@@ -239,9 +268,9 @@ class CdpVisualGrounding:
                         y=target_y,
                     )
 
-            # محاولة 2: إذا لم يتطابق النص ولكن الإحداثيات قريبة جداً من عنصر تفاعلي (Proximity Snap < 40px)
+            # محاولة 2: إذا لم يتطابق النص ولكن الإحداثيات قريبة من عنصر تفاعلي (Proximity Snap < 60px)
             if not snapped:
-                best_dist = 40.0
+                best_dist = 60.0
                 best_el = None
                 for el in elements:
                     dist = ((el["x"] - x) ** 2 + (el["y"] - y) ** 2) ** 0.5
