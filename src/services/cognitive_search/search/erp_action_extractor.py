@@ -24,6 +24,8 @@ _SEMANTIC_LABEL_DEFAULTS = {
     "contracttype": "طريقة البيع",
     "currancyid": "العملة",
     "currencyid": "العملة",
+    "exchangeprice": "سعر الصرف",
+    "exchangerate": "سعر الصرف",
     "safeaccounid": "الخزينة",
     "safeaccountid": "الخزينة",
     "safeaccount": "الخزينة",
