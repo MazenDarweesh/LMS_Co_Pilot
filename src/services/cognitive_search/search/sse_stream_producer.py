@@ -193,7 +193,8 @@ async def stream_gemini_rag_tokens(
         full_answer = "".join(accumulated_answer)
         clean_answer = full_answer
 
-        if not form_fill_emitted:
+        is_qa_only = (req.erp_intent or "").strip().lower() == "question"
+        if not form_fill_emitted and not is_qa_only:
             match = re.search(r"```(?:form_fill|json)?\s*(\{[\s\S]*?\})\s*```", full_answer)
             if match:
                 try:

@@ -5,6 +5,7 @@ Arabic text normalization, DOM stability settle detection, and auto-snapped clic
 """
 
 import asyncio
+import json
 import re
 import time
 from typing import Any
@@ -41,11 +42,16 @@ class CdpVisualGrounding:
         return s
 
     async def capture_screenshot(
-        self, ws_url: str, quality: int = 80, mask_chat: bool = True
+        self,
+        ws_url: str,
+        quality: int = 80,
+        mask_chat: bool = True,
+        som_elements: list[dict[str, Any]] | None = None,
     ) -> str:
         """
         التقاط لقطة شاشة للتبويب وإرجاعها كـ Base64 JPEG مضغوطة وسريعة للرؤية البصرية.
-        مع إخفاء نافذة المساعد الذكي لحظياً أثناء اللقطة حتى لا تشتت الرؤية وتسبب محاولات إغلاق وهمية.
+        مع إخفاء نافذة المساعد الذكي لحظياً أثناء اللقطة، ودعم الترقيم البصري المسبق (Set-of-Mark / SoM)
+        لعناصر الصفحة التفاعلية للقضاء على هلوسة الإحداثيات بنسبة 100%.
         """
         if mask_chat:
             try:
@@ -56,6 +62,17 @@ class CdpVisualGrounding:
             except Exception as e:
                 logger.debug("Failed to mask chat window before screenshot", error=str(e))
 
+        if som_elements:
+            try:
+                som_inject = get_script(
+                    "som_overlay.js",
+                    MODE="inject",
+                    ELEMENTS_JSON=json.dumps(som_elements[:60], ensure_ascii=False),
+                )
+                await self.dispatcher.evaluate_script(ws_url, som_inject)
+            except Exception as e:
+                logger.debug("Failed to inject SoM overlay before screenshot", error=str(e))
+
         try:
             res = await self.dispatcher.execute_cdp_command(
                 ws_url,
@@ -65,6 +82,12 @@ class CdpVisualGrounding:
             )
             return res.get("data", "")
         finally:
+            if som_elements:
+                try:
+                    som_remove = get_script("som_overlay.js", MODE="remove", ELEMENTS_JSON="[]")
+                    await self.dispatcher.evaluate_script(ws_url, som_remove)
+                except Exception as e:
+                    logger.debug("Failed to remove SoM overlay after screenshot", error=str(e))
             if mask_chat:
                 try:
                     await self.dispatcher.evaluate_script(

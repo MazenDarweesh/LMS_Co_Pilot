@@ -451,9 +451,11 @@ class SearchService:
             })
             return
 
-        # 1.1c Pure Navigation Fast-Path
+        # 1.1c Pure Navigation Fast-Path (Only when not in pure Q&A mode)
+        is_qa_only = (req.erp_intent or "").strip().lower() == "question"
         is_explicit_nav_query = bool(
-            (req.visible_fields or req.form_schema or req.erp_key)
+            not is_qa_only
+            and (req.visible_fields or req.form_schema or req.erp_key)
             and re.match(r"^\s*(اذهب|انتقل|افتح|وديني|روح)\s+", req.query)
         )
         if (req.erp_intent or "").strip().lower() == "navigate" or is_explicit_nav_query:

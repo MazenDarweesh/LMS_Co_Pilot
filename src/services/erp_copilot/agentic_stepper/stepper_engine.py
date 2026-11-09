@@ -525,9 +525,12 @@ class StepperEngine:
                     target_text = target_el.get("text", "")
                     timings["decision_mode"] = "dom_first"
                 elif action != "done":
-                    # خطة الطوارئ البصرية (Vision Fallback): تلتقط صورة مع إخفاء الشات فقط إذا لم يجد العنصر في القائمة
-                    timings["decision_mode"] = "vision_fallback"
-                    screenshot_b64 = await cdp_agent_service.capture_screenshot(ws_url, quality=75, mask_chat=True)
+                    # خطة الطوارئ البصرية المرقمة (Set-of-Mark Vision Fallback):
+                    # تلتقط صورة مع إخفاء الشات وترقيم العناصر التفاعلية [0], [1], [2]... للقضاء على هلوسة الإحداثيات
+                    timings["decision_mode"] = "vision_som_fallback"
+                    screenshot_b64 = await cdp_agent_service.capture_screenshot(
+                        ws_url, quality=75, mask_chat=True, som_elements=interactive_elements
+                    )
                     if screenshot_b64:
                         prediction = await vision_grounding_service.predict_next_action(
                             screenshot_b64=screenshot_b64,
@@ -538,8 +541,18 @@ class StepperEngine:
                         )
                         action = prediction.get("action", "wait")
                         thought = prediction.get("thought", "")
-                        coord = prediction.get("coordinate")
-                        target_text = prediction.get("target_text")
+                        som_id = prediction.get("element_id")
+                        if (
+                            som_id is not None
+                            and isinstance(som_id, int)
+                            and 0 <= som_id < len(interactive_elements)
+                        ):
+                            target_el = interactive_elements[som_id]
+                            coord = [target_el["x"], target_el["y"]]
+                            target_text = target_el.get("text") or prediction.get("target_text")
+                        else:
+                            coord = prediction.get("coordinate")
+                            target_text = prediction.get("target_text")
                         is_terminal = prediction.get("is_terminal", False)
 
                 timings["llm_ms"] = round((time.perf_counter() - t_llm_start) * 1000, 1)

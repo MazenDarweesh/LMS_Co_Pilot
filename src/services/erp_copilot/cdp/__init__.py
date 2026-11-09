@@ -87,9 +87,15 @@ class CdpAgentService:
         return CdpVisualGrounding.normalize_ar(s)
 
     async def capture_screenshot(
-        self, ws_url: str, quality: int = 80, mask_chat: bool = True
+        self,
+        ws_url: str,
+        quality: int = 80,
+        mask_chat: bool = True,
+        som_elements: list[dict[str, Any]] | None = None,
     ) -> str:
-        return await self.visual.capture_screenshot(ws_url, quality=quality, mask_chat=mask_chat)
+        return await self.visual.capture_screenshot(
+            ws_url, quality=quality, mask_chat=mask_chat, som_elements=som_elements
+        )
 
     async def get_page_state(self, ws_url: str) -> dict[str, Any]:
         return await self.visual.get_page_state(ws_url)

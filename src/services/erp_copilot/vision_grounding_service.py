@@ -40,7 +40,9 @@ RULES & UI CHARACTERISTICS IN DYNAMICPRO ERP:
    - When all required header fields are populated and all line items are inserted, or when reaching the confirmation step, select action "done".
    - NEVER click "اعتماد" (Approve) or "حفظ نهائي" (Final Post) automatically. The agent stops at "done" once the draft is ready for user review.
 
-COORDINATE SPECIFICATION:
+COORDINATE & SET-OF-MARK (SoM) SPECIFICATION:
+- Interactive elements on the screenshot may be annotated with red Set-of-Mark (SoM) bounding boxes and numbered badges [0], [1], [2], ...
+- Whenever your target element has a visible red numbered badge [ID], return its integer in "element_id" (and you may also provide its approximate [x, y] in "coordinate").
 - Return physical pixel coordinates [x, y] strictly within [0..{viewport_width}] for x and [0..{viewport_height}] for y.
 - Target the visual CENTER of the clickable button, input field, or menu item.
 - Do NOT click on static labels or empty background margins.
@@ -51,6 +53,7 @@ Return ONLY a valid JSON object matching this schema:
 {{
   "thought": "شرح موجز بالعربية لما تراه في الشاشة والخطوة التالية التي ستقوم بها",
   "action": "click" | "type" | "press_key" | "wait" | "done",
+  "element_id": integer SoM badge ID if visible on the target element, else null,
   "coordinate": [x, y],
   "target_text": "اسم أو نص الزر أو العنصر المراد النقر عليه بالعربية (مثل: الموردين والمشتريات، فواتير المشتريات، اضافة جديد)، أو null",
   "text": "text to type if action is type, else null",
