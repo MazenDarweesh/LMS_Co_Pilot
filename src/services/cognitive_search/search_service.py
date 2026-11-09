@@ -411,6 +411,7 @@ class SearchService:
                     resolved_screen_key,
                     page_id=resolved_page_id,
                     document_name=resolved_doc_name,
+                    schema=effective_schema,
                 )
                 if form_payload is not None:
                     record_stage_duration("total", time.time() - t0)

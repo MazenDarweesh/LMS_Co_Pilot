@@ -569,32 +569,70 @@
         "customerID": {
           "label_ar": "العميل",
           "control_type": "select",
-          "is_required": true
+          "is_required": true,
+          "aliases": [
+            "العميل",
+            "عميل",
+            "اسم العميل",
+            "شركة",
+            "الجهة",
+            "الزبون"
+          ]
         },
         "ContractType": {
           "label_ar": "طريقة البيع",
           "control_type": "select",
-          "is_required": false
+          "is_required": false,
+          "aliases": [
+            "طريقة البيع",
+            "نوع البيع",
+            "مباشرة",
+            "مبيعات مباشرة",
+            "طريقة الدفع"
+          ]
         },
         "CostItemId": {
           "label_ar": "مركز التكلفة",
           "control_type": "select",
-          "is_required": false
+          "is_required": false,
+          "aliases": [
+            "مركز التكلفة",
+            "لودر",
+            "مركز تكلفة"
+          ]
         },
         "StoreID": {
           "label_ar": "المخزن",
           "control_type": "select",
-          "is_required": false
+          "is_required": false,
+          "aliases": [
+            "المخزن",
+            "مخزن",
+            "مستودع"
+          ]
         },
         "SalesMan": {
           "label_ar": "رجل المبيعات",
           "control_type": "select",
-          "is_required": false
+          "is_required": false,
+          "aliases": [
+            "رجل المبيعات",
+            "المندوب",
+            "بائع"
+          ]
         },
         "POPaid": {
           "label_ar": "المحصل نقدا",
           "control_type": "number",
-          "is_required": false
+          "is_required": false,
+          "aliases": [
+            "المحصل نقدا",
+            "المدفوع نقداً",
+            "المدفوع",
+            "نقدا",
+            "كاش",
+            "سداد"
+          ]
         },
         "DocDate": {
           "label_ar": "تاريخ المستند (YYYY-MM-DD)",
@@ -605,6 +643,19 @@
           "label_ar": "ملاحظات أو بيان المستند العام",
           "control_type": "text",
           "is_required": false
+        },
+        "SafeAccount": {
+          "label_ar": "الخزينة",
+          "control_type": "select",
+          "is_required": false,
+          "aliases": [
+            "الخزينة",
+            "الصندوق",
+            "نقدا",
+            "كاش",
+            "الخزينة الرئيسية",
+            "خزينة"
+          ]
         }
       },
       "grid_fields": {

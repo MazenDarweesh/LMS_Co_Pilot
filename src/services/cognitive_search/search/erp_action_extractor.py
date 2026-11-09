@@ -40,6 +40,7 @@ def build_form_fill_payload(
     screen_key: str | None,
     page_id: int | str | None = None,
     document_name: str | None = None,
+    schema: list[dict] | None = None,
 ) -> dict | None:
     """
     Normalizes the AI extraction result into the `form_fill` SSE payload.
@@ -53,6 +54,22 @@ def build_form_fill_payload(
     batch_items = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
     if not (fields_dict or rows_list or batch_items):
         return None
+
+    # Check for missing required fields based on schema contract
+    missing_required: list[dict[str, str]] = []
+    if schema and isinstance(schema, list):
+        extracted_keys = {str(k).strip().lower() for k in fields_dict.keys()}
+        for sf in schema:
+            if not isinstance(sf, dict):
+                continue
+            is_req = sf.get("required") is True or sf.get("is_required") is True
+            section = sf.get("section")
+            if is_req and section != "grid":
+                f_key = str(sf.get("key") or sf.get("name") or "").strip()
+                f_label = str(sf.get("label") or f_key).strip()
+                if f_key and f_key.lower() not in extracted_keys:
+                    missing_required.append({"key": f_key, "label": f_label})
+
     payload: dict[str, Any] = {
         "intent": "form_fill",
         "fields": fields_dict,
@@ -60,6 +77,7 @@ def build_form_fill_payload(
         "screenKey": screen_key,
         "batch_mode": bool(raw_extracted.get("batch_mode", False)),
         "batch_items": batch_items,
+        "missing_required": missing_required,
     }
     if page_id:
         payload["pageId"] = page_id
@@ -79,24 +97,58 @@ def build_schema_from_catalog(form_meta: dict[str, Any]) -> list[dict[str, Any]]
             ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
             req_flag = val.get("is_required", False) if isinstance(val, dict) else False
             schema.append({
+                "key": key,
                 "name": key,
                 "label": label or key,
                 "type": ctrl,
                 "required": req_flag,
                 "section": "header",
             })
+    elif isinstance(headers, list):
+        for val in headers:
+            if isinstance(val, dict):
+                key = val.get("key") or val.get("name", "")
+                label = val.get("label_ar") or val.get("label") or key
+                ctrl = val.get("control_type", "input")
+                req_flag = val.get("is_required", False) or val.get("required", False)
+                schema.append({
+                    "key": key,
+                    "name": key,
+                    "label": label,
+                    "type": ctrl,
+                    "required": req_flag,
+                    "section": "header",
+                })
     # 2. Grid fields
     grids = form_meta.get("grid_fields") or form_meta.get("expected_grid") or {}
     if isinstance(grids, dict):
         for key, val in grids.items():
             label = val.get("label_ar") if isinstance(val, dict) else str(val)
             ctrl = val.get("control_type", "input") if isinstance(val, dict) else "input"
+            req_flag = val.get("is_required", False) if isinstance(val, dict) else False
             schema.append({
+                "key": key,
                 "name": key,
                 "label": label or key,
                 "type": ctrl,
+                "required": req_flag,
                 "section": "grid",
             })
+    elif isinstance(grids, list):
+        for val in grids:
+            if isinstance(val, dict):
+                key = val.get("key") or val.get("name", "")
+                label = val.get("label_ar") or val.get("label") or key
+                ctrl = val.get("control_type", "input")
+                req_flag = val.get("is_required", False) or val.get("required", False)
+                schema.append({
+                    "key": key,
+                    "name": key,
+                    "label": label,
+                    "type": ctrl,
+                    "required": req_flag,
+                    "section": "grid",
+                })
     return schema
 
 
@@ -224,12 +276,22 @@ def resolve_and_enrich_erp_action_schema(
                 fields_count=len(effective_schema),
             )
         elif effective_schema and catalog_schema:
-            live_keys = {str(f.get("key", "")).lower() for f in effective_schema if isinstance(f, dict)}
-            cat_header_keys = {
-                str(f.get("key", "")).lower()
-                for f in (target_form.get("expected_header") or [])
-                if isinstance(f, dict) and f.get("key")
+            live_keys = {
+                str(f.get("key") or f.get("name", "")).strip().lower()
+                for f in effective_schema
+                if isinstance(f, dict)
             }
+            cat_header_keys = set()
+            headers = target_form.get("header_fields") or target_form.get("expected_header") or {}
+            if isinstance(headers, dict):
+                cat_header_keys = {str(k).strip().lower() for k in headers.keys()}
+            elif isinstance(headers, list):
+                for f in headers:
+                    if isinstance(f, dict):
+                        k = f.get("key") or f.get("name")
+                        if k:
+                            cat_header_keys.add(str(k).strip().lower())
+
             if cat_header_keys and not live_keys.intersection(cat_header_keys):
                 effective_schema = catalog_schema
                 effective_fields = None
@@ -240,12 +302,12 @@ def resolve_and_enrich_erp_action_schema(
                 )
             else:
                 cat_label_map = {
-                    str(cf.get("key", "")).lower(): str(cf.get("label", "")).strip()
+                    str(cf.get("key") or cf.get("name", "")).strip().lower(): str(cf.get("label", "")).strip()
                     for cf in catalog_schema
-                    if isinstance(cf, dict) and cf.get("key") and cf.get("label")
+                    if isinstance(cf, dict) and (cf.get("key") or cf.get("name")) and cf.get("label")
                 }
                 has_method_field = any(
-                    str(f.get("key", "")).lower() in ("posetting", "contracttype")
+                    str(f.get("key") or f.get("name", "")).strip().lower() in ("posetting", "contracttype")
                     for f in effective_schema
                     if isinstance(f, dict)
                 )
@@ -253,7 +315,8 @@ def resolve_and_enrich_erp_action_schema(
                 for f in effective_schema:
                     if not isinstance(f, dict):
                         continue
-                    f_key_low = str(f.get("key", "")).strip().lower()
+                    f_key = str(f.get("key") or f.get("name", "")).strip()
+                    f_key_low = f_key.lower()
                     f_label = str(f.get("label", "")).strip()
                     if has_method_field and f_key_low in ("custom_select", "inserttype", "defultvalue") and (
                         not f_label or f_label.lower() == f_key_low
