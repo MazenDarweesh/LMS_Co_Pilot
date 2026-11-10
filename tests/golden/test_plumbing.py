@@ -38,6 +38,9 @@ def test_golden_cases_structure_and_inventory() -> None:
     assert len(synthetic_cases) >= 2
     assert len(expected_failures) == 2
 
+    # Ensure StoreID DB fix removed stale "خامات تام" string from Golden Set
+    assert "خامات تام" not in json.dumps(GOLDEN_CASES, ensure_ascii=False)
+
     # Ensure no duplicate queries across log cases
     log_queries = [c["query"] for c in log_cases]
     assert len(log_queries) == len(set(log_queries))
