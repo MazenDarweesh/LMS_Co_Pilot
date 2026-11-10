@@ -242,16 +242,21 @@ ERP_PAYMENT_RULES = """Payment & Settlement Rules:
 ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction & Semantic Mapping Assistant for DynamicPro ERP.
 Analyze the user's Arabic message and map every piece of data to the best matching field from the active ERP form structure.
 
+CRITICAL INSTRUCTION - Classify Operation Intent ("intent"):
+- Output "intent": "edit_current" ONLY when the user wants to modify, update, replace, clear, fix, or move fields/rows inside the CURRENTLY OPEN or previous document/invoice (even without explicit verbs like "عدل/تعديل", e.g. "خلي المخزن مخزن خامات", "حط الصنف...", "احذف المشروع من فوق وخليه تحت", "غير المخزن في الفاتورة الحالية").
+- Output "intent": "new" whenever the user is recording/creating/entering a NEW document/invoice/loan/voucher/return — EVEN IF unrelated words like "غير" (e.g. "توريد غير عاجل", "غير شامل") or "حدث" (e.g. "حدث افتتاح المعرض") appear in the text. Default to "new" when not clearly editing an active document.
+
 CRITICAL INSTRUCTION - Detect Batch Mode:
-If the user asks to record multiple documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document.
+If the user asks to record multiple distinct documents/invoices (e.g. mentions words like "دفعة", "فواتير", "الأولى... الثانية...", or multiple distinct suppliers/items), set "batch_mode": true and create an item in "batch_items" for each document. (If the same text appears pasted twice verbatim, do NOT treat it as a batch.)
 Otherwise, set "batch_mode": false.
 
-Return a JSON with:
-1. "batch_mode": true (if multiple documents/invoices) or false (if single).
-2. "batch_items": Array of items if batch_mode is true. Each element must be:
+Return a JSON matching the provided schema with:
+1. "intent": "new" or "edit_current".
+2. "batch_mode": true (if multiple documents/invoices) or false (if single).
+3. "batch_items": Array of items if batch_mode is true. Each element must be:
    {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}]}}
-3. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode).
-4. "rows": Array of table line items (for single mode, or the first document in batch mode).
+4. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode). Omit unmentioned fields.
+5. "rows": Array of table line items (for single mode, or the first document in batch mode).
 
 Available Form Context:
 {fields_ctx_json}
@@ -260,7 +265,7 @@ User Message:
 "{query}"
 
 Semantic Reasoning & Mapping Rules:
-1. Map values to the most semantically appropriate field key from the Available Form Context.
+1. Map values ONLY to the most semantically appropriate field key from the Available Form Context.
    - Use both `key` and `label` (and `options` if present) to infer a field's purpose even when its `label` is empty or technical:
      * Purchase method / invoice type ("طريقة الشراء", "نوع الشراء", "مشتريات مباشرة") -> map to `POSetting` (on Purchases) or `ContractType` (on Sales). NEVER map purchase/sales method to generic `custom_select` or `InsertType` when `POSetting` or `ContractType` exists in the form context!
      * Currency ("العملة", "عملة الشراء", "عملة الفاتورة") -> map to `CurrancyID` or `CurrencyID`.
@@ -268,9 +273,9 @@ Semantic Reasoning & Mapping Rules:
      * Safe / Treasury ("الخزينة", "الصندوق") -> map to `SafeAccounId` or `SafeAccount`.
      * Cost Center / Project ("مركز التكلفة", "المشروع") -> map to `CostItemId` or `ProjectID` according to what the user specified.
 2. {payment_rules}
-3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. "اسم المنتج", "الكمية", "السعر", or "product", "Qty") or standard Arabic keys ("اسم المنتج", "الكمية").
+3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. `ProductID`/`Qty` or "اسم المنتج", "الكمية", "السعر"). Omit null/unmentioned properties from row objects.
 4. Keep entity names (suppliers, customers, products, warehouses, projects) faithful to the user's message.
-5. If the user is only asking a question or navigation with no concrete form data, return: {{"batch_mode": false, "fields": {{}}, "rows": []}}
+5. If the user is only asking a question or navigation with no concrete form data, return: {{"intent": "new", "batch_mode": false, "fields": {{}}, "rows": []}}
 """
 
 

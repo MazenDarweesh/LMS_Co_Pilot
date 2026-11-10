@@ -140,6 +140,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -269,6 +270,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "customerID": "شركة عبر البحار",
@@ -398,6 +400,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "customerID": "شركة عبر البحار",
@@ -563,6 +566,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -728,6 +732,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -947,6 +952,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -1133,6 +1139,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -1298,6 +1305,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "SupplierID": "حسين",
@@ -1518,6 +1526,7 @@
         }
       ],
       "expected": {
+        "action_intent": "edit_current",
         "batch_mode": false,
         "fields": {},
         "rows": [],
@@ -1722,6 +1731,7 @@
         }
       ],
       "expected": {
+        "action_intent": "edit_current",
         "batch_mode": false,
         "fields": {
           "ProjectID": null
@@ -1787,6 +1797,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "EmpId": "محمود السيد",
@@ -2269,6 +2280,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "MonyActCurrancy": 15000,
@@ -2909,6 +2921,7 @@
         }
       ],
       "expected": {
+        "action_intent": "new",
         "batch_mode": false,
         "fields": {
           "CustomerAccountName": "شركة النيل للمقاولات",
@@ -2947,6 +2960,487 @@
         ]
       },
       "notes": "حالة تركيبية (Synthetic) من شاشة مرتجعات البيع (350) في forms_metadata.json؛ حقل POPaid موجود صراحة في سكيما الشاشة (grid_fields) مع CurrancyEX."
+    },
+    {
+      "id": "syn_04_purchases_new_ghayr_trap",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "phase2_action_intent_adversarial_set",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "توريد غير عاجل: سجل فاتورة مشتريات من المورد حسين، على مخزن خامات، لمشروع السحاب، وطريقة الشراء مشتريات مباشرة، وأضف صنف سن كمية 10",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "action_intent": "new",
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "مخزن خامات",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType",
+          "DefultValue"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          }
+        ]
+      },
+      "notes": "أمر إنشاء جديد يحتوي على كلمة «غير» كفخ للـ Regex القديم في isEditExistingFormQuery؛ يجب تصنيفه action_intent=new."
+    },
+    {
+      "id": "syn_05_purchases_new_hadath_trap",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "phase2_action_intent_adversarial_set",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "لتجهيز حدث افتتاح المعرض، سجل فاتورة مشتريات من المورد حسين، على مخزن خامات، لمشروع السحاب، وطريقة الشراء مشتريات مباشرة، وأضف صنف سن كمية 10",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "action_intent": "new",
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "مخزن خامات",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType",
+          "DefultValue"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          }
+        ]
+      },
+      "notes": "أمر إنشاء جديد يحتوي على كلمة «حدث» كفخ للـ Regex القديم في isEditExistingFormQuery؛ يجب تصنيفه action_intent=new."
+    },
+    {
+      "id": "syn_06_purchases_edit_no_keyword",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "phase2_action_intent_adversarial_set",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "خلي المخزن مخزن خامات",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "action_intent": "edit_current",
+        "batch_mode": false,
+        "fields": {
+          "StoreID": "مخزن خامات"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "SupplierID",
+          "ProjectID",
+          "POSetting",
+          "VendorID",
+          "custom_select",
+          "InsertType",
+          "DefultValue"
+        ],
+        "rows": []
+      },
+      "notes": "أمر تعديل دلالي بدون أي كلمة تعديل في Regex («خلي المخزن مخزن خامات»)؛ يجب تصنيفه action_intent=edit_current."
     }
   ]
 }

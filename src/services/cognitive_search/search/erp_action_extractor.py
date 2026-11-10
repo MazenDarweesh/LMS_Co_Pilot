@@ -1,6 +1,7 @@
 """ERP Form Action Intent Classifier, Schema Enricher, and Field Extractor."""
 import asyncio
 import json
+import random
 from typing import Any
 import structlog
 from google import genai
@@ -37,6 +38,28 @@ _SEMANTIC_LABEL_DEFAULTS = {
 }
 
 
+_TREASURY_FIELD_KEYS_LOWER = {
+    "safeaccounid",
+    "safeaccount",
+    "safeaccountid",
+    "خزينة",
+    "الخزينة",
+}
+
+
+def _strip_total_from_treasury_fields(record: Any) -> Any:
+    """Deterministic guard: removes disallowed `$TOTAL` values from treasury/safe dropdown fields."""
+    if not isinstance(record, dict):
+        return record
+    cleaned: dict[str, Any] = {}
+    for k, v in record.items():
+        if str(k).strip().lower() in _TREASURY_FIELD_KEYS_LOWER and str(v or "").strip().upper() == "$TOTAL":
+            logger.warning("Stripped disallowed $TOTAL value from treasury field in build_form_fill_payload", field=k)
+            continue
+        cleaned[k] = v
+    return cleaned
+
+
 def build_form_fill_payload(
     raw_extracted: Any,
     screen_key: str | None,
@@ -51,9 +74,30 @@ def build_form_fill_payload(
     """
     if not raw_extracted or not isinstance(raw_extracted, dict):
         return None
-    fields_dict = raw_extracted.get("fields") if isinstance(raw_extracted.get("fields"), dict) else {}
-    rows_list = raw_extracted.get("rows") if isinstance(raw_extracted.get("rows"), list) else []
-    batch_items = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
+    raw_fields = raw_extracted.get("fields") if isinstance(raw_extracted.get("fields"), dict) else {}
+    raw_rows = raw_extracted.get("rows") if isinstance(raw_extracted.get("rows"), list) else []
+    raw_batch = raw_extracted.get("batch_items") if isinstance(raw_extracted.get("batch_items"), list) else []
+
+    fields_dict = _strip_total_from_treasury_fields(raw_fields)
+    rows_list = [
+        _strip_total_from_treasury_fields(r) if isinstance(r, dict) else r
+        for r in raw_rows
+    ]
+    batch_items = []
+    for item in raw_batch:
+        if isinstance(item, dict):
+            sanitized_item = {**item}
+            if isinstance(item.get("fields"), dict):
+                sanitized_item["fields"] = _strip_total_from_treasury_fields(item["fields"])
+            if isinstance(item.get("rows"), list):
+                sanitized_item["rows"] = [
+                    _strip_total_from_treasury_fields(r) if isinstance(r, dict) else r
+                    for r in item["rows"]
+                ]
+            batch_items.append(sanitized_item)
+        else:
+            batch_items.append(item)
+
     if not (fields_dict or rows_list or batch_items):
         return None
 
@@ -72,8 +116,12 @@ def build_form_fill_payload(
                 if f_key and f_key.lower() not in extracted_keys:
                     missing_required.append({"key": f_key, "label": f_label})
 
+    raw_action_intent = str(raw_extracted.get("intent") or "new").strip().lower()
+    action_intent = raw_action_intent if raw_action_intent in ("new", "edit_current") else "new"
+
     payload: dict[str, Any] = {
         "intent": "form_fill",
+        "action_intent": action_intent,
         "fields": fields_dict,
         "rows": rows_list,
         "screenKey": screen_key,
@@ -194,43 +242,132 @@ async def classify_form_action_intent(
     return False
 
 
+def build_extraction_response_json_schema() -> dict[str, Any]:
+    """
+    Constructs the Gemini `response_json_schema` contract enforcing structured
+    `intent` (`new` | `edit_current`), `batch_mode`, `fields`, `rows`, and `batch_items`.
+    Using `additionalProperties` avoids state-budget overflow and field recall collapse on
+    wide ERP forms while keeping top-level intent & types strictly constrained.
+    """
+    scalar_or_null: dict[str, Any] = {"type": ["string", "number", "boolean", "null"]}
+    record_obj: dict[str, Any] = {"type": "object", "additionalProperties": scalar_or_null}
+    rows_arr: dict[str, Any] = {"type": "array", "items": record_obj}
+    return {
+        "type": "object",
+        "required": ["intent", "batch_mode", "fields", "rows"],
+        "properties": {
+            "intent": {"type": "string", "enum": ["new", "edit_current"]},
+            "batch_mode": {"type": "boolean"},
+            "fields": record_obj,
+            "rows": rows_arr,
+            "batch_items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "fields": record_obj,
+                        "rows": rows_arr,
+                    },
+                },
+            },
+        },
+    }
+
+
+def _strip_null_row_values(rows: Any) -> list[dict[str, Any]]:
+    if not isinstance(rows, list):
+        return []
+    cleaned: list[dict[str, Any]] = []
+    for r in rows:
+        if isinstance(r, dict):
+            compact = {k: v for k, v in r.items() if v is not None}
+            if compact:
+                cleaned.append(compact)
+    return cleaned
+
+
+_EXTRACTION_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SEC = 1.5
+
+
+def _is_transient_gemini_error(err: Exception) -> bool:
+    """Returns True when Gemini fails with a transient 429/503/rate-limit/unavailable error."""
+    code = getattr(err, "code", None) or getattr(err, "status_code", None)
+    if code in (429, 503):
+        return True
+    msg = str(err).upper()
+    return any(
+        marker in msg
+        for marker in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "HIGH DEMAND", "RATE LIMIT")
+    )
+
+
 async def extract_form_fields_if_needed(
     gemini_client: genai.Client | None,
     query: str,
     visible_fields: list[str] | None,
     form_schema: list[dict] | None = None,
 ) -> dict[str, Any]:
-    """Extracts structured ERP form fields/rows from natural language using Gemini JSON mode."""
+    """Extracts structured ERP form fields/rows from natural language using Gemini constrained JSON schema."""
     if not visible_fields and not form_schema:
         return {}
     try:
         fields_ctx = form_schema if form_schema else visible_fields
         fields_ctx_json = json.dumps(fields_ctx, ensure_ascii=False)
         prompt = get_erp_form_extraction_prompt(query, fields_ctx_json)
+        response_json_schema = build_extraction_response_json_schema()
         candidate_models = list(dict.fromkeys([m for m in [settings.GEMINI_MODEL] if m]))
         client = gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)
 
         last_err = None
         for model_name in candidate_models:
-            try:
-                resp = await asyncio.to_thread(
-                    client.models.generate_content,
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        temperature=0.0,
-                    ),
-                )
-                data = json.loads(resp.text)
-                if isinstance(data, dict):
-                    if "fields" not in data and "rows" not in data and "batch_items" not in data:
-                        return {"batch_mode": False, "fields": data, "rows": []}
-                    return data
-            except Exception as err:
-                last_err = err
-                logger.warning("Batch extraction attempt failed on model, trying next", model=model_name, error=str(err))
-                continue
+            for attempt in range(_EXTRACTION_MAX_ATTEMPTS):
+                try:
+                    resp = await asyncio.to_thread(
+                        client.models.generate_content,
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json",
+                            response_json_schema=response_json_schema,
+                            temperature=0.0,
+                        ),
+                    )
+                    data = json.loads(resp.text)
+                    if isinstance(data, dict):
+                        raw_intent = str(data.get("intent") or "new").strip().lower()
+                        norm_intent = raw_intent if raw_intent in ("new", "edit_current") else "new"
+                        if "fields" not in data and "rows" not in data and "batch_items" not in data:
+                            return {
+                                "intent": norm_intent,
+                                "batch_mode": False,
+                                "fields": {k: v for k, v in data.items() if k != "intent"},
+                                "rows": [],
+                            }
+                        data["intent"] = norm_intent
+                        data["rows"] = _strip_null_row_values(data.get("rows"))
+                        if isinstance(data.get("batch_items"), list):
+                            for item in data["batch_items"]:
+                                if isinstance(item, dict) and "rows" in item:
+                                    item["rows"] = _strip_null_row_values(item.get("rows"))
+                        return data
+                    break
+                except Exception as err:
+                    last_err = err
+                    if _is_transient_gemini_error(err) and attempt < _EXTRACTION_MAX_ATTEMPTS - 1:
+                        delay_s = _RETRY_BASE_DELAY_SEC * (2 ** attempt) + random.uniform(0.15, 0.75)
+                        logger.warning(
+                            "Transient Gemini 429/503 during ERP extraction; retrying with exponential backoff",
+                            model=model_name,
+                            attempt=attempt + 1,
+                            max_attempts=_EXTRACTION_MAX_ATTEMPTS,
+                            delay_s=round(delay_s, 2),
+                            error=str(err),
+                        )
+                        await asyncio.sleep(delay_s)
+                        continue
+                    logger.warning("Batch extraction attempt failed on model, trying next", model=model_name, error=str(err))
+                    break
 
         if last_err:
             logger.error("All candidate models failed for ERP form extraction", error=str(last_err))

@@ -13,6 +13,7 @@ import json
 import re
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +25,13 @@ if str(ROOT_DIR) not in sys.path:
 
 from src.core.config import settings
 from src.services.cognitive_search.search.erp_action_extractor import (
+    build_form_fill_payload,
     extract_form_fields_if_needed,
     resolve_and_enrich_erp_action_schema,
 )
 
 DEFAULT_CASES_PATH = ROOT_DIR / "tests" / "golden" / "cases.json"
+DEFAULT_OUTPUT_PATH = ROOT_DIR / "downloads" / "eval_extractor_results.json"
 
 TREASURY_KEYS_LOWER = {"safeaccounid", "safeaccount", "safeaccountid"}
 ROW_PRODUCT_ALIASES = ["اسم المنتج", "product", "ProductID", "ProName", "item"]
@@ -137,19 +140,33 @@ def evaluate_single_run(
     case: dict[str, Any],
     raw_extracted: dict[str, Any],
     effective_schema: list[dict] | None,
-) -> tuple[bool, bool, list[str], list[str]]:
+) -> tuple[bool, bool, bool, list[str], list[str], str | None]:
     """
-    Evaluate one run into independent Hard and Soft outcomes:
+    Evaluate one run into independent Hard, Soft, and Action-Intent outcomes:
     - Hard: valid JSON, batch_mode, allowed schema keys (no unallowed/forbidden keys, no $TOTAL on safe),
             row count, numeric quantities/amounts, and zero instruction-text leakage.
     - Soft: entity/enum/currency name matching using Arabic normalization + containment.
+    - Intent: raw_extracted.get("intent") matches expected["action_intent"] ('new' | 'edit_current').
     """
     expected = case["expected"]
     hard_issues: list[str] = []
     soft_issues: list[str] = []
 
+    expected_intent = expected.get("action_intent")
+    if expected_intent:
+        act_intent = (
+            str(raw_extracted.get("action_intent") or raw_extracted.get("intent") or "").strip().lower()
+            if isinstance(raw_extracted, dict)
+            else ""
+        )
+        intent_ok = act_intent == expected_intent
+        intent_issue = None if intent_ok else f"intent:{act_intent or 'MISSING'}!={expected_intent}"
+    else:
+        intent_ok = True
+        intent_issue = None
+
     if not isinstance(raw_extracted, dict) or not raw_extracted:
-        return False, False, ["empty_or_invalid_json"], ["empty_or_invalid_json"]
+        return False, False, intent_ok, ["empty_or_invalid_json"], ["empty_or_invalid_json"], intent_issue
 
     act_batch = bool(raw_extracted.get("batch_mode", False))
     act_fields = raw_extracted.get("fields") if isinstance(raw_extracted.get("fields"), dict) else {}
@@ -173,12 +190,12 @@ def evaluate_single_run(
             for r in act_rows
         )
         if not leaks and has_clear_header and has_clean_grid_project:
-            return True, True, [], []
+            return True, True, intent_ok, [], [], intent_issue
         hard_issues.extend(leaks)
         if not has_clear_header or not has_clean_grid_project:
             hard_issues.append(f"unactionable_edit(fields={list(act_fields.keys())},rows={len(act_rows)})")
         soft_issues.append("unactionable_edit")
-        return False, False, hard_issues, soft_issues
+        return False, False, intent_ok, hard_issues, soft_issues, intent_issue
 
     # ─── HARD CHECKS ─────────────────────────────────────────────────────────────
     if act_batch != bool(expected.get("batch_mode", False)):
@@ -270,7 +287,7 @@ def evaluate_single_run(
                     elif not _soft_name_match(ev, fv):
                         soft_issues.append(f"r{idx}:soft_mismatch:{fk}={fv!r}!={ev!r}")
 
-    return len(hard_issues) == 0, len(soft_issues) == 0, hard_issues, soft_issues
+    return len(hard_issues) == 0, len(soft_issues) == 0, intent_ok, hard_issues, soft_issues, intent_issue
 
 
 async def _throttled_extract(
@@ -279,45 +296,45 @@ async def _throttled_extract(
     effective_fields: list[str] | None,
     effective_schema: list[dict[str, Any]] | None,
     call_timestamps: list[float],
+    rate_lock: asyncio.Lock,
     max_rpm: int = 12,
     window_sec: float = 63.0,
 ) -> tuple[dict[str, Any], float]:
-    """Invoke live Gemini extraction respecting Free Tier RPM limits with retry on transient 503/429."""
-    elapsed_ms = 0.0
-    for attempt in range(3):
+    """Invoke live Gemini extraction respecting RPM limits (429/503 retries run inside extract_form_fields_if_needed)."""
+    async with rate_lock:
         now = time.monotonic()
         call_timestamps[:] = [ts for ts in call_timestamps if now - ts < window_sec]
         if len(call_timestamps) >= max_rpm:
-            wait_for = window_sec - (now - call_timestamps[0]) + 1.0
+            wait_for = window_sec - (now - call_timestamps[0]) + 0.5
             if wait_for > 0:
                 print(f"[rate-limit guard] sleeping {wait_for:.1f}s to respect {max_rpm} RPM...", flush=True)
                 await asyncio.sleep(wait_for)
             now = time.monotonic()
             call_timestamps[:] = [ts for ts in call_timestamps if now - ts < window_sec]
-
         call_timestamps.append(time.monotonic())
-        t0 = time.perf_counter()
-        raw = await extract_form_fields_if_needed(
-            gemini_client=client,
-            query=case["query"],
-            visible_fields=effective_fields,
-            form_schema=effective_schema,
-        )
-        elapsed_ms = (time.perf_counter() - t0) * 1000
-        if raw:
-            return raw, elapsed_ms
-        if attempt < 2:
-            cooldown = 12.0 if attempt == 0 else 45.0
-            print(f"[transient empty/rate-limit on {case['id']}] retrying in {cooldown:.0f}s...", flush=True)
-            await asyncio.sleep(cooldown)
-    return {}, elapsed_ms
+
+    t0 = time.perf_counter()
+    raw = await extract_form_fields_if_needed(
+        gemini_client=client,
+        query=case["query"],
+        visible_fields=effective_fields,
+        form_schema=effective_schema,
+    )
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    return raw, elapsed_ms
 
 
-async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
+async def run_evaluation(
+    cases_path: Path,
+    runs: int,
+    max_rpm: int = 12,
+    output_path: Path | None = DEFAULT_OUTPUT_PATH,
+) -> int:
     data = json.loads(cases_path.read_text(encoding="utf-8"))
     cases = data["cases"]
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     call_timestamps: list[float] = []
+    rate_lock = asyncio.Lock()
 
     print(
         f"Model: {settings.GEMINI_MODEL} | Temperature: 0.0 | Runs/Case: {runs} | "
@@ -326,8 +343,9 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
     )
 
     results_rows: list[dict[str, Any]] = []
+    raw_cases_results: list[dict[str, Any]] = []
     for idx, case in enumerate(cases, 1):
-        effective_fields, effective_schema, _, _, _ = resolve_and_enrich_erp_action_schema(
+        effective_fields, effective_schema, resolved_key, resolved_pid, resolved_doc = resolve_and_enrich_erp_action_schema(
             query=case["query"],
             visible_fields=None,
             form_schema=case["form_schema"],
@@ -336,23 +354,62 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
 
         hard_pass = 0
         soft_pass = 0
+        intent_pass = 0
         latencies: list[float] = []
         hard_notes: list[str] = []
         soft_notes: list[str] = []
+        intent_notes: list[str] = []
         raw_fingerprints: set[str] = set()
+        run_entries: list[dict[str, Any]] = []
 
-        for _ in range(runs):
-            raw, elapsed_ms = await _throttled_extract(
-                client=client,
-                case=case,
-                effective_fields=effective_fields,
-                effective_schema=effective_schema,
-                call_timestamps=call_timestamps,
-                max_rpm=max_rpm,
-            )
+        run_results = await asyncio.gather(
+            *[
+                _throttled_extract(
+                    client=client,
+                    case=case,
+                    effective_fields=effective_fields,
+                    effective_schema=effective_schema,
+                    call_timestamps=call_timestamps,
+                    rate_lock=rate_lock,
+                    max_rpm=max_rpm,
+                )
+                for _ in range(runs)
+            ]
+        )
+
+        for run_idx, (raw, elapsed_ms) in enumerate(run_results, 1):
             latencies.append(elapsed_ms)
-            raw_fingerprints.add(json.dumps(raw, ensure_ascii=False, sort_keys=True))
-            h_ok, s_ok, h_issues, s_issues = evaluate_single_run(case, raw, effective_schema)
+            payload = build_form_fill_payload(
+                raw_extracted=raw,
+                screen_key=resolved_key,
+                page_id=resolved_pid,
+                document_name=resolved_doc,
+                schema=effective_schema,
+            )
+            eval_obj = (
+                {
+                    "intent": payload["action_intent"],
+                    "batch_mode": payload["batch_mode"],
+                    "fields": payload["fields"],
+                    "rows": payload["rows"],
+                }
+                if payload is not None
+                else raw
+            )
+            raw_fingerprints.add(json.dumps(eval_obj, ensure_ascii=False, sort_keys=True))
+            h_ok, s_ok, i_ok, h_issues, s_issues, i_issue = evaluate_single_run(case, eval_obj, effective_schema)
+            run_entries.append({
+                "run": run_idx,
+                "latency_ms": round(elapsed_ms, 2),
+                "hard_ok": h_ok,
+                "soft_ok": s_ok,
+                "intent_ok": i_ok,
+                "hard_issues": h_issues,
+                "soft_issues": s_issues,
+                "intent_issue": i_issue,
+                "raw_llm": raw,
+                "payload": payload,
+            })
             if h_ok:
                 hard_pass += 1
             else:
@@ -365,10 +422,25 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
                 for x in s_issues:
                     if x not in soft_notes:
                         soft_notes.append(x)
+            if i_ok:
+                intent_pass += 1
+            elif i_issue and i_issue not in intent_notes:
+                intent_notes.append(i_issue)
+
+        raw_cases_results.append({
+            "id": case["id"],
+            "origin": "synthetic" if case.get("synthetic") else "log",
+            "expected_failure": bool(case.get("expected_failure")),
+            "erp_key": case["erp_key"],
+            "page_id": case.get("page_id"),
+            "query": case["query"],
+            "expected": case["expected"],
+            "runs": run_entries,
+        })
 
         is_exp_fail = bool(case.get("expected_failure"))
         variants_cnt = len(raw_fingerprints)
-        is_score_flaky = (0 < hard_pass < runs) or (0 < soft_pass < runs)
+        is_score_flaky = (0 < hard_pass < runs) or (0 < soft_pass < runs) or (0 < intent_pass < runs)
         is_unstable = is_score_flaky or variants_cnt > 1
 
         if is_exp_fail:
@@ -384,6 +456,8 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
             diag_parts.append("Hard: " + ", ".join(hard_notes))
         if soft_notes:
             diag_parts.append("Soft: " + ", ".join(soft_notes))
+        if intent_notes:
+            diag_parts.append("Intent: " + ", ".join(intent_notes))
         diag_str = " | ".join(diag_parts) if diag_parts else "OK"
 
         row = {
@@ -393,8 +467,10 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
             "exp_fail": "YES" if is_exp_fail else "NO",
             "hard_score": f"{hard_pass}/{runs}",
             "soft_score": f"{soft_pass}/{runs}",
+            "intent_score": f"{intent_pass}/{runs}",
             "hard_pass": hard_pass,
             "soft_pass": soft_pass,
+            "intent_pass": intent_pass,
             "stability": stability,
             "is_unstable": is_unstable,
             "variants": variants_cnt,
@@ -403,45 +479,78 @@ async def run_evaluation(cases_path: Path, runs: int, max_rpm: int = 12) -> int:
         }
         results_rows.append(row)
         print(
-            f"Done [{idx}/{len(cases)}] {row['id']} -> Hard {row['hard_score']} | Soft {row['soft_score']} | {row['stability']} ({row['avg_ms']}ms)",
+            f"Done [{idx}/{len(cases)}] {row['id']} -> Hard {row['hard_score']} | Soft {row['soft_score']} | Intent {row['intent_score']} | {row['stability']} ({row['avg_ms']}ms)",
             flush=True,
         )
 
-    print("\n| # | Case ID | Origin | ExpFail | Hard | Soft | Stability | Avg ms | Diagnostics |")
-    print("| :-: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |")
+    print("\n| # | Case ID | Origin | ExpFail | Hard | Soft | Intent | Stability | Avg ms | Diagnostics |")
+    print("| :-: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |")
     for row in results_rows:
         print(
             f"| {row['idx']} | {row['id']} | {row['origin']} | {row['exp_fail']} "
-            f"| {row['hard_score']} | {row['soft_score']} | {row['stability']} | {row['avg_ms']} | {row['diag']} |"
+            f"| {row['hard_score']} | {row['soft_score']} | {row['intent_score']} | {row['stability']} | {row['avg_ms']} | {row['diag']} |"
         )
 
     normal_rows = [r for r in results_rows if r["exp_fail"] == "NO"]
     hard_fail_targets = [r for r in normal_rows if r["hard_pass"] < runs]
+    intent_fail_targets = [r for r in results_rows if r["intent_pass"] < runs]
     unstable_cases = [r for r in results_rows if r["is_unstable"]]
 
-    print("\n=== Hard / Soft Baseline Summary ===")
+    print("\n=== Hard / Soft / Intent Baseline Summary ===")
     print(f"Normal cases Hard 3/3: {sum(1 for r in normal_rows if r['hard_pass'] == runs)}/{len(normal_rows)}")
     print(f"Normal cases Soft 3/3: {sum(1 for r in normal_rows if r['soft_pass'] == runs)}/{len(normal_rows)}")
+    print(f"All cases Intent 3/3: {sum(1 for r in results_rows if r['intent_pass'] == runs)}/{len(results_rows)}")
     print(f"Normal Hard run-level pass rate: {sum(r['hard_pass'] for r in normal_rows)}/{len(normal_rows) * runs}")
     print(f"Normal Soft run-level pass rate: {sum(r['soft_pass'] for r in normal_rows)}/{len(normal_rows) * runs}")
+    print(f"All Intent run-level pass rate: {sum(r['intent_pass'] for r in results_rows)}/{len(results_rows) * runs}")
     print(f"Unstable cases across 3 runs (score flaky or >1 JSON variant): {len(unstable_cases)}/{len(results_rows)}")
     for u in unstable_cases:
-        print(f"  - {u['id']}: Hard={u['hard_score']}, Soft={u['soft_score']}, variants={u['variants']}")
+        print(f"  - {u['id']}: Hard={u['hard_score']}, Soft={u['soft_score']}, Intent={u['intent_score']}, variants={u['variants']}")
     print(f"Hard failure improvement targets ({len(hard_fail_targets)}):")
     for hf in hard_fail_targets:
         print(f"  - {hf['id']}: Hard={hf['hard_score']} -> {hf['diag']}")
+    print(f"Intent failure targets ({len(intent_fail_targets)}):")
+    for itf in intent_fail_targets:
+        print(f"  - {itf['id']}: Intent={itf['intent_score']} -> {itf['diag']}")
+
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        raw_bundle = {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "model": settings.GEMINI_MODEL,
+            "temperature": 0.0,
+            "runs_per_case": runs,
+            "cases_count": len(cases),
+            "summary": {
+                "normal_cases": len(normal_rows),
+                "normal_hard_3_of_3": sum(1 for r in normal_rows if r["hard_pass"] == runs),
+                "normal_soft_3_of_3": sum(1 for r in normal_rows if r["soft_pass"] == runs),
+                "all_intent_3_of_3": sum(1 for r in results_rows if r["intent_pass"] == runs),
+                "normal_hard_run_pass": sum(r["hard_pass"] for r in normal_rows),
+                "normal_hard_run_total": len(normal_rows) * runs,
+                "normal_soft_run_pass": sum(r["soft_pass"] for r in normal_rows),
+                "normal_soft_run_total": len(normal_rows) * runs,
+                "all_intent_run_pass": sum(r["intent_pass"] for r in results_rows),
+                "all_intent_run_total": len(results_rows) * runs,
+            },
+            "rows": results_rows,
+            "cases": raw_cases_results,
+        }
+        output_path.write_text(json.dumps(raw_bundle, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print(f"\nSaved raw evaluation JSON to: {output_path}", flush=True)
     return 0
 
 
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stdout.reconfigure(encoding="utf-8", line_buffering=True)
     parser = argparse.ArgumentParser(description="Live Baseline Evaluator (Hard/Soft split) for ERP Action Extractor.")
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES_PATH, help="Path to cases.json")
     parser.add_argument("--runs", type=int, default=3, help="Number of evaluations per case")
     parser.add_argument("--rpm", type=int, default=12, help="Max requests per minute throttle")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH, help="Path to write raw JSON results")
     args = parser.parse_args()
-    return asyncio.run(run_evaluation(args.cases, max(1, args.runs), max(1, args.rpm)))
+    return asyncio.run(run_evaluation(args.cases, max(1, args.runs), max(1, args.rpm), args.output))
 
 
 if __name__ == "__main__":

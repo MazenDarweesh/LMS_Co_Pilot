@@ -35,7 +35,7 @@ def test_golden_cases_structure_and_inventory() -> None:
     expected_failures = [c for c in GOLDEN_CASES if c.get("expected_failure")]
 
     assert len(log_cases) == 10
-    assert len(synthetic_cases) >= 2
+    assert len(synthetic_cases) >= 5
     assert len(expected_failures) == 2
 
     # Ensure StoreID DB fix removed stale "خامات تام" string from Golden Set
@@ -80,14 +80,17 @@ async def test_extractor_pipeline_plumbing_offline(case: dict) -> None:
     assert resolved_pid == case["page_id"] or resolved_key == case["erp_key"]
 
     expected = case["expected"]
+    expected_action_intent = expected.get("action_intent", "new")
     if case.get("expected_failure"):
         simulated_llm_json = {
+            "intent": expected_action_intent,
             "batch_mode": False,
             "fields": {"ProjectID": "بجوار المنتج"},
             "rows": [],
         }
     else:
         simulated_llm_json = {
+            "intent": expected_action_intent,
             "batch_mode": expected.get("batch_mode", False),
             "fields": expected.get("fields", {}),
             "rows": expected.get("rows", []),
@@ -105,13 +108,17 @@ async def test_extractor_pipeline_plumbing_offline(case: dict) -> None:
         form_schema=effective_schema,
     )
 
-    # Confirm Gemini mock invoked once at temperature=0.0 in JSON mode
+    # Confirm Gemini mock invoked once at temperature=0.0 in JSON mode with response_json_schema
     mock_client.models.generate_content.assert_called_once()
     call_kwargs = mock_client.models.generate_content.call_args.kwargs
     assert call_kwargs["model"] == settings.GEMINI_MODEL
     assert case["query"] in call_kwargs["contents"]
     assert call_kwargs["config"].temperature == 0.0
     assert call_kwargs["config"].response_mime_type == "application/json"
+    resp_schema = call_kwargs["config"].response_json_schema
+    assert resp_schema is not None
+    assert resp_schema["properties"]["intent"]["enum"] == ["new", "edit_current"]
+    assert "intent" in (resp_schema.get("required") or [])
 
     assert raw_extracted == simulated_llm_json
 
@@ -125,9 +132,141 @@ async def test_extractor_pipeline_plumbing_offline(case: dict) -> None:
 
     assert payload is not None
     assert payload["intent"] == "form_fill"
+    assert payload["action_intent"] == expected_action_intent
     assert payload["fields"] == simulated_llm_json["fields"]
     assert payload["rows"] == simulated_llm_json["rows"]
     assert payload["batch_mode"] is False
+
+
+def test_build_form_fill_payload_action_intent_normalization() -> None:
+    """Verify action_intent normalization preserves edit_current/new and defaults safely."""
+    p_edit = build_form_fill_payload(
+        raw_extracted={"intent": "edit_current", "fields": {"StoreID": "مخزن خامات"}, "rows": []},
+        screen_key="Purchases",
+    )
+    assert p_edit is not None
+    assert p_edit["intent"] == "form_fill"
+    assert p_edit["action_intent"] == "edit_current"
+
+    p_missing = build_form_fill_payload(
+        raw_extracted={"fields": {"StoreID": "مخزن خامات"}, "rows": []},
+        screen_key="Purchases",
+    )
+    assert p_missing is not None
+    assert p_missing["action_intent"] == "new"
+
+    p_invalid = build_form_fill_payload(
+        raw_extracted={"intent": "unexpected_val", "fields": {"StoreID": "مخزن خامات"}, "rows": []},
+        screen_key="Purchases",
+    )
+    assert p_invalid is not None
+    assert p_invalid["action_intent"] == "new"
+
+
+def test_build_form_fill_payload_strips_total_from_treasury_fields() -> None:
+    """Deterministic $TOTAL guard strips $TOTAL from SafeAccounId/SafeAccount/SafeAccountId across fields, rows, batch_items."""
+    payload = build_form_fill_payload(
+        raw_extracted={
+            "intent": "new",
+            "fields": {
+                "customerID": "شركة عبر البحار",
+                "SafeAccounId": "$TOTAL",
+                "SafeAccount": " $total ",
+                "POPaid": "$TOTAL",
+            },
+            "rows": [
+                {"اسم المنتج": "سن", "الكمية": 10, "SafeAccountId": "$TOTAL"},
+            ],
+            "batch_mode": False,
+            "batch_items": [
+                {
+                    "fields": {"SafeAccountId": "$TOTAL", "StoreID": "مخزن خامات"},
+                    "rows": [{"اسم المنتج": "رمل", "الكمية": 5, "SafeAccount": "$TOTAL"}],
+                }
+            ],
+        },
+        screen_key="Sales",
+    )
+    assert payload is not None
+    assert "SafeAccounId" not in payload["fields"]
+    assert "SafeAccount" not in payload["fields"]
+    # Cash settlement POPaid=$TOTAL remains untouched
+    assert payload["fields"]["POPaid"] == "$TOTAL"
+    assert "SafeAccountId" not in payload["rows"][0]
+    assert "SafeAccountId" not in payload["batch_items"][0]["fields"]
+    assert payload["batch_items"][0]["fields"]["StoreID"] == "مخزن خامات"
+    assert "SafeAccount" not in payload["batch_items"][0]["rows"][0]
+
+    # Valid non-$TOTAL treasury name is preserved
+    valid_payload = build_form_fill_payload(
+        raw_extracted={
+            "intent": "new",
+            "fields": {"SafeAccounId": "الخزينة الرئيسية"},
+            "rows": [],
+        },
+        screen_key="Out Payment",
+    )
+    assert valid_payload is not None
+    assert valid_payload["fields"]["SafeAccounId"] == "الخزينة الرئيسية"
+
+
+@pytest.mark.asyncio
+async def test_extract_form_fields_retries_transient_503_and_429_with_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify extract_form_fields_if_needed performs 3-attempt exponential backoff with jitter on 503/429."""
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("src.services.cognitive_search.search.erp_action_extractor.asyncio.sleep", fake_sleep)
+
+    # 1. Two 503 failures then success on 3rd attempt
+    ok_resp = MagicMock()
+    ok_resp.text = json.dumps({"intent": "new", "batch_mode": False, "fields": {"StoreID": "مخزن خامات"}, "rows": []})
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = [
+        RuntimeError("503 UNAVAILABLE: high demand"),
+        RuntimeError("429 RESOURCE_EXHAUSTED: rate limit"),
+        ok_resp,
+    ]
+
+    res = await extract_form_fields_if_needed(
+        gemini_client=mock_client,
+        query="سجل فاتورة مشتريات على مخزن خامات",
+        visible_fields=["StoreID"],
+    )
+    assert mock_client.models.generate_content.call_count == 3
+    assert len(sleep_delays) == 2
+    # Exponential growth (base 1.5*1 + jitter < base 1.5*2 + jitter)
+    assert 1.5 <= sleep_delays[0] <= 2.3
+    assert 3.0 <= sleep_delays[1] <= 3.8
+    assert res["fields"]["StoreID"] == "مخزن خامات"
+
+    # 2. Non-transient 400 fails fast without retries
+    sleep_delays.clear()
+    mock_client_400 = MagicMock()
+    mock_client_400.models.generate_content.side_effect = ValueError("400 INVALID_ARGUMENT")
+    res_400 = await extract_form_fields_if_needed(
+        gemini_client=mock_client_400,
+        query="test query",
+        visible_fields=["StoreID"],
+    )
+    assert mock_client_400.models.generate_content.call_count == 1
+    assert sleep_delays == []
+    assert res_400 == {}
+
+    # 3. Exhausts all 3 attempts on persistent 429 and returns {} cleanly
+    sleep_delays.clear()
+    mock_client_429 = MagicMock()
+    mock_client_429.models.generate_content.side_effect = RuntimeError("429 RESOURCE_EXHAUSTED")
+    res_429 = await extract_form_fields_if_needed(
+        gemini_client=mock_client_429,
+        query="test query",
+        visible_fields=["StoreID"],
+    )
+    assert mock_client_429.models.generate_content.call_count == 3
+    assert len(sleep_delays) == 2
+    assert res_429 == {}
 
 
 @pytest.mark.asyncio

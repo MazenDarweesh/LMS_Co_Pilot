@@ -203,8 +203,11 @@ async def stream_gemini_rag_tokens(
                     b_items = parsed_json.get("batch_items", [])
                     f_data = parsed_json.get("fields", parsed_json if not is_batch else {})
                     r_data = parsed_json.get("rows", [])
+                    raw_action_intent = str(parsed_json.get("intent") or "new").strip().lower()
+                    action_intent = raw_action_intent if raw_action_intent in ("new", "edit_current") else "new"
                     payload = {
                         "intent": "form_fill",
+                        "action_intent": action_intent,
                         "fields": f_data,
                         "rows": r_data,
                         "screenKey": req.erp_key,
