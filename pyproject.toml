@@ -38,6 +38,7 @@ dependencies = [
     "tenacity>=9.1.4",
     "torch",
     "uvicorn[standard]>=0.52.1",
+    "websockets==16.1.1",
     "yt-dlp>=2026.7.4",
 ]
 

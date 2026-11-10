@@ -1,0 +1,2952 @@
+{
+  "version": "1.0",
+  "description": "Phase 0 ERP Action Extractor Golden Set",
+  "cases": [
+    {
+      "id": "log_01_purchases_direct_no_currency",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261108_154211_fcx7.log:L34",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وطريقة الشراء مشتريات مباشرة، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType",
+          "DefultValue"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX داخل الـ ERP."
+    },
+    {
+      "id": "log_02_sales_direct_full",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261109_124801_sjxr.log:L77",
+      "erp_key": "Sales Types",
+      "page_id": 244,
+      "query": "دخل فاتورة مبيعات جديدة لعميل شركة عبر البحار ، طريقة البيع مباشرة ، مركز التكلفة لودر 1، مخزن خامات، منتجين سن الكمية 10، رمل الكمية 10، وتم دفع الاجمالي نقدا",
+      "form_schema": [
+        {
+          "key": "customerID",
+          "label": "العميل",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "Gov",
+          "label": "المنطقة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "customerCategoryID",
+          "label": "تصنيف العميل",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ContractType",
+          "label": "طريقة البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesMan",
+          "label": "رجل المبيعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "امر بيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المخزن",
+          "label": "اسم المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccount",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "customerID": "شركة عبر البحار",
+          "ContractType": "مباشرة",
+          "CostItemId": "لودر 1",
+          "StoreID": "مخزن خامات"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "POSetting",
+          "SupplierID",
+          "VendorID",
+          "custom_select"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 10
+          }
+        ]
+      },
+      "notes": "حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. يُمنع تعيين $TOTAL على SafeAccount (الخزينة)."
+    },
+    {
+      "id": "log_03_sales_duplicate_paste_stress",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261103_163223_qcco.log:L1",
+      "erp_key": "Sales Types",
+      "page_id": 244,
+      "query": "دخل فاتورة مبيعات جديدة لعميل شركة عبر البحار ، طريقة البيع مباشرة ، مركز التكلفة لودر 1، مخزن خامات، منتجين سن الكمية 10، رمل الكمية 10، وتم دفع الاجمالي نقدا  دخل فاتورة مبيعات جديدة لعميل شركة عبر البحار ، طريقة البيع مباشرة ، مركز التكلفة لودر 1، مخزن خامات، منتجين سن الكمية 10، رمل الكمية 10، وتم دفع الاجمالي نقدا",
+      "form_schema": [
+        {
+          "key": "customerID",
+          "label": "العميل",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "Gov",
+          "label": "المنطقة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "customerCategoryID",
+          "label": "تصنيف العميل",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ContractType",
+          "label": "طريقة البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesMan",
+          "label": "رجل المبيعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "امر بيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المخزن",
+          "label": "اسم المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccount",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "customerID": "شركة عبر البحار",
+          "ContractType": "مباشرة",
+          "CostItemId": "لودر 1",
+          "StoreID": "مخزن خامات"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "POSetting",
+          "SupplierID",
+          "VendorID",
+          "custom_select"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 10
+          }
+        ]
+      },
+      "notes": "حالة إجهاد (لصق مكرر لنفس الفاتورة مرتين): يجب ألا ينتج batch_mode=true. حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill."
+    },
+    {
+      "id": "log_04_purchases_currency_masri_full_method",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261108_154211_fcx7.log:L105",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وطريقة الشراء مشتريات مباشرة، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20 ركز عملة الشراء مصري وطريقة الشراء مباشرة",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة",
+          "CurrancyID": "EGP"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "اختبار تطبيع العملة ('مصري' -> 'EGP'). حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX داخل الـ ERP."
+    },
+    {
+      "id": "log_05_purchases_currency_egp_full_method",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261108_154211_fcx7.log:L157",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وطريقة الشراء مشتريات مباشرة، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20 ركز عملة الشراء egp وطريقة الشراء مشتريات مباشرة",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة",
+          "CurrancyID": "EGP"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "تطبيع egp -> EGP. حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX داخل الـ ERP."
+    },
+    {
+      "id": "log_06_purchases_concise_egp_schema30",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261109_160407_77zm.log:L2,L68",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20 ركز عملة الشراء egp وطريقة الشراء مشتريات مباشرة",
+      "form_schema": [
+        {
+          "key": "المورد",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "طريقة الشراء",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المخزن",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "رجل المشتريات",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "مركز التكلفة",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اذن توريد",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "عملة الشراء",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "صرف علي أمر البيع",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشروعات",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة",
+          "CurrancyID": "EGP"
+        },
+        "field_aliases": {
+          "SupplierID": [
+            "SupplierID",
+            "المورد"
+          ],
+          "POSetting": [
+            "POSetting",
+            "طريقة الشراء"
+          ],
+          "StoreID": [
+            "StoreID",
+            "المخزن"
+          ],
+          "CurrancyID": [
+            "CurrancyID",
+            "عملة الشراء"
+          ],
+          "ProjectID": [
+            "ProjectID",
+            "المشروعات"
+          ]
+        },
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "سكيما 77zm ذات الـ 30 حقلاً. حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX في الـ ERP (dataObject.CurrancyEX = '1')."
+    },
+    {
+      "id": "log_07_purchases_concise_masri",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261109_142320_roih.log:L2",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20 ركز عملة الشراء مصري وطريقة الشراء مشتريات مباشرة",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة",
+          "CurrancyID": "EGP"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "تطبيع 'مصري' -> 'EGP'. حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill. ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX داخل الـ ERP."
+    },
+    {
+      "id": "log_08_purchases_explicit_exchange_rate",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": false,
+      "source_log": "session_session_20261109_144233_2cq3.log:L109",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "سجل فاتورة مشتريات جديدة من المورد حسين، على مخزن خامات تام، لمشروع السحاب، وسدد الإجمالي بالكامل نقداً، وأضف الأصناف التالية: صنف سن كمية 10، وصنف رمل كمية 20 ركز عملة الشراء egp وطريقة الشراء مشتريات مباشرةو سعر الصرف 1",
+      "form_schema": [
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "العملة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "SupplierID": "حسين",
+          "StoreID": "خامات تام",
+          "ProjectID": "السحاب",
+          "POSetting": "مشتريات مباشرة",
+          "CurrancyID": "EGP"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [
+          "VendorID",
+          "custom_select",
+          "InsertType"
+        ],
+        "rows": [
+          {
+            "اسم المنتج": "سن",
+            "الكمية": 10
+          },
+          {
+            "اسم المنتج": "رمل",
+            "الكمية": 20
+          }
+        ]
+      },
+      "notes": "سعر الصرف 1 (ExchangePrice، والذي يقابل CurrancyEX داخل الـ ERP) غير موجود في form_schema الـ 21 حقلاً ولذلك أزيل من expected ويتولى الفرونت حقنه عبر writeExchangePriceDom. حقل السداد النقدي (POPaid / POPaidCurrancy / $TOTAL) غير موجود في form_schema الحالي ويتولى الفرونت إند تعبئته مباشرة عبر منطق userWantsCashSettlement في applyProgressiveFill."
+    },
+    {
+      "id": "log_09_edit_move_project_to_grid_v1",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": true,
+      "failure_reason": "الأمر يحيل إلى 'الفاتورة السابقة' ويطلب تعديل ونقل قيمة المشروع إلى سطور الجدول؛ الـ Extractor الحالي عديم الحالة ولا يملك سياق القيمة السابقة ولا عقد نقل/تعميم على سطور الـ Grid.",
+      "source_log": "session_session_20261109_160407_77zm.log:L147",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "عدل الفاتورة السابقة وسجل المشروع تحت بجوار المنتج",
+      "form_schema": [
+        {
+          "key": "المورد",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "طريقة الشراء",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المخزن",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "رجل المشتريات",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "مركز التكلفة",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اذن توريد",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "عملة الشراء",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "صرف علي أمر البيع",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشروعات",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {},
+        "rows": [],
+        "actionable_grid_column": "المشـــروع",
+        "reject_literal_placeholders": [
+          "بجوار المنتج",
+          "مطلوب نقله إلى السطر"
+        ]
+      },
+      "notes": "حالة فشل متوقعة (expected_failure). ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX."
+    },
+    {
+      "id": "log_10_edit_clear_header_project_move_grid_v2",
+      "origin": "log",
+      "synthetic": false,
+      "expected_failure": true,
+      "failure_reason": "يتطلب عملية مسح حقل الرأس (ProjectID -> null/clear) وتعميم قيمته على كل صفوف الجدول؛ العقد والـ Prompt الحاليان لا يدعمان عمليات التفريغ أو التعديل التفاعلي للجدول.",
+      "source_log": "session_session_20261109_160407_77zm.log:L200",
+      "erp_key": "Purchases",
+      "page_id": 289,
+      "query": "احذف  المشروع من فوق وخليه تحت مع المنتج فقط",
+      "form_schema": [
+        {
+          "key": "المورد",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SupplierID",
+          "label": "المورد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "طريقة الشراء",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "POSetting",
+          "label": "طريقة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المخزن",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "StoreID",
+          "label": "المخزن",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "رجل المشتريات",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "EmployeeId",
+          "label": "رجل المشتريات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "مركز التكلفة",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CostItemId",
+          "label": "مركز التكلفة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اذن توريد",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "supplyerOrderId",
+          "label": "اذن توريد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "عملة الشراء",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "CurrancyID",
+          "label": "عملة الشراء",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "صرف علي أمر البيع",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SalesOrderDisbursement",
+          "label": "صرف علي أمر البيع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشروعات",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "ProjectID",
+          "label": "المشروعات",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "اسم المنتج",
+          "label": "اسم المنتج",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الكود",
+          "label": "الكود",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "المشـــروع",
+          "label": "المشـــروع",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "التصنيف",
+          "label": "التصنيف",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البعد",
+          "label": "البعد",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "الاصل الثابت",
+          "label": "الاصل الثابت",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "البند التحليلي",
+          "label": "البند التحليلي",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "بند المقايسه",
+          "label": "بند المقايسه",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "SafeAccounId",
+          "label": "الخزينة",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "TaxCurrancy",
+          "label": "",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "InsertType",
+          "label": "InsertType",
+          "kind": "ng-select",
+          "disabled": false
+        },
+        {
+          "key": "DefultValue",
+          "label": "DefultValue",
+          "kind": "ng-select",
+          "disabled": false
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "ProjectID": null
+        },
+        "rows": [],
+        "actionable_grid_column": "المشـــروع",
+        "reject_literal_placeholders": [
+          "مطلوب نقله إلى السطر",
+          "مع المنتج فقط"
+        ]
+      },
+      "notes": "حالة فشل متوقعة (expected_failure). ملاحظة ERP: مفتاح ExchangePrice في المشتريات يقابل CurrancyEX."
+    },
+    {
+      "id": "syn_01_employee_loan_7158",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "src/data/forms_metadata.json#by_page_id.7158",
+      "erp_key": "predecessor",
+      "page_id": 7158,
+      "query": "سجل طلب سلفة للموظف محمود السيد بقيمة 5000 جنيه على 10 أشهر تبدأ من 2026-12-01 لغرض مصروفات دراسية",
+      "form_schema": [
+        {
+          "key": "EmpId",
+          "name": "EmpId",
+          "label": "الموظف",
+          "type": "dropdown",
+          "required": true,
+          "section": "header"
+        },
+        {
+          "key": "Amount",
+          "name": "Amount",
+          "label": "قيمة السلفة",
+          "type": "number",
+          "required": true,
+          "section": "header"
+        },
+        {
+          "key": "Months",
+          "name": "Months",
+          "label": "عدد أشهر السداد",
+          "type": "number",
+          "required": true,
+          "section": "header"
+        },
+        {
+          "key": "StartDate",
+          "name": "StartDate",
+          "label": "تاريخ بداية الخصم",
+          "type": "date",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "Notes",
+          "name": "Notes",
+          "label": "ملاحظات السلفة",
+          "type": "textarea",
+          "required": false,
+          "section": "header"
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "EmpId": "محمود السيد",
+          "Amount": 5000,
+          "Months": 10,
+          "StartDate": "2026-12-01",
+          "Notes": "مصروفات دراسية"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [],
+        "rows": []
+      },
+      "notes": "حالة تركيبية (Synthetic) من شاشة طلب سلفة (7158) في forms_metadata.json."
+    },
+    {
+      "id": "syn_02_out_payment_voucher_302",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "src/data/forms_metadata.json#by_page_id.302",
+      "erp_key": "Out Payment",
+      "page_id": 302,
+      "query": "سجل اذن صرف نقدية بقيمة 15000 جنيه لمشروع السحاب، مدفوع من الخزينة الرئيسية لصالح المورد حسين مقابل دفعة تحت الحساب، بعملة مصري وسعر الصرف 1",
+      "form_schema": [
+        {
+          "key": "PaymentNote1",
+          "name": "PaymentNote1",
+          "label": "مرفق  صرف الشيك",
+          "type": "file",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "CheckName",
+          "name": "CheckName",
+          "label": "رقم الشيك",
+          "type": "text",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "MasterNote",
+          "name": "MasterNote",
+          "label": "مرفق",
+          "type": "file",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "Note",
+          "name": "Note",
+          "label": "ملاحظة فرعية",
+          "type": "text",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "MonyActCurrancy",
+          "name": "MonyActCurrancy",
+          "label": "قيمة الاذن",
+          "type": "number",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "IsCheckSort",
+          "name": "IsCheckSort",
+          "label": "مؤيد بمستند",
+          "type": "checkbox",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "ProductID",
+          "name": "ProductID",
+          "label": "اسم المشروع",
+          "type": "dropdown",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "SupplyOrderMaterId",
+          "name": "SupplyOrderMaterId",
+          "label": "امر البيع المنصرف عليه",
+          "type": "dropdown",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "PaymentNotes",
+          "name": "PaymentNotes",
+          "label": "الشرح",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "AccountID",
+          "name": "AccountID",
+          "label": "مدفوع من",
+          "type": "dropdown",
+          "required": true,
+          "section": "grid"
+        },
+        {
+          "key": "CurrancyEX",
+          "name": "CurrancyEX",
+          "label": "سعر الصرف",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "PaperNumber",
+          "name": "PaperNumber",
+          "label": "رقم السند",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "EDate",
+          "name": "EDate",
+          "label": "تاريخ الاذن",
+          "type": "date",
+          "required": true,
+          "section": "grid"
+        },
+        {
+          "key": "PaymentNote1",
+          "name": "PaymentNote1",
+          "label": "اسم المستفيد",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MasterNote",
+          "name": "MasterNote",
+          "label": "مرفق",
+          "type": "file",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ENote",
+          "name": "ENote",
+          "label": "ملاحظة فرعية",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MonyActCurrancy",
+          "name": "MonyActCurrancy",
+          "label": "المبلغ",
+          "type": "number",
+          "required": true,
+          "section": "grid"
+        },
+        {
+          "key": "ItemQuantity",
+          "name": "ItemQuantity",
+          "label": "كمية البند",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Invoicenumber",
+          "name": "Invoicenumber",
+          "label": "رقم الفاتورة",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "bankExpencesTaxValue",
+          "name": "bankExpencesTaxValue",
+          "label": "قيمة ضريبة البنك",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "bankExpencesTaxPercentage",
+          "name": "bankExpencesTaxPercentage",
+          "label": "نسبة ضريبة البنك",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "bankExpencesValue",
+          "name": "bankExpencesValue",
+          "label": "قيمة عمولة البنك",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "bankExpencesPercntage",
+          "name": "bankExpencesPercntage",
+          "label": "نسبة عمولة البنك",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MainTaxValue",
+          "name": "MainTaxValue",
+          "label": "قيمة الضريبة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MainTaxPercentage",
+          "name": "MainTaxPercentage",
+          "label": "نسبة الضريبة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MonyActCurrancyAfterTax",
+          "name": "MonyActCurrancyAfterTax",
+          "label": "الاجمالي بعد الضريبة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MonyAccount",
+          "name": "MonyAccount",
+          "label": "كود الحساب",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "AcParent",
+          "name": "AcParent",
+          "label": "الحساب الرئيسي",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "DetailPurchaseId",
+          "name": "DetailPurchaseId",
+          "label": "فاتورة الشراء",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsCheck",
+          "name": "IsCheck",
+          "label": "شيك",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckExchangeDate",
+          "name": "CheckExchangeDate",
+          "label": "تاريخ التحصيل",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckRestPlace",
+          "name": "CheckRestPlace",
+          "label": "حافظة الشيكات",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Note",
+          "name": "Note",
+          "label": "ملاحظات",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "InOrOut",
+          "name": "InOrOut",
+          "label": "هل محصل",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsCheckSort",
+          "name": "IsCheckSort",
+          "label": "هل مسطر",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckName",
+          "name": "CheckName",
+          "label": "رقم الشيك",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckMaturityDate",
+          "name": "CheckMaturityDate",
+          "label": "تاريخ الاستحقاق",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckReciveDate",
+          "name": "CheckReciveDate",
+          "label": "تاريخ الاستلام",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckMainBank",
+          "name": "CheckMainBank",
+          "label": "البنك الرئيسى",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckBankLocation",
+          "name": "CheckBankLocation",
+          "label": "فرع البنك",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "TaxCategoryID",
+          "name": "TaxCategoryID",
+          "label": "التوجيه الضريبي",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ChequeBookId",
+          "name": "ChequeBookId",
+          "label": "دفتر الشيكات",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsNoTax",
+          "name": "IsNoTax",
+          "label": "بدون ضريبة",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ItemCategoryId",
+          "name": "ItemCategoryId",
+          "label": "تصنيف التدفقات",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SupplyOrderMaterId",
+          "name": "SupplyOrderMaterId",
+          "label": "صرف علي أمر البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "FixedAssestsId",
+          "name": "FixedAssestsId",
+          "label": "الاصل الثابت",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CostItems",
+          "name": "CostItems",
+          "label": "مركز التكلفة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CheckAccountId",
+          "name": "CheckAccountId",
+          "label": "محصل على حساب",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SupplierID",
+          "name": "SupplierID",
+          "label": "المورد",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "purchaseSupplierID",
+          "name": "purchaseSupplierID",
+          "label": "مورد الفاتورة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "EmployeeAccountID",
+          "name": "EmployeeAccountID",
+          "label": "الموظف",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CurrancyID",
+          "name": "CurrancyID",
+          "label": "العملة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "MaintemTreeId",
+          "name": "MaintemTreeId",
+          "label": "البنود التحليلية",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ItemsTreeId",
+          "name": "ItemsTreeId",
+          "label": "بند مقايسه",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ConstSupplierMasterId",
+          "name": "ConstSupplierMasterId",
+          "label": "العقد",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ProductID",
+          "name": "ProductID",
+          "label": "المشروع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CustomerID",
+          "name": "CustomerID",
+          "label": "العميل",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "MonyActCurrancy": 15000,
+          "ProductID": "السحاب"
+        },
+        "field_aliases": {},
+        "forbidden_keys": [],
+        "rows": [
+          {
+            "AccountID": "الخزينة الرئيسية",
+            "SupplierID": "حسين",
+            "MonyActCurrancy": 15000,
+            "CurrancyID": "EGP",
+            "CurrancyEX": 1,
+            "PaymentNotes": "دفعة تحت الحساب"
+          }
+        ]
+      },
+      "notes": "حالة تركيبية (Synthetic) من شاشة اذن صرف نقدية / شيك (302) في forms_metadata.json. سعر الصرف في الجدول هو CurrancyEX (المقابل لـ ExchangePrice في المشتريات) وجميع الحقول المتوقعة موجودة في السكيما."
+    },
+    {
+      "id": "syn_03_sales_return_350",
+      "origin": "synthetic",
+      "synthetic": true,
+      "expected_failure": false,
+      "source_log": "src/data/forms_metadata.json#by_page_id.350",
+      "erp_key": "Sales Return Types",
+      "page_id": 350,
+      "query": "سجل مرتجع مبيعات للعميل شركة النيل للمقاولات على مخزن خامات، طريقة البيع مباشرة، لصنف حديد تسليح كمية 5، ورد الإجمالي نقداً",
+      "form_schema": [
+        {
+          "key": "Note1",
+          "name": "Note1",
+          "label": "مرفق",
+          "type": "file",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "SalesNote2",
+          "name": "SalesNote2",
+          "label": "ملاحظه 2",
+          "type": "text",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "ContractDate",
+          "name": "ContractDate",
+          "label": "التاريخ",
+          "type": "date",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "ContractNote",
+          "name": "ContractNote",
+          "label": "التوصيف",
+          "type": "text",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "Ordernumber",
+          "name": "Ordernumber",
+          "label": "رقم السند",
+          "type": "text",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "CreateBy",
+          "name": "CreateBy",
+          "label": "ادخال بواسطة",
+          "type": "dropdown",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "ContractType",
+          "name": "ContractType",
+          "label": "طريقة البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "CustomerAccountName",
+          "name": "CustomerAccountName",
+          "label": "العميل",
+          "type": "dropdown",
+          "required": false,
+          "section": "header"
+        },
+        {
+          "key": "ContractType",
+          "name": "ContractType",
+          "label": "طريقة البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Ordernumber",
+          "name": "Ordernumber",
+          "label": "رقم السند",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "StoreID",
+          "name": "StoreID",
+          "label": "المخزن",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ContractDate",
+          "name": "ContractDate",
+          "label": "التاريخ",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "POPaid",
+          "name": "POPaid",
+          "label": "المحصل نقدا",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ContractNote",
+          "name": "ContractNote",
+          "label": "التوصيف",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Note1",
+          "name": "Note1",
+          "label": "مرفق",
+          "type": "file",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "PaymentType",
+          "name": "PaymentType",
+          "label": "طريقة السداد",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Note6",
+          "name": "Note6",
+          "label": "ملاحظة السداد",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Tax",
+          "name": "Tax",
+          "label": "ضريبة القيمة المضافة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "AddTax",
+          "name": "AddTax",
+          "label": "ضريبة خصم من المنبع",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "TotalOrderBefor",
+          "name": "TotalOrderBefor",
+          "label": "اجمالي بعد الضرائب",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "TaxCurrancy",
+          "name": "TaxCurrancy",
+          "label": "ضريبة القيمة المضافة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "AddTaxCurrancy",
+          "name": "AddTaxCurrancy",
+          "label": "ضريبة خصم من المنبع",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CurrancyEX",
+          "name": "CurrancyEX",
+          "label": "سعر الصرف",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "TotalOrder",
+          "name": "TotalOrder",
+          "label": "اجمالي",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Discount",
+          "name": "Discount",
+          "label": "خصم",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "remind",
+          "name": "remind",
+          "label": "الاجل على العميل",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "shippingPrice",
+          "name": "shippingPrice",
+          "label": "مصاريف الشحن",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SalesInvoiceID",
+          "name": "SalesInvoiceID",
+          "label": "فاتورة البيع للعميل",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "VisitPriceOutInsurance",
+          "name": "VisitPriceOutInsurance",
+          "label": "سعر الزيارة خارج الضمان",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "VisitPriceInInsurance",
+          "name": "VisitPriceInInsurance",
+          "label": "سعر الزيارة في الضمان",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsSystemResale",
+          "name": "IsSystemResale",
+          "label": "مرتجع",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "systemDescription",
+          "name": "systemDescription",
+          "label": "وصف",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsShipable",
+          "name": "IsShipable",
+          "label": "يشحن",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "TransportionPriceOutInsuranse",
+          "name": "TransportionPriceOutInsuranse",
+          "label": "النقل خارج الضمان",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ProductID",
+          "name": "ProductID",
+          "label": "اسم المنتج",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "UnitePrice",
+          "name": "UnitePrice",
+          "label": "السعر",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Qty",
+          "name": "Qty",
+          "label": "الكمية",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Total",
+          "name": "Total",
+          "label": "اجمالي السعر",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "PriceCurrancy",
+          "name": "PriceCurrancy",
+          "label": "سعر اجنبي",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CurrentQTY",
+          "name": "CurrentQTY",
+          "label": "الكمية المتاحة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "systemCost",
+          "name": "systemCost",
+          "label": "التكلفة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "DeliveryDate",
+          "name": "DeliveryDate",
+          "label": "تاريخ التسليم",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "HasInstallationVisit",
+          "name": "HasInstallationVisit",
+          "label": "زيارة تركيب",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "InsuranceStartDate",
+          "name": "InsuranceStartDate",
+          "label": "بداية الضمان",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "InsuranceEndDate",
+          "name": "InsuranceEndDate",
+          "label": "نهاية الضمان",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "InsuranceLimit",
+          "name": "InsuranceLimit",
+          "label": "ضمان عداد",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "UsedFromInsurance",
+          "name": "UsedFromInsurance",
+          "label": "استخدام عداد",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "InsuranceLimitStart",
+          "name": "InsuranceLimitStart",
+          "label": "بداية العداد",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "EndVisitsDate",
+          "name": "EndVisitsDate",
+          "label": "نهاية تاريخ الزيارات",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "IsGenerated",
+          "name": "IsGenerated",
+          "label": "عقد مجدد",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SerialNumber",
+          "name": "SerialNumber",
+          "label": "رقم السريال",
+          "type": "text",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Hight",
+          "name": "Hight",
+          "label": "الارتفاع",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Density",
+          "name": "Density",
+          "label": "الكثافة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Expirdate",
+          "name": "Expirdate",
+          "label": "تاريخ الصلاحية",
+          "type": "date",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "NonActiveSystem",
+          "name": "NonActiveSystem",
+          "label": "غير فعال",
+          "type": "checkbox",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "PPIID",
+          "name": "PPIID",
+          "label": "اذن الصرف",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "DiscountDetailValue",
+          "name": "DiscountDetailValue",
+          "label": "قيمة الخصم",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "DiscountDetailPercent",
+          "name": "DiscountDetailPercent",
+          "label": "نسبة الخصم",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ItemDiscount",
+          "name": "ItemDiscount",
+          "label": "خصم القطعة",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SystemStore",
+          "name": "SystemStore",
+          "label": "المخزن",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SecQuntity",
+          "name": "SecQuntity",
+          "label": "الكمية الاخرى",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "Width",
+          "name": "Width",
+          "label": "العرض",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "length",
+          "name": "length",
+          "label": "الطول",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CostItemId",
+          "name": "CostItemId",
+          "label": "مركز التكلفة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "bonus",
+          "name": "bonus",
+          "label": "بونص",
+          "type": "number",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CostCenterID",
+          "name": "CostCenterID",
+          "label": "مركز التكلفه",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SalesMan",
+          "name": "SalesMan",
+          "label": "رجل المبيعات",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CurrancyID",
+          "name": "CurrancyID",
+          "label": "عملة البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SecUnit",
+          "name": "SecUnit",
+          "label": "الوحدة الاخرى",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "UnitID",
+          "name": "UnitID",
+          "label": "الوحدة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SalesTupeID",
+          "name": "SalesTupeID",
+          "label": "قناة البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "contractBillId",
+          "name": "contractBillId",
+          "label": "فاتورة البيع",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "ColorID",
+          "name": "ColorID",
+          "label": "اللون",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "SizeID",
+          "name": "SizeID",
+          "label": "المقاس",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "DimantionID",
+          "name": "DimantionID",
+          "label": "الخدمة",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        },
+        {
+          "key": "CustomerID",
+          "name": "CustomerID",
+          "label": "اسم العميل",
+          "type": "dropdown",
+          "required": false,
+          "section": "grid"
+        }
+      ],
+      "expected": {
+        "batch_mode": false,
+        "fields": {
+          "CustomerAccountName": "شركة النيل للمقاولات",
+          "ContractType": "مباشرة",
+          "POPaid": "$TOTAL"
+        },
+        "field_aliases": {
+          "CustomerAccountName": [
+            "CustomerAccountName",
+            "CustomerID"
+          ],
+          "POPaid": [
+            "POPaid",
+            "CashPaid",
+            "Paid",
+            "POPaidCurrancy",
+            "المحصل نقداً",
+            "المحصل نقدا",
+            "المدفوع نقداً"
+          ]
+        },
+        "forbidden_keys": [
+          "SupplierID",
+          "POSetting"
+        ],
+        "rows": [
+          {
+            "ProductID": "حديد تسليح",
+            "Qty": 5,
+            "StoreID": "خامات"
+          }
+        ],
+        "allow_header_or_row_keys": [
+          "StoreID",
+          "POPaid"
+        ]
+      },
+      "notes": "حالة تركيبية (Synthetic) من شاشة مرتجعات البيع (350) في forms_metadata.json؛ حقل POPaid موجود صراحة في سكيما الشاشة (grid_fields) مع CurrancyEX."
+    }
+  ]
+}

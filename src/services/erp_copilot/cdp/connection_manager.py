@@ -15,6 +15,7 @@ from typing import Any, Optional
 import httpx
 from pydoll.connection.connection_handler import ConnectionHandler
 import structlog
+from websockets.protocol import State
 
 from src.core.config import settings
 from src.services.erp_copilot.agentic_stepper.session_telemetry import (
@@ -51,7 +52,8 @@ class CdpConnectionManager:
             handler = self._pydoll_handlers.get(ws_url)
             is_alive = False
             if handler is not None and handler._ws_connection is not None:
-                is_alive = not handler._ws_connection.closed
+                ws = handler._ws_connection
+                is_alive = ws.state is State.OPEN
 
             if not is_alive:
                 if handler is not None:
