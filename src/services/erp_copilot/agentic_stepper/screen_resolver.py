@@ -214,12 +214,26 @@ class ScreenResolver:
             if desc_hits >= 3:
                 score = max(score, 0.60 + min(0.15, desc_hits * 0.03))
 
-            # هـ. عقوبة شاشات التقارير والاستعلام عند وجود نية تنفيذية (Task A.5: Demotion Penalty)
+            # هـ. عقوبة شاشات التقارير والوحدات الثانوية غير المطلوبة صراحةً (Module & Keyword Demotion)
             is_action_goal = any(v in norm_goal for v in ["سجل", "اضف", "انشئ", "ادخل", "فاتورة", "اعتماد", "طلب", "صرف", "قيد"])
-            if is_action_goal:
-                disqualified_keywords = ["تقرير", "تفاصيل", "اعدادات", "استعلام", "مصمم", "ملفات"]
-                if any(dk in name_norm for dk in disqualified_keywords):
-                    score -= 0.35
+            secondary_modules_norm = {
+                normalize_arabic_text_leaderboard(m)
+                for m in ("الفاتورة الالكترونية", "تقارير تكملية", "الانظمة المتخصصة", "الادارة العليا", "اعدادات", "اعدادات المرتبات")
+            }
+            primary_modules_norm = {
+                normalize_arabic_text_leaderboard(m)
+                for m in ("الموردين و المشتريات", "العملاء  و المبيعات", "العملاء و المبيعات", "الحسابات العامه", "المخازن", "المرتبات", "التصنيع")
+            }
+            screen_mod_norm = normalize_arabic_text_leaderboard(screen.get("module", ""))
+            disqualified_keywords = ["تقرير", "تفاصيل", "اعدادات", "استعلام", "مصمم", "ملفات", "المرحلة", "مرحل", "فلاحين", "البان", "الكترونية"]
+            matched_dq = [dk for dk in disqualified_keywords if dk in name_norm]
+            explicitly_requested = any(dk in norm_goal for dk in matched_dq) or (
+                screen_mod_norm in secondary_modules_norm and screen_mod_norm and screen_mod_norm in norm_goal
+            )
+            if (is_action_goal and matched_dq) or ((matched_dq or screen_mod_norm in secondary_modules_norm) and not explicitly_requested):
+                score -= 0.35
+            elif screen_mod_norm in primary_modules_norm and not matched_dq:
+                score += 0.08
 
             # و. تعزيز الكلمات التمييزية الدقيقة (Qualifier Token Boosting)
             if "مقاول" in norm_goal and "مقاول" in name_norm:

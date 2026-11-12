@@ -239,3 +239,79 @@ async def test_erp_endpoints_validation_limits_422():
             }
         )
         assert res3.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_erp_nav_ambiguous_invoices_asks_primary_screens_not_secondary():
+    """Ambiguous 'عايز افتح شاشة الفواتير' must return ask with primary invoice screens (never 7072 clarify)."""
+    cands = [
+        NavCandidateIn(id="7072", label="الفواتير المرحلة", path=["الوحدات والبرامج الرئيسية", "الفاتورة الالكترونية"]),
+        NavCandidateIn(id="6701", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "الفاتورة الالكترونية"]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=["الوحدات والبرامج الرئيسية", "الموردين و المشتريات"]),
+        NavCandidateIn(id="244", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+    ]
+    mock_llm_resp = MagicMock()
+    mock_llm_resp.text = '{"intent": "navigate", "candidates": [{"id": "7072", "confidence": 0.20, "reason": "غير مؤكد"}]}'
+    erp_service._gemini_client.models.generate_content.return_value = mock_llm_resp
+
+    res = await erp_service.resolve_navigation(NavRequest(user_message="عايز افتح شاشة الفواتير", candidates=cands))
+    assert res.decision == "ask"
+    assert res.intent == "navigate"
+    returned_ids = [c.id for c in res.candidates]
+    assert "244" in returned_ids
+    assert "289" in returned_ids
+    assert "7072" not in returned_ids
+
+
+@pytest.mark.asyncio
+async def test_erp_nav_clear_sales_invoices_regression_stays_go():
+    """Anti-regression: unambiguous 'افتح فواتير المبيعات' must resolve directly with decision='go' to primary 244."""
+    cands = [
+        NavCandidateIn(id="6701", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "الفاتورة الالكترونية"]),
+        NavCandidateIn(id="244", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=["الوحدات والبرامج الرئيسية", "الموردين و المشتريات"]),
+    ]
+    mock_llm_resp = MagicMock()
+    mock_llm_resp.text = (
+        '{"intent": "navigate", "candidates": ['
+        '{"id": "244", "confidence": 0.96, "reason": "فواتير المبيعات الرئيسية"},'
+        '{"id": "6701", "confidence": 0.85, "reason": "نسخة الفاتورة الالكترونية"}]}'
+    )
+    erp_service._gemini_client.models.generate_content.return_value = mock_llm_resp
+
+    res = await erp_service.resolve_navigation(NavRequest(user_message="افتح فواتير المبيعات", candidates=cands))
+    assert res.decision == "go"
+    assert res.candidates[0].id == "244"
+
+
+@pytest.mark.asyncio
+async def test_erp_nav_module_priority_ignores_numeric_id_order():
+    """Module/allowlist priority must NOT rely on id < 1000: a 4-digit primary-module screen beats a <1000 secondary screen."""
+    cands = [
+        NavCandidateIn(id="101", label="العملاء", path=["الوحدات والبرامج الرئيسية", "الفاتورة الالكترونية"]),
+        NavCandidateIn(id="9999", label="بيانات العملاء", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+    ]
+    erp_service._gemini_client.models.generate_content.side_effect = RuntimeError("lexical fallback")
+    try:
+        res = await erp_service.resolve_navigation(NavRequest(user_message="افتح شاشة العملاء", candidates=cands))
+    finally:
+        erp_service._gemini_client.models.generate_content.side_effect = None
+
+    assert res.decision == "go"
+    assert res.candidates[0].id == "9999"
+
+
+@pytest.mark.asyncio
+async def test_erp_nav_report_query_not_hijacked_by_transaction_catalog():
+    """Explicit report request ('افتح تقرير المبيعات') must not get forced to Store Convert Orders (290)."""
+    cands = [
+        NavCandidateIn(id="290", label="تحويلات المخازن", path=["الوحدات والبرامج الرئيسية", "المخازن"]),
+        NavCandidateIn(id="310", label="تقرير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+    ]
+    erp_service._gemini_client.models.generate_content.side_effect = RuntimeError("lexical fallback")
+    try:
+        res = await erp_service.resolve_navigation(NavRequest(user_message="افتح تقرير المبيعات", candidates=cands))
+    finally:
+        erp_service._gemini_client.models.generate_content.side_effect = None
+
+    assert res.candidates[0].id == "310"

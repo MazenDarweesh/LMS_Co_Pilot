@@ -67,35 +67,171 @@ DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
     "إعدادات", "اعدادات", "تهيئة", "تهيئه", "انواع", "أنواع"
 ]
 
+PRIMARY_OPERATIONAL_MODULES_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(m)
+    for m in (
+        "الموردين و المشتريات",
+        "العملاء  و المبيعات",
+        "العملاء و المبيعات",
+        "الحسابات العامه",
+        "المخازن",
+        "المرتبات",
+        "التصنيع",
+    )
+)
+
+SECONDARY_MODULES_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(m)
+    for m in (
+        "الفاتورة الالكترونية",
+        "الادارة العليا",
+        "تقارير تكملية",
+        "اعدادات",
+        "اعدادات المرتبات",
+        "الانظمة المتخصصة",
+        "المراجعة والترحيل",
+        "AdminPanel",
+    )
+)
+
+CORE_PRIMARY_SCREEN_ALLOWLIST_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(s)
+    for s in (
+        "فواتير المشتريات",
+        "فواتير المبيعات",
+        "المشتريات",
+        "بيانات الموردين",
+        "بيانات العملاء",
+        "قيود اليومية",
+        "القيد العام",
+        "حركات المخازن",
+        "اذن صرف",
+        "اذن اضافة",
+        "تحويلات المخازن",
+        "طلب سلفة",
+    )
+)
+
+SECONDARY_SCREEN_KEYWORDS_NORM: tuple[str, ...] = tuple(
+    normalize_arabic_text_leaderboard(k)
+    for k in (
+        "المرحلة", "مرحل", "فلاحين", "البان", "مصمم", "تفاصيل",
+        "تقرير", "استعلام", "اعدادات", "الكترونية", "انواع", "ارصدة", "ميزان",
+    )
+)
+
+REPORT_INQUIRY_KEYWORDS_NORM: tuple[str, ...] = tuple(
+    normalize_arabic_text_leaderboard(k)
+    for k in ("تقرير", "تقارير", "كشف", "استعلام", "ميزان", "ارصدة", "تفاصيل")
+)
+
+
+def _is_report_or_inquiry_query(user_text: str) -> bool:
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    tokens = set(u_norm.split())
+    return any(kw in tokens or kw in u_norm for kw in REPORT_INQUIRY_KEYWORDS_NORM)
+
+
+def _is_ambiguous_invoice_query(user_text: str) -> bool:
+    """True for generic plural invoice requests like 'عايز افتح شاشة الفواتير' without a domain qualifier."""
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    if not any(inv in u_norm for inv in ("فواتير", "فاتوره", "فاتورة")):
+        return False
+    qualifiers = tuple(
+        normalize_arabic_text_leaderboard(q)
+        for q in (
+            "مبيعات", "مبيع", "مشتريات", "مشتري", "شراء", "بيع",
+            "مرحلة", "مرحل", "فلاحين", "البان", "الكترونية", "مرتجع", "عرض سعر",
+            "نقد", "اجل", "امر شراء",
+        )
+    )
+    return not any(q in u_norm for q in qualifiers)
+
+
+def _candidate_priority_tier(user_text: str, label: str, path: list[str]) -> tuple[int, bool]:
+    """
+    Ranks navigation candidates strictly by main/operational module paths and an explicit
+    core-screen allowlist (never relying on numeric ID cutoffs).
+    Returns (tier, is_core_allowlist) where:
+      3 = core allowlist screen inside a primary operational module
+      2 = primary operational module screen (or explicitly requested secondary keyword)
+      1 = neutral module screen without unrequested secondary terms
+      0 = unrequested secondary module or secondary report/specialty screen
+    """
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    label_norm = normalize_arabic_text_leaderboard(label or "")
+    path_norms = [normalize_arabic_text_leaderboard(p) for p in (path or []) if p]
+
+    is_allowlist = label_norm in CORE_PRIMARY_SCREEN_ALLOWLIST_NORM
+    is_primary_mod = any(p in PRIMARY_OPERATIONAL_MODULES_NORM for p in path_norms)
+    is_secondary_mod = any(p in SECONDARY_MODULES_NORM for p in path_norms)
+
+    cand_secondary_hits = [kw for kw in SECONDARY_SCREEN_KEYWORDS_NORM if kw and kw in label_norm]
+    user_requested_secondary = any(
+        (kw in u_norm) for kw in cand_secondary_hits
+    ) or any((p in u_norm) for p in path_norms if p in SECONDARY_MODULES_NORM)
+
+    if user_requested_secondary and cand_secondary_hits:
+        return (2, is_allowlist)
+    if (is_secondary_mod and not user_requested_secondary) or (cand_secondary_hits and not user_requested_secondary):
+        return (0, is_allowlist)
+    if is_primary_mod and is_allowlist:
+        return (3, True)
+    if is_primary_mod or is_allowlist:
+        return (2, is_allowlist)
+    return (1, False)
+
 
 def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> float:
     """
     حساب درجة التطابق المعجمي واللفظي بين رسالة المستخدم وعنوان ومسار الشاشة.
-    يدعم المطابقة الثنائية (عربي/إنجليزي) واستبعاد شاشات التقارير للإجراءات.
+    يدعم المطابقة الثنائية (عربي/إنجليزي) واستبعاد شاشات التقارير للإجراءات، مع ترجيح الوحدات الرئيسية.
     """
     user_lower = user_text.lower()
     full_cand_text = f"{label} {' '.join(path)}".lower()
+    is_report_query = _is_report_or_inquiry_query(user_text)
+    tier, is_allowlist = _candidate_priority_tier(user_text, label, path)
 
-    # فحص نية الإجراء لتصفير شاشات التقارير والإجماليات
-    is_action = any(w in user_lower for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن"])
+    # فحص نية الإجراء لتصفير شاشات التقارير والإجماليات (ما لم يطلب المستخدم تقريراً صراحةً)
+    is_action = not is_report_query and any(
+        w in user_lower for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن"]
+    )
     if is_action:
         if any(bad in full_cand_text for bad in DISQUALIFIED_ACTION_KEYWORDS):
             return 0.0
 
-    # مطابقة المصطلحات الثنائية (Bilingual domain matching)
+    # طلبات الفواتير العامة الغامضة ("عايز افتح شاشة الفواتير"): نرفع فواتير البيع والشراء بالتساوي لتفعيل ask
+    if _is_ambiguous_invoice_query(user_text):
+        label_norm = normalize_arabic_text_leaderboard(label or "")
+        if "فواتير" in label_norm or "فاتور" in label_norm:
+            if tier >= 3:
+                return 0.78
+            if tier >= 2:
+                return 0.58
+            return 0.25 if tier == 0 else 0.45
+
+    # مطابقة المصطلحات الثنائية (Bilingual domain matching) عند عدم طلب تقرير صريح
     has_invoice_intent = any(w in user_lower for w in ["فاتورة", "فاتوره", "سجل", "انشئ", "أنشئ", "دخل"])
     bilingual_bonus = 0.0
-    for en_key, ar_terms in BILINGUAL_SCREEN_MAP.items():
-        cand_matches_domain = en_key in full_cand_text or any(term in full_cand_text for term in ar_terms)
-        if cand_matches_domain:
-            for term in ar_terms:
-                if term in user_lower:
-                    if has_invoice_intent and en_key in ("purchases", "sales", "entry", "productprocess"):
-                        bilingual_bonus = max(bilingual_bonus, 0.96)
-                    elif has_invoice_intent and en_key in ("suppliers", "customers"):
-                        bilingual_bonus = max(bilingual_bonus, 0.55)
-                    else:
-                        bilingual_bonus = max(bilingual_bonus, 0.90)
+    if not is_report_query:
+        for en_key, ar_terms in BILINGUAL_SCREEN_MAP.items():
+            cand_matches_domain = en_key in full_cand_text or any(term in full_cand_text for term in ar_terms)
+            if cand_matches_domain:
+                for term in ar_terms:
+                    if term in user_lower:
+                        if has_invoice_intent and en_key in ("purchases", "sales", "entry", "productprocess"):
+                            bilingual_bonus = max(bilingual_bonus, 0.96 if tier >= 2 else 0.48)
+                        elif has_invoice_intent and en_key in ("suppliers", "customers"):
+                            bilingual_bonus = max(bilingual_bonus, 0.55 if tier >= 2 else 0.30)
+                        elif en_key in ("suppliers", "customers"):
+                            if tier == 0:
+                                bilingual_bonus = max(bilingual_bonus, 0.45)
+                            elif is_allowlist:
+                                bilingual_bonus = max(bilingual_bonus, 0.95)
+                            else:
+                                bilingual_bonus = max(bilingual_bonus, 0.65)
+                        else:
+                            bilingual_bonus = max(bilingual_bonus, 0.90 if tier >= 2 else 0.50)
 
     if bilingual_bonus > 0.0:
         return bilingual_bonus
@@ -109,7 +245,7 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
     # تطابق تام أو احتواء صريح لاسم الشاشة
     label_norm = normalize_arabic_text_leaderboard(label)
     if label_norm and (label_norm in user_norm or user_norm in label_norm):
-        return 0.90
+        return 0.90 if tier >= 1 else 0.55
 
     user_tokens = [w for w in user_norm.split() if len(w) > 1]
     cand_tokens = [w for w in cand_norm.split() if len(w) > 1]
@@ -135,6 +271,10 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
 
     overlap_score = len(common_stems) / max(1, len(cand_stems))
     confidence = min(0.85, 0.40 + (overlap_score * 0.45))
+    if is_report_query and any(kw in label_norm for kw in REPORT_INQUIRY_KEYWORDS_NORM):
+        confidence = min(0.92, confidence + 0.12)
+    elif tier == 0:
+        confidence = min(confidence, 0.45)
     return round(confidence, 2)
 
 
@@ -267,7 +407,9 @@ class ErpService:
                     return remembered
 
         # 0.5 High-Speed Catalog Transaction Resolution
-        catalog_form = forms_catalog_service.resolve_form_by_text(user_msg)
+        is_report_query = _is_report_or_inquiry_query(user_msg)
+        is_ambiguous_inv = _is_ambiguous_invoice_query(user_msg)
+        catalog_form = None if (is_report_query or is_ambiguous_inv) else forms_catalog_service.resolve_form_by_text(user_msg)
         matched_catalog_candidate_id = None
         if catalog_form:
             cat_pid = str(catalog_form.get("page_id", "")).strip().lower()
@@ -294,21 +436,30 @@ class ErpService:
                         matched_catalog_candidate_id = c.id
                         break
 
+            # Guard: do not allow unrequested secondary-module screens (e.g., 6700 E-Invoice Customers or
+            # 7059 Farmers Purchases) to hijack primary operational module navigation.
+            if matched_catalog_candidate_id and matched_catalog_candidate_id in candidates_map:
+                mc = candidates_map[matched_catalog_candidate_id]
+                mc_tier, _ = _candidate_priority_tier(user_msg, mc.label or mc.id, mc.path)
+                if mc_tier == 0:
+                    matched_catalog_candidate_id = None
+
         # 1. AI router
         intent = "unknown"
         scored_candidates: list[NavScored] = []
         source = "ai"
         if self._gemini_client:
             try:
-                # Provide a wide window (up to 60 candidates) so the AI model has broad visibility
-                # across modules, primary screens, and related workflows without premature lexical clipping
+                # Provide a wide window (up to 60 candidates) prioritized by lexical relevance +
+                # main operational module hierarchy + explicit core allowlist (no numeric ID cutoffs).
                 candidates_to_score = req.candidates
                 if len(candidates_to_score) > 60:
                     scored_pre = sorted(
                         candidates_to_score,
                         key=lambda c: (
-                            1.0 if "الوحدات والبرامج الرئيسية" in (c.path or []) else 0.0,
                             _compute_lexical_similarity(user_msg, c.label or c.id, c.path),
+                            *_candidate_priority_tier(user_msg, c.label or c.id, c.path),
+                            1.0 if "الوحدات والبرامج الرئيسية" in (c.path or []) else 0.0,
                         ),
                         reverse=True
                     )
@@ -381,11 +532,16 @@ class ErpService:
             if intent == "unknown":
                 intent = "action"
 
-        # 3. Dedupe, penalize detail/report/total screens for action intent, sort, top-3
+        # 3. Dedupe, penalize detail/report/total screens for action intent, prioritize primary modules, sort, top-3
+        has_primary_candidate = any(
+            (cand_obj := candidates_map.get(s.id)) is not None
+            and _candidate_priority_tier(user_msg, cand_obj.label or cand_obj.id, cand_obj.path)[0] >= 2
+            for s in scored_candidates
+        )
         unique_scored: dict[str, NavScored] = {}
         for s in scored_candidates:
-            if intent == "action":
-                cand_obj = candidates_map.get(s.id)
+            cand_obj = candidates_map.get(s.id)
+            if intent == "action" and not is_report_query:
                 label_lower = f"{cand_obj.label if cand_obj else s.id} {' '.join(cand_obj.path if cand_obj else [])}".lower()
                 id_lower = s.id.lower()
                 if any(k in id_lower or k in label_lower for k in [
@@ -397,8 +553,34 @@ class ErpService:
                     if s.id != matched_catalog_candidate_id:
                         s.confidence = 0.0
                         s.reason = "شاشة إعدادات/أنواع/تفاصيل/تقرير غير صالحة لتسجيل أو إنشاء المعاملات"
+            if has_primary_candidate and cand_obj is not None:
+                c_tier, _ = _candidate_priority_tier(user_msg, cand_obj.label or cand_obj.id, cand_obj.path)
+                if c_tier == 0 and s.confidence > 0.50:
+                    s = s.model_copy(update={"confidence": 0.50})
             if s.id not in unique_scored or s.confidence > unique_scored[s.id].confidence:
                 unique_scored[s.id] = s
+
+        # Generic ambiguous invoice requests ("عايز افتح شاشة الفواتير") must ask between
+        # primary operational invoice screens rather than collapsing into clarify or picking 1 blind.
+        if is_ambiguous_inv and intent != "question":
+            primary_inv_cands = [
+                c for c in req.candidates
+                if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
+                and "فواتير" in normalize_arabic_text_leaderboard(c.label or "")
+            ]
+            if len(primary_inv_cands) >= 2:
+                prelim = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
+                if self._decide(prelim) != "ask":
+                    intent = "navigate"
+                    unique_scored = {}
+                    for idx, pc in enumerate(primary_inv_cands[:3]):
+                        conf = round(0.78 - (idx * 0.02), 2)
+                        unique_scored[pc.id] = NavScored(
+                            id=pc.id,
+                            confidence=conf,
+                            reason="تخيير بين شاشات الفواتير الأساسية في النظام",
+                        )
+
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
 
         # 4. Decision
