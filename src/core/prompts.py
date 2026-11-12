@@ -274,7 +274,7 @@ Semantic Reasoning & Mapping Rules:
      * Cost Center / Project ("مركز التكلفة", "المشروع") -> map to `CostItemId` or `ProjectID` according to what the user specified.
 2. {payment_rules}
 3. Table items: each item is an object in "rows" using the grid keys from the form context if available (e.g. `ProductID`/`Qty` or "اسم المنتج", "الكمية", "السعر"). Omit null/unmentioned properties from row objects.
-4. Keep entity names (suppliers, customers, products, warehouses, projects) faithful to the user's message.
+4. Keep entity names (suppliers, customers, products, warehouses, projects) faithful to the user's message. For product names in `rows`, strip generic leading descriptor nouns like "صنف" / "الصنف" / "منتج" / "المنتج" (e.g., "صنف سن" -> "سن", "صنف رمل" -> "رمل") unless clearly part of the proper product name.
 5. If the user is only asking a question or navigation with no concrete form data, return: {{"intent": "new", "batch_mode": false, "fields": {{}}, "rows": []}}
 """
 

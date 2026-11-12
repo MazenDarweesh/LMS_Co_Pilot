@@ -13,11 +13,12 @@ def test_erp_payment_rules_content():
 
 
 def test_erp_form_extraction_prompt_incorporates_payment_rules():
-    """Verify ERP_FORM_EXTRACTION_PROMPT_TEMPLATE includes ERP_PAYMENT_RULES."""
+    """Verify ERP_FORM_EXTRACTION_PROMPT_TEMPLATE includes ERP_PAYMENT_RULES and product prefix guidance."""
     prompt = get_erp_form_extraction_prompt("فاتورة بيع وسداد نقدا", "{\"fields\": []}")
     assert "$TOTAL" in prompt
     assert "POPaid" in prompt
     assert "SafeAccounId" in prompt
+    assert "صنف سن" in prompt
 
 
 def test_screen_244_schema_contract():
