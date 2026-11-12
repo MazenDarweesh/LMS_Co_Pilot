@@ -2,6 +2,7 @@
 import asyncio
 import json
 import random
+import time
 from typing import Any
 import structlog
 from google import genai
@@ -288,17 +289,21 @@ def _strip_null_row_values(rows: Any) -> list[dict[str, Any]]:
 
 _EXTRACTION_MAX_ATTEMPTS = 3
 _RETRY_BASE_DELAY_SEC = 1.5
+_PER_ATTEMPT_TIMEOUT_SEC = 12.0
+_TOTAL_EXTRACTION_BUDGET_SEC = 25.0
 
 
 def _is_transient_gemini_error(err: Exception) -> bool:
-    """Returns True when Gemini fails with a transient 429/503/rate-limit/unavailable error."""
+    """Returns True when Gemini fails with a timeout or transient 429/503/rate-limit error."""
+    if isinstance(err, (asyncio.TimeoutError, TimeoutError)):
+        return True
     code = getattr(err, "code", None) or getattr(err, "status_code", None)
     if code in (429, 503):
         return True
     msg = str(err).upper()
     return any(
         marker in msg
-        for marker in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "HIGH DEMAND", "RATE LIMIT")
+        for marker in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED", "HIGH DEMAND", "RATE LIMIT", "TIMEOUT")
     )
 
 
@@ -311,6 +316,8 @@ async def extract_form_fields_if_needed(
     """Extracts structured ERP form fields/rows from natural language using Gemini constrained JSON schema."""
     if not visible_fields and not form_schema:
         return {}
+    t_start = time.monotonic()
+    last_err: Exception | None = None
     try:
         fields_ctx = form_schema if form_schema else visible_fields
         fields_ctx_json = json.dumps(fields_ctx, ensure_ascii=False)
@@ -319,22 +326,37 @@ async def extract_form_fields_if_needed(
         candidate_models = list(dict.fromkeys([m for m in [settings.GEMINI_MODEL] if m]))
         client = gemini_client or genai.Client(api_key=settings.GEMINI_API_KEY)
 
-        last_err = None
         for model_name in candidate_models:
             for attempt in range(_EXTRACTION_MAX_ATTEMPTS):
+                elapsed = time.monotonic() - t_start
+                remaining_budget = _TOTAL_EXTRACTION_BUDGET_SEC - elapsed
+                if attempt > 0 and remaining_budget <= 1.0:
+                    last_err = TimeoutError(f"Extraction total budget ({_TOTAL_EXTRACTION_BUDGET_SEC}s) exhausted")
+                    break
+                attempt_timeout = min(_PER_ATTEMPT_TIMEOUT_SEC, max(0.05, remaining_budget))
                 try:
-                    resp = await asyncio.to_thread(
-                        client.models.generate_content,
-                        model=model_name,
-                        contents=prompt,
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            response_json_schema=response_json_schema,
-                            temperature=0.0,
+                    resp = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            client.models.generate_content,
+                            model=model_name,
+                            contents=prompt,
+                            config=types.GenerateContentConfig(
+                                response_mime_type="application/json",
+                                response_json_schema=response_json_schema,
+                                temperature=0.0,
+                            ),
                         ),
+                        timeout=attempt_timeout,
                     )
                     data = json.loads(resp.text)
+                    elapsed_ms = round((time.monotonic() - t_start) * 1000, 1)
                     if isinstance(data, dict):
+                        logger.info(
+                            "ERP form extraction completed",
+                            model=model_name,
+                            attempt=attempt + 1,
+                            elapsed_ms=elapsed_ms,
+                        )
                         raw_intent = str(data.get("intent") or "new").strip().lower()
                         norm_intent = raw_intent if raw_intent in ("new", "edit_current") else "new"
                         if "fields" not in data and "rows" not in data and "batch_items" not in data:
@@ -354,25 +376,52 @@ async def extract_form_fields_if_needed(
                     break
                 except Exception as err:
                     last_err = err
-                    if _is_transient_gemini_error(err) and attempt < _EXTRACTION_MAX_ATTEMPTS - 1:
-                        delay_s = _RETRY_BASE_DELAY_SEC * (2 ** attempt) + random.uniform(0.15, 0.75)
+                    elapsed = time.monotonic() - t_start
+                    remaining_budget = _TOTAL_EXTRACTION_BUDGET_SEC - elapsed
+                    if _is_transient_gemini_error(err) and attempt < _EXTRACTION_MAX_ATTEMPTS - 1 and remaining_budget > 2.5:
+                        delay_s = min(
+                            _RETRY_BASE_DELAY_SEC * (2 ** attempt) + random.uniform(0.15, 0.75),
+                            max(0.1, remaining_budget - 2.0),
+                        )
                         logger.warning(
-                            "Transient Gemini 429/503 during ERP extraction; retrying with exponential backoff",
+                            "Transient/timeout error during ERP extraction; retrying within budget",
                             model=model_name,
                             attempt=attempt + 1,
                             max_attempts=_EXTRACTION_MAX_ATTEMPTS,
                             delay_s=round(delay_s, 2),
+                            elapsed_ms=round(elapsed * 1000, 1),
                             error=str(err),
                         )
                         await asyncio.sleep(delay_s)
                         continue
-                    logger.warning("Batch extraction attempt failed on model, trying next", model=model_name, error=str(err))
+                    logger.warning(
+                        "Batch extraction attempt failed on model",
+                        model=model_name,
+                        elapsed_ms=round(elapsed * 1000, 1),
+                        error=str(err),
+                    )
                     break
 
         if last_err:
-            logger.error("All candidate models failed for ERP form extraction", error=str(last_err))
+            elapsed_ms = round((time.monotonic() - t_start) * 1000, 1)
+            logger.error(
+                "All candidate models failed for ERP form extraction",
+                elapsed_ms=elapsed_ms,
+                error=str(last_err),
+            )
+            return {
+                "_extraction_failed": True,
+                "_elapsed_ms": elapsed_ms,
+                "_error": str(last_err),
+            }
     except Exception as e:
-        logger.error("Failed to extract ERP form data", error=str(e))
+        elapsed_ms = round((time.monotonic() - t_start) * 1000, 1)
+        logger.error("Failed to extract ERP form data", elapsed_ms=elapsed_ms, error=str(e))
+        return {
+            "_extraction_failed": True,
+            "_elapsed_ms": elapsed_ms,
+            "_error": str(e),
+        }
     return {}
 
 

@@ -387,3 +387,77 @@ async def test_get_admin_feedback_endpoint(admin_user_context, mock_fastapi_requ
     )
     assert isinstance(resp_ragas, list)
 
+
+@pytest.mark.asyncio
+async def test_extract_form_fields_timeout_respects_budget_and_flags_failure():
+    """Timeout/transient failure during extraction sets _extraction_failed and stays within total budget."""
+    from src.services.cognitive_search.search import erp_action_extractor
+
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = TimeoutError("Gemini stalled")
+
+    with patch.object(erp_action_extractor, "_PER_ATTEMPT_TIMEOUT_SEC", 0.05), \
+         patch.object(erp_action_extractor, "_TOTAL_EXTRACTION_BUDGET_SEC", 0.25), \
+         patch.object(erp_action_extractor, "_RETRY_BASE_DELAY_SEC", 0.01):
+        res = await erp_action_extractor.extract_form_fields_if_needed(
+            mock_client,
+            "سجل فاتورة مشتريات جديدة من المورد حسين",
+            ["المورد", "المخزن"],
+        )
+
+    assert res.get("_extraction_failed") is True
+    assert isinstance(res.get("_elapsed_ms"), float)
+    assert mock_client.models.generate_content.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_search_stream_emits_erp_extraction_failed_instead_of_action_guide(
+    sample_user_context, mock_fastapi_request
+):
+    """When extraction fails transiently, stream must emit ERP_EXTRACTION_FAILED with retry notice (not ERP_ACTION_GUIDE)."""
+    req = SearchRequest(
+        query="سجل فاتورة مشتريات جديدة من المورد حسين على مخزن خامات",
+        erp_intent="action",
+        erp_key="Purchases",
+        visible_fields=["المورد", "المخزن"],
+    )
+
+    with patch.object(search_service, "_classify_form_action_intent", new_callable=AsyncMock, return_value=True), \
+         patch.object(
+             search_service,
+             "_extract_form_fields_if_needed",
+             new_callable=AsyncMock,
+             return_value={"_extraction_failed": True, "_elapsed_ms": 12400.0, "_error": "TimeoutError"},
+         ):
+        events = [chunk async for chunk in search_service.search_stream(req, sample_user_context, mock_fastapi_request)]
+
+    full_output = "".join(events)
+    assert '"provenance": "ERP_EXTRACTION_FAILED"' in full_output
+    assert "ERP_ACTION_GUIDE" not in full_output
+    assert "إعادة المحاولة" in full_output
+
+
+@pytest.mark.asyncio
+async def test_search_stream_valid_empty_extraction_keeps_action_guide(
+    sample_user_context, mock_fastapi_request
+):
+    """Legitimate non-data query returning valid empty dict still produces ERP_ACTION_GUIDE."""
+    req = SearchRequest(
+        query="سجل فاتورة مشتريات",
+        erp_intent="action",
+        erp_key="Purchases",
+        visible_fields=["المورد", "المخزن"],
+    )
+
+    with patch.object(search_service, "_classify_form_action_intent", new_callable=AsyncMock, return_value=True), \
+         patch.object(
+             search_service,
+             "_extract_form_fields_if_needed",
+             new_callable=AsyncMock,
+             return_value={"intent": "new", "batch_mode": False, "fields": {}, "rows": []},
+         ):
+        events = [chunk async for chunk in search_service.search_stream(req, sample_user_context, mock_fastapi_request)]
+
+    full_output = "".join(events)
+    assert '"provenance": "ERP_ACTION_GUIDE"' in full_output
+

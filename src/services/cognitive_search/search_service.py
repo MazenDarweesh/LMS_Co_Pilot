@@ -406,6 +406,33 @@ class SearchService:
                 raw_extracted = await self._extract_form_fields_if_needed(
                     req.query, effective_fields, effective_schema
                 )
+                if isinstance(raw_extracted, dict) and raw_extracted.get("_extraction_failed"):
+                    record_stage_duration("total", time.time() - t0)
+                    latency_ms = round((time.time() - t0) * 1000, 2)
+                    logger.warning(
+                        "ERP extraction failed explicitly; surfacing retryable failure instead of action guide",
+                        erp_key=resolved_screen_key,
+                        latency_ms=latency_ms,
+                        elapsed_ms=raw_extracted.get("_elapsed_ms"),
+                    )
+                    yield format_sse("sources", {"sources": []})
+                    yield format_sse(
+                        "token",
+                        {
+                            "text": (
+                                "⚠️ تعذر استخراج بيانات النموذج حالياً بسبب بطء أو عطل مؤقت في خدمة الذكاء الاصطناعي. "
+                                "يرجى الضغط على زر إعادة المحاولة (🔄) أدناه."
+                            )
+                        },
+                    )
+                    yield format_sse("done", {
+                        "thread_id": req.thread_id or str(uuid.uuid4()),
+                        "provenance": "ERP_EXTRACTION_FAILED",
+                        "cache_hit": False,
+                        "latency_ms": latency_ms,
+                        "metrics": {"total_latency_ms": latency_ms},
+                    })
+                    return
                 form_payload = build_form_fill_payload(
                     raw_extracted,
                     resolved_screen_key,
