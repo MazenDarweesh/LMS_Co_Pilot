@@ -56,6 +56,22 @@
             "اعداد الشراء"
           ]
         },
+        "CurrancyID": {
+          "column_name": "CurrancyID",
+          "label_ar": "عملة الشراء",
+          "label_en": "Currency",
+          "control_type": "dropdown",
+          "is_required": false,
+          "lookup_model": "Currancy",
+          "dom_selector": "[formcontrolname='CurrancyID'], #CurrancyID",
+          "aliases": [
+            "عملة الشراء",
+            "العملة",
+            "العمله",
+            "عملة",
+            "عمله"
+          ]
+        },
         "ProjectID": {
           "column_name": "ProjectID",
           "label_ar": "المشروع",
@@ -67,7 +83,24 @@
           "aliases": [
             "مشروع",
             "المشروع",
-            "اسم المشروع"
+            "اسم المشروع",
+            "المشروعات"
+          ]
+        },
+        "SafeAccounId": {
+          "column_name": "SafeAccounId",
+          "label_ar": "الخزينة",
+          "label_en": "Safe / Treasury",
+          "control_type": "dropdown",
+          "is_required": false,
+          "lookup_model": "Safe",
+          "dom_selector": "[formcontrolname='SafeAccounId'], #SafeAccounId",
+          "aliases": [
+            "الخزينة",
+            "خزينة",
+            "الصندوق",
+            "نقدا",
+            "نقداً"
           ]
         },
         "DocDate": {

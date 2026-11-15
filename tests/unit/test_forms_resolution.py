@@ -58,3 +58,15 @@ def test_full_screen_name_matcher_rejects_partial_and_accepts_full():
     assert _is_full_screen_name_in_query("عايز افتح القيد العام", "القيد العام") == (True, 2)
     assert _is_full_screen_name_in_query("افتح شاشة المنتجات", "المنتجات") == (True, 1)
 
+
+def test_purchases_form_289_includes_currency_and_safe_account_in_header_fields():
+    """Module 5 contract test: page_id 289 fallback metadata includes CurrancyID and SafeAccounId."""
+    form_289 = forms_catalog_service.get_form_by_page_id(289)
+    assert form_289 is not None
+    header_fields = form_289.get("header_fields", {})
+    assert "CurrancyID" in header_fields
+    assert header_fields["CurrancyID"]["label_ar"] == "عملة الشراء"
+    assert "SafeAccounId" in header_fields
+    assert header_fields["SafeAccounId"]["label_ar"] == "الخزينة"
+
+
