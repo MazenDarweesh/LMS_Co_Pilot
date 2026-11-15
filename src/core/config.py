@@ -86,7 +86,7 @@ class Settings(BaseSettings):
 
     # ERP Navigation & Action Assistant Thresholds
     ERP_NAV_GO_THRESHOLD: float = 0.80
-    ERP_NAV_GAP_THRESHOLD: float = 0.25
+    ERP_NAV_GAP_THRESHOLD: float = 0.20
     ERP_NAV_CLARIFY_THRESHOLD: float = 0.30
 
     # ERP Decision Memory (verified AI routing decisions: Qdrant lookup + PostgreSQL audit)

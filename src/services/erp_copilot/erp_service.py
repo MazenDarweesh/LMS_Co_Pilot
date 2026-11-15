@@ -54,11 +54,28 @@ BILINGUAL_SCREEN_MAP: dict[str, list[str]] = {
     "purchases": ["مشتريات", "شراء", "فاتورة مشتريات", "فاتوره مشتريات"],
     "sales": ["مبيعات", "بيع", "فاتورة مبيعات", "فاتوره مبيعات", "salesdetails"],
     "entry": ["قيد", "قيود", "يومية", "journal"],
-    "productprocess": ["تحويل", "اذن", "صرف", "اضافة", "مخزن"],
+    "stock_transfer": ["تحويلات المخازن", "تحويل مخزن", "تحويلات"],
+    "issue_voucher": ["اذون صرف", "اذن صرف", "اذون الصرف", "اذن الصرف"],
+    "addition_voucher": ["اذون اضافة", "اذن اضافة", "اذون الاضافة", "اذن الاضافة"],
     "suppliers": ["موردين", "مورد"],
     "customers": ["عملاء", "عميل"],
     "items": ["اصناف", "صنف", "منتجات", "منتج"],
 }
+
+BILINGUAL_SCREEN_MAP_NORM: dict[str, tuple[tuple[str, str], ...]] = {
+    en_key: tuple((term, normalize_arabic_text_leaderboard(term)) for term in terms)
+    for en_key, terms in BILINGUAL_SCREEN_MAP.items()
+}
+
+WAREHOUSE_MOVEMENT_TERMS_NORM: tuple[str, ...] = tuple(
+    normalize_arabic_text_leaderboard(t)
+    for t in ("حركات المخازن", "حركة المخازن", "حركات مخزن", "حركة مخزن", "حركات مخزنية")
+)
+
+WAREHOUSE_MOVEMENT_SCREENS_NORM: tuple[str, ...] = tuple(
+    normalize_arabic_text_leaderboard(s)
+    for s in ("تحويلات المخازن", "اذون صرف", "اذون اضافة")
+)
 
 DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
     "total", "details", "detail", "report", "log", "inquiry",
@@ -86,27 +103,33 @@ SECONDARY_MODULES_NORM: frozenset[str] = frozenset(
         "الفاتورة الالكترونية",
         "الادارة العليا",
         "تقارير تكملية",
+        "الاعدادات",
         "اعدادات",
         "اعدادات المرتبات",
         "الانظمة المتخصصة",
         "المراجعة والترحيل",
+        "التسويق وادارة العملاء",
+        "حركات المعدات",
+        "الصيانة",
         "AdminPanel",
     )
 )
 
+# Explicit allowlist of primary operational screen labels (name_ar in src/data/screens_metadata.json).
+# Every entry here MUST match an existing screen's `name_ar` in `screens_metadata.json`
+# (enforced by contract test `test_core_primary_screen_allowlist_matches_screens_metadata`).
 CORE_PRIMARY_SCREEN_ALLOWLIST_NORM: frozenset[str] = frozenset(
     normalize_arabic_text_leaderboard(s)
     for s in (
         "فواتير المشتريات",
         "فواتير المبيعات",
-        "المشتريات",
         "بيانات الموردين",
         "بيانات العملاء",
         "قيود اليومية",
         "القيد العام",
-        "حركات المخازن",
-        "اذن صرف",
-        "اذن اضافة",
+        "المنتجات",
+        "اذون صرف",
+        "اذون اضافة",
         "تحويلات المخازن",
         "طلب سلفة",
     )
@@ -115,8 +138,9 @@ CORE_PRIMARY_SCREEN_ALLOWLIST_NORM: frozenset[str] = frozenset(
 SECONDARY_SCREEN_KEYWORDS_NORM: tuple[str, ...] = tuple(
     normalize_arabic_text_leaderboard(k)
     for k in (
-        "المرحلة", "مرحل", "فلاحين", "البان", "مصمم", "تفاصيل",
+        "المرحلة", "مرحل", "فلاحين", "البان", "مصمم", "تفاصيل", "تفصيلي",
         "تقرير", "استعلام", "اعدادات", "الكترونية", "انواع", "ارصدة", "ميزان",
+        "الاجمالي", "اجمالي", "بدون تكلفة", "بدون مشتريات",
     )
 )
 
@@ -126,10 +150,73 @@ REPORT_INQUIRY_KEYWORDS_NORM: tuple[str, ...] = tuple(
 )
 
 
+def _strip_definite_article(token: str) -> str:
+    """Strips only leading Arabic definite articles (الـ / للـ) without stemming suffixes."""
+    t = normalize_arabic_text_leaderboard(token).strip()
+    if t.startswith("لل") and len(t) > 4:
+        return t[2:]
+    if t.startswith("ال") and len(t) > 3:
+        return t[2:]
+    return t
+
+
+def _is_full_screen_name_in_query(user_text: str, screen_label: str) -> tuple[bool, int]:
+    """
+    Checks whether the COMPLETE screen name (`screen_label`) is present in `user_text`
+    as a contiguous sequence of tokens (supporting attached prepositions لـ/بـ and definite articles).
+    Never matches a partial screen name (e.g. 'افتح القيد' will NOT match 'القيد العام').
+    Returns (matched, token_count).
+    """
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    l_norm = normalize_arabic_text_leaderboard(screen_label)
+    if not u_norm or not l_norm:
+        return (False, 0)
+    c_tokens = [_strip_definite_article(w) for w in l_norm.split() if len(w) > 1]
+    u_raw_tokens = [w for w in u_norm.split() if len(w) > 1]
+    if not c_tokens or len(u_raw_tokens) < len(c_tokens):
+        return (False, 0)
+
+    def _tok_eq(u_tok: str, c_tok: str) -> bool:
+        if _strip_definite_article(u_tok) == c_tok:
+            return True
+        if len(u_tok) > 3 and u_tok[0] in ("ل", "ب", "و", "ف"):
+            if _strip_definite_article(u_tok[1:]) == c_tok:
+                return True
+        return False
+
+    k = len(c_tokens)
+    for i in range(len(u_raw_tokens) - k + 1):
+        if all(_tok_eq(u_raw_tokens[i + j], c_tokens[j]) for j in range(k)):
+            return (True, k)
+    return (False, 0)
+
+
 def _is_report_or_inquiry_query(user_text: str) -> bool:
     u_norm = normalize_arabic_text_leaderboard(user_text)
     tokens = set(u_norm.split())
     return any(kw in tokens or kw in u_norm for kw in REPORT_INQUIRY_KEYWORDS_NORM)
+
+
+def _is_warehouse_movements_query(user_text: str) -> bool:
+    """True for umbrella warehouse movement requests like 'افتح حركات المخازن'."""
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    return any(term in u_norm for term in WAREHOUSE_MOVEMENT_TERMS_NORM)
+
+
+def _is_ambiguous_voucher_query(user_text: str) -> bool:
+    """True for generic plural voucher requests like 'افتح شاشة الاذون' without a specific type qualifier."""
+    u_norm = normalize_arabic_text_leaderboard(user_text)
+    tokens = [_strip_definite_article(w) for w in u_norm.split() if len(w) > 1]
+    if "اذون" not in tokens and "لاذون" not in u_norm:
+        return False
+    qualifiers = tuple(
+        normalize_arabic_text_leaderboard(q)
+        for q in (
+            "صرف", "اضافة", "اضافه", "استلام", "مرتبات", "اجازة", "اجازه",
+            "مدير", "موارد", "مصادر", "تسوية", "مخزني",
+        )
+    )
+    return not any(q in u_norm for q in qualifiers)
 
 
 def _is_ambiguous_invoice_query(user_text: str) -> bool:
@@ -201,8 +288,8 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
             return 0.0
 
     # طلبات الفواتير العامة الغامضة ("عايز افتح شاشة الفواتير"): نرفع فواتير البيع والشراء بالتساوي لتفعيل ask
+    label_norm = normalize_arabic_text_leaderboard(label or "")
     if _is_ambiguous_invoice_query(user_text):
-        label_norm = normalize_arabic_text_leaderboard(label or "")
         if "فواتير" in label_norm or "فاتور" in label_norm:
             if tier >= 3:
                 return 0.78
@@ -210,20 +297,52 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
                 return 0.58
             return 0.25 if tier == 0 else 0.45
 
-    # مطابقة المصطلحات الثنائية (Bilingual domain matching) عند عدم طلب تقرير صريح
+    # طلبات الأذون العامة الغامضة ("افتح شاشة الاذون"): نرفع أذون الصرف والإضافة المخزنية الأساسية بالتساوي لتفعيل ask
+    if _is_ambiguous_voucher_query(user_text):
+        if "اذون" in label_norm:
+            if tier >= 3:
+                return 0.78
+            if tier >= 2:
+                return 0.58
+            return 0.25 if tier == 0 else 0.45
+        if "اذن" in label_norm:
+            return 0.25 if tier == 0 else 0.45
+
+    # طلبات حركات المخازن الشاملة ("افتح حركات المخازن"): نرجع شاشات الحركة المخزنية الثلاث الأساسية لقرار ask
+    if _is_warehouse_movements_query(user_text):
+        if label_norm in WAREHOUSE_MOVEMENT_SCREENS_NORM and tier >= 2:
+            return 0.85 if label_norm == WAREHOUSE_MOVEMENT_SCREENS_NORM[0] else 0.82
+        if tier == 0:
+            return 0.25
+
+    # تطابق كامل لاسم الشاشة داخل الجملة (مع دعم حرف الجر وأل التعريف) بدون اجتزاء
+    if not is_report_query:
+        matched_full, full_tok_len = _is_full_screen_name_in_query(user_text, label or "")
+        if matched_full:
+            if full_tok_len >= 2 and tier >= 2:
+                return 0.98
+            if full_tok_len == 1 and tier >= 3:
+                return 0.96
+
+    # مطابقة المصطلحات الثنائية (Bilingual domain matching) على اسم الشاشة عند عدم طلب تقرير صريح
     has_invoice_intent = any(w in user_lower for w in ["فاتورة", "فاتوره", "سجل", "انشئ", "أنشئ", "دخل"])
+    label_lower = (label or "").lower()
+    user_norm = normalize_arabic_text_leaderboard(user_text)
     bilingual_bonus = 0.0
     if not is_report_query:
-        for en_key, ar_terms in BILINGUAL_SCREEN_MAP.items():
-            cand_matches_domain = en_key in full_cand_text or any(term in full_cand_text for term in ar_terms)
+        for en_key, term_pairs in BILINGUAL_SCREEN_MAP_NORM.items():
+            cand_matches_domain = (
+                en_key in label_lower
+                or any(term_norm and term_norm in label_norm for _, term_norm in term_pairs)
+            )
             if cand_matches_domain:
-                for term in ar_terms:
-                    if term in user_lower:
-                        if has_invoice_intent and en_key in ("purchases", "sales", "entry", "productprocess"):
+                for term, term_norm in term_pairs:
+                    if term in user_lower or (term_norm and term_norm in user_norm):
+                        if has_invoice_intent and en_key in ("purchases", "sales", "entry", "stock_transfer", "issue_voucher", "addition_voucher"):
                             bilingual_bonus = max(bilingual_bonus, 0.96 if tier >= 2 else 0.48)
                         elif has_invoice_intent and en_key in ("suppliers", "customers"):
                             bilingual_bonus = max(bilingual_bonus, 0.55 if tier >= 2 else 0.30)
-                        elif en_key in ("suppliers", "customers"):
+                        elif en_key in ("purchases", "sales", "suppliers", "customers", "items", "stock_transfer", "issue_voucher", "addition_voucher"):
                             if tier == 0:
                                 bilingual_bonus = max(bilingual_bonus, 0.45)
                             elif is_allowlist:
@@ -236,14 +355,12 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
     if bilingual_bonus > 0.0:
         return bilingual_bonus
 
-    user_norm = normalize_arabic_text_leaderboard(user_text)
     cand_norm = normalize_arabic_text_leaderboard(full_cand_text)
 
     if not user_norm or not cand_norm:
         return 0.0
 
     # تطابق تام أو احتواء صريح لاسم الشاشة
-    label_norm = normalize_arabic_text_leaderboard(label)
     if label_norm and (label_norm in user_norm or user_norm in label_norm):
         return 0.90 if tier >= 1 else 0.55
 
@@ -409,7 +526,13 @@ class ErpService:
         # 0.5 High-Speed Catalog Transaction Resolution
         is_report_query = _is_report_or_inquiry_query(user_msg)
         is_ambiguous_inv = _is_ambiguous_invoice_query(user_msg)
-        catalog_form = None if (is_report_query or is_ambiguous_inv) else forms_catalog_service.resolve_form_by_text(user_msg)
+        is_ambiguous_vouch = _is_ambiguous_voucher_query(user_msg)
+        is_wh_movements = _is_warehouse_movements_query(user_msg)
+        catalog_form = (
+            None
+            if (is_report_query or is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements)
+            else forms_catalog_service.resolve_form_by_text(user_msg)
+        )
         matched_catalog_candidate_id = None
         if catalog_form:
             cat_pid = str(catalog_form.get("page_id", "")).strip().lower()
@@ -443,6 +566,27 @@ class ErpService:
                 mc_tier, _ = _candidate_priority_tier(user_msg, mc.label or mc.id, mc.path)
                 if mc_tier == 0:
                     matched_catalog_candidate_id = None
+
+        # Pass 3: Strict full-screen-name match in candidates (handles attached prepositions like 'وديني لاذون الصرف'
+        # while strictly rejecting partial screen names like 'افتح القيد' for 'القيد العام').
+        full_name_matches: list[tuple[int, int, NavCandidateIn]] = []
+        if not (is_report_query or is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements):
+            for c in req.candidates:
+                matched_full, tok_len = _is_full_screen_name_in_query(user_msg, c.label or "")
+                if not matched_full:
+                    continue
+                c_tier, _ = _candidate_priority_tier(user_msg, c.label or c.id, c.path)
+                if (tok_len >= 2 and c_tier >= 2) or (tok_len == 1 and c_tier >= 3):
+                    full_name_matches.append((tok_len, c_tier, c))
+        full_screen_matched_id: str | None = None
+        if full_name_matches:
+            full_name_matches.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            best_len, best_tier, best_cand = full_name_matches[0]
+            top_tied = [m for m in full_name_matches if m[0] == best_len and m[1] == best_tier]
+            if len(top_tied) == 1:
+                full_screen_matched_id = best_cand.id
+                if not matched_catalog_candidate_id:
+                    matched_catalog_candidate_id = best_cand.id
 
         # 1. AI router
         intent = "unknown"
@@ -488,29 +632,43 @@ class ErpService:
                 intent, scored_candidates = "unknown", []
 
         # 2. Lexical fallback (outage only)
+        has_nav_verb = any(w in user_msg.lower() for w in ["افتح", "إفتح", "وديني", "اذهب", "روح", "شاشة", "شاشه", "اشوف", "أشوف", "عرض"])
+        has_create_verb = any(w in user_msg.lower() for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "اعمل", "أعمل", "دخل"])
         if not scored_candidates:
             source = "lexical"
             # Infer intent from action signals in query
-            is_action_msg = any(w in user_msg.lower() for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "فاتورة", "فاتوره", "قيد", "اذن", "إذن", "دخل"])
-            intent = "action" if is_action_msg else "unknown"
+            is_action_msg = has_create_verb or (
+                not has_nav_verb
+                and any(w in user_msg.lower() for w in ["فاتورة", "فاتوره", "قيد", "اذن", "إذن"])
+            )
+            intent = "action" if is_action_msg else ("navigate" if has_nav_verb else "unknown")
 
             for c in req.candidates:
                 score = _compute_lexical_similarity(user_msg, c.label, c.path)
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
 
-        # 2.5 Catalog-boost: if transaction form matched with action intent (or navigate when AI had no strong distinct winner),
-        # grant top confidence and demote rival generic screens
-        top_ai_conf = max((s.confidence for s in scored_candidates), default=0.0)
+        # 2.5 Catalog-boost:
+        # - For explicit action intent (or unknown), boost matched transaction form.
+        # - For navigate intent, boost ONLY when the FULL screen name is present in the user query
+        #   (so partial phrases like 'افتح القيد' never hijack 'القيد العام').
+        has_exact_full_screen_name = bool(
+            full_screen_matched_id
+            and matched_catalog_candidate_id == full_screen_matched_id
+        )
         should_boost_catalog = bool(
             matched_catalog_candidate_id
             and (
                 intent in ("action", "unknown")
-                or (intent == "navigate" and (source != "ai" or top_ai_conf < 0.75))
+                or (intent == "navigate" and has_exact_full_screen_name)
             )
         )
         if should_boost_catalog:
-            cat_doc_name = catalog_form.get("name_ar", "المعاملة المطلوبة") if catalog_form else "المعاملة المطلوبة"
+            target_cand_obj = candidates_map.get(matched_catalog_candidate_id)
+            cat_doc_name = (
+                (target_cand_obj.label if target_cand_obj and target_cand_obj.label else None)
+                or (catalog_form.get("name_ar", "المعاملة المطلوبة") if catalog_form else "المعاملة المطلوبة")
+            )
             matched_existing = False
             for s in scored_candidates:
                 if s.id == matched_catalog_candidate_id:
@@ -580,6 +738,25 @@ class ErpService:
                             confidence=conf,
                             reason="تخيير بين شاشات الفواتير الأساسية في النظام",
                         )
+
+        # Generic ambiguous voucher requests ("افتح شاشة الاذون") must ask between
+        # primary warehouse voucher screens (306 اذون صرف, 292 اذون اضافة).
+        if is_ambiguous_vouch and intent != "question":
+            primary_vouch_cands = [
+                c for c in req.candidates
+                if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
+                and "اذون" in normalize_arabic_text_leaderboard(c.label or "")
+            ]
+            if len(primary_vouch_cands) >= 2:
+                intent = "navigate"
+                unique_scored = {}
+                for idx, vc in enumerate(primary_vouch_cands[:3]):
+                    conf = round(0.78 - (idx * 0.02), 2)
+                    unique_scored[vc.id] = NavScored(
+                        id=vc.id,
+                        confidence=conf,
+                        reason="تخيير بين شاشات الأذون المخزنية الأساسية في النظام",
+                    )
 
         top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
 

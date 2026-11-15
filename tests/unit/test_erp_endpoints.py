@@ -315,3 +315,27 @@ async def test_erp_nav_report_query_not_hijacked_by_transaction_catalog():
         erp_service._gemini_client.models.generate_content.side_effect = None
 
     assert res.candidates[0].id == "310"
+
+
+@pytest.mark.asyncio
+async def test_erp_nav_partial_journal_query_stays_ask_while_full_name_goes():
+    """Partial 'افتح القيد' must NOT boost 'القيد العام' (stays ask), whereas full 'افتح قيود اليومية' resolves to go."""
+    cands = [
+        NavCandidateIn(id="233", label="قيود اليومية", path=["الوحدات والبرامج الرئيسية", "الحسابات العامه"]),
+        NavCandidateIn(id="311", label="القيد العام", path=["الوحدات والبرامج الرئيسية", "الحسابات العامه"]),
+    ]
+    mock_llm_resp = MagicMock()
+    mock_llm_resp.text = (
+        '{"intent": "navigate", "candidates": ['
+        '{"id": "233", "confidence": 0.82, "reason": "قيود اليومية"},'
+        '{"id": "311", "confidence": 0.75, "reason": "القيد العام"}]}'
+    )
+    erp_service._gemini_client.models.generate_content.return_value = mock_llm_resp
+
+    res_partial = await erp_service.resolve_navigation(NavRequest(user_message="افتح القيد", candidates=cands))
+    assert res_partial.decision == "ask"
+
+    res_full = await erp_service.resolve_navigation(NavRequest(user_message="افتح قيود اليومية", candidates=cands))
+    assert res_full.decision == "go"
+    assert res_full.candidates[0].id == "233"
+
