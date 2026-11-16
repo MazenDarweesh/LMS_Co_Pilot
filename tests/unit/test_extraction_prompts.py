@@ -38,3 +38,101 @@ def test_screen_244_schema_contract():
     grid = contract.get("expected_grid", {})
     assert "product" in grid
     assert "Qty" in grid
+
+
+def test_extraction_schema_includes_wave3_payment_fields():
+    """Verify response JSON schema exposes top-level paid_amount and paid_cash."""
+    from src.services.cognitive_search.search.erp_action_extractor import (
+        build_extraction_response_json_schema,
+    )
+
+    schema = build_extraction_response_json_schema()
+    props = schema["properties"]
+    assert props["paid_amount"] == {"type": ["number", "null"]}
+    assert props["paid_cash"] == {"type": "boolean"}
+    batch_props = props["batch_items"]["items"]["properties"]
+    assert batch_props["paid_amount"] == {"type": ["number", "null"]}
+    assert batch_props["paid_cash"] == {"type": "boolean"}
+
+
+def test_build_form_fill_payload_wave3_payment_cases():
+    """Verify explicit paid_amount, cash without amount, credit (none), and invalid/ambiguous guards."""
+    from src.services.cognitive_search.search.erp_action_extractor import (
+        build_form_fill_payload,
+    )
+
+    # 1. Explicit paid amount ("والمدفوع 200")
+    explicit = build_form_fill_payload(
+        {
+            "intent": "new",
+            "fields": {"SupplierID": "حسين"},
+            "rows": [{"اسم المنتج": "سن", "الكمية": 2, "السعر": 100}],
+            "paid_amount": 200,
+            "paid_cash": False,
+        },
+        screen_key="Purchases",
+        page_id=289,
+    )
+    assert explicit is not None
+    assert explicit["paid_amount"] == 200
+    assert explicit["paid_cash"] is False
+
+    # 2. Cash without explicit amount ("نقداً" / "كاش")
+    cash_only = build_form_fill_payload(
+        {
+            "intent": "new",
+            "fields": {"SupplierID": "حسين"},
+            "rows": [{"اسم المنتج": "سن", "الكمية": 2, "السعر": 100}],
+            "paid_amount": None,
+            "paid_cash": True,
+        },
+        screen_key="Purchases",
+        page_id=289,
+    )
+    assert cash_only is not None
+    assert cash_only["paid_amount"] is None
+    assert cash_only["paid_cash"] is True
+
+    # 3. Neither mentioned (credit / آجل)
+    credit = build_form_fill_payload(
+        {
+            "intent": "new",
+            "fields": {"SupplierID": "حسين"},
+            "rows": [{"اسم المنتج": "سن", "الكمية": 2, "السعر": 100}],
+        },
+        screen_key="Purchases",
+        page_id=289,
+    )
+    assert credit is not None
+    assert credit["paid_amount"] is None
+    assert credit["paid_cash"] is False
+
+    # 4. Ambiguous / invalid / boolean paid_amount must be sanitized to None (never guessed)
+    ambiguous_invalid = build_form_fill_payload(
+        {
+            "intent": "new",
+            "fields": {"SupplierID": "حسين"},
+            "rows": [{"اسم المنتج": "سن", "الكمية": 1, "السعر": 200}],
+            "paid_amount": True,
+            "paid_cash": False,
+        },
+        screen_key="Purchases",
+        page_id=289,
+    )
+    assert ambiguous_invalid is not None
+    assert ambiguous_invalid["paid_amount"] is None
+    assert ambiguous_invalid["paid_cash"] is False
+
+    negative_invalid = build_form_fill_payload(
+        {
+            "intent": "new",
+            "fields": {"SupplierID": "حسين"},
+            "rows": [],
+            "paid_amount": -50,
+            "paid_cash": False,
+        },
+        screen_key="Purchases",
+        page_id=289,
+    )
+    assert negative_invalid is not None
+    assert negative_invalid["paid_amount"] is None

@@ -61,6 +61,24 @@ def _strip_total_from_treasury_fields(record: Any) -> Any:
     return cleaned
 
 
+def _normalize_paid_amount(value: Any) -> float | int | None:
+    """Returns a non-negative finite numeric payment amount, rejecting booleans and invalid values."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value if value >= 0 else None
+    if isinstance(value, str):
+        cleaned = value.replace(",", "").strip()
+        if not cleaned:
+            return None
+        try:
+            num = float(cleaned)
+            return int(num) if num.is_integer() else num if num >= 0 else None
+        except ValueError:
+            return None
+    return None
+
+
 def build_form_fill_payload(
     raw_extracted: Any,
     screen_key: str | None,
@@ -95,6 +113,12 @@ def build_form_fill_payload(
                     _strip_total_from_treasury_fields(r) if isinstance(r, dict) else r
                     for r in item["rows"]
                 ]
+            item_paid_amount = _normalize_paid_amount(item.get("paid_amount"))
+            if item_paid_amount is not None:
+                sanitized_item["paid_amount"] = item_paid_amount
+            else:
+                sanitized_item.pop("paid_amount", None)
+            sanitized_item["paid_cash"] = bool(item.get("paid_cash", False))
             batch_items.append(sanitized_item)
         else:
             batch_items.append(item)
@@ -120,6 +144,9 @@ def build_form_fill_payload(
     raw_action_intent = str(raw_extracted.get("intent") or "new").strip().lower()
     action_intent = raw_action_intent if raw_action_intent in ("new", "edit_current") else "new"
 
+    paid_amount = _normalize_paid_amount(raw_extracted.get("paid_amount"))
+    paid_cash = bool(raw_extracted.get("paid_cash", False))
+
     payload: dict[str, Any] = {
         "intent": "form_fill",
         "action_intent": action_intent,
@@ -129,6 +156,8 @@ def build_form_fill_payload(
         "batch_mode": bool(raw_extracted.get("batch_mode", False)),
         "batch_items": batch_items,
         "missing_required": missing_required,
+        "paid_amount": paid_amount,
+        "paid_cash": paid_cash,
     }
     if page_id:
         payload["pageId"] = page_id
@@ -261,6 +290,8 @@ def build_extraction_response_json_schema() -> dict[str, Any]:
             "batch_mode": {"type": "boolean"},
             "fields": record_obj,
             "rows": rows_arr,
+            "paid_amount": {"type": ["number", "null"]},
+            "paid_cash": {"type": "boolean"},
             "batch_items": {
                 "type": "array",
                 "items": {
@@ -268,6 +299,8 @@ def build_extraction_response_json_schema() -> dict[str, Any]:
                     "properties": {
                         "fields": record_obj,
                         "rows": rows_arr,
+                        "paid_amount": {"type": ["number", "null"]},
+                        "paid_cash": {"type": "boolean"},
                     },
                 },
             },

@@ -236,7 +236,12 @@ def get_erp_intent_classification_prompt(query: str) -> str:
 
 ERP_PAYMENT_RULES = """Payment & Settlement Rules:
 - "SafeAccounId" or treasury fields (الخزينة / الصندوق) are dropdowns for the bank or safe account name (e.g. "الخزينة الرئيسية"). NEVER set "$TOTAL" on "SafeAccounId" or any account dropdown.
-- If the user mentions paying in cash or paying full cost (e.g. "نقدي", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً", "المحصل نقدا"), assign "$TOTAL" to a numeric payment field like "POPaid", "CashPaid", "Paid", or "المدفوع نقداً"."""
+- If the user mentions paying in cash or paying full cost (e.g. "نقدي", "نقداً", "كاش", "سداد كامل", "دفع بالكامل", "سدد الإجمالي بالكامل نقداً", "المحصل نقدا"), assign "$TOTAL" to a numeric payment field like "POPaid", "CashPaid", "Paid", or "المدفوع نقداً".
+- ALSO populate top-level `paid_amount` (number or null) and `paid_cash` (boolean):
+  * If user states an explicit invoice-level paid amount (e.g. "والمدفوع 200", "سدد 500", "دفع 150 جنيه من الفاتورة"): set `paid_amount: 200` and `paid_cash: false`.
+  * If user mentions cash/full payment WITHOUT an explicit paid amount (e.g. "نقداً", "كاش", "سدد الإجمالي بالكامل نقداً"): set `paid_amount: null` and `paid_cash: true`.
+  * NEVER confuse an item unit price (e.g. "سعر 100") with `paid_amount`. If an amount like "دفعت 200 جنيه" is ambiguous without clear payment context, keep `paid_amount: null`.
+  * If neither cash nor paid amount is mentioned: set `paid_amount: null` and `paid_cash: false`."""
 
 
 ERP_FORM_EXTRACTION_PROMPT_TEMPLATE = """You are an expert ERP Data Extraction & Semantic Mapping Assistant for DynamicPro ERP.
@@ -254,9 +259,11 @@ Return a JSON matching the provided schema with:
 1. "intent": "new" or "edit_current".
 2. "batch_mode": true (if multiple documents/invoices) or false (if single).
 3. "batch_items": Array of items if batch_mode is true. Each element must be:
-   {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}]}}
+   {{"fields": {{"Supplier": "...", ...}}, "rows": [{{"الصنف": "...", "الكمية": 10, "السعر": 100}}], "paid_amount": null, "paid_cash": false}}
 4. "fields": Object for header/form/footer fields (for single mode, or the first document in batch mode). Omit unmentioned fields.
 5. "rows": Array of table line items (for single mode, or the first document in batch mode).
+6. "paid_amount": Number (explicit invoice payment amount) or null.
+7. "paid_cash": Boolean (true if user requested cash/full settlement without an explicit amount, else false).
 
 Available Form Context:
 {fields_ctx_json}
