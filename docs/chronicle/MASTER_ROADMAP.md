@@ -1,8 +1,8 @@
 ---
-last_synced_commit: "5408a7e"
-last_updated: "2026-10-12T14:05:00Z"
-active_milestone: "M11"
-total_milestones: 11
+last_synced_commit: "2e969bd"
+last_updated: "2026-11-16T16:18:00+02:00"
+active_milestone: "M12"
+total_milestones: 12
 completed_milestones: 11
 ---
 
@@ -27,6 +27,7 @@ completed_milestones: 11
 | **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-20 | Lifecycle States (None->Queued->Processing->Completed/Failed), HMAC-SHA256 Webhooks, Zero-Hop Claims RBAC, Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
 | **M10** | Process Once Reference & Multi-Lesson Search | ✅ COMPLETED | 2026-09-21 -> 2026-09-29 | Deduplication (0s Fast Path), asyncio.gather, Reference-Counting Deletion, Cross-Module Multi-Lesson Search, Comparative Prompting & ERP CORS | [M10 Dossier](milestones/M10_process_once_reference_and_multi_lesson.md) |
 | **M11** | Autonomous ERP Agent Navigation & Progressive Form-Fill | ✅ COMPLETED | 2026-10-06 -> 2026-10-12 | Intent Navigation (go/ask/clarify) + Cascading Form Fill + SSE Grid Streaming | [M11 Dossier](milestones/M11_autonomous_erp_navigation_form_filling.md) |
+| **M12** | ERP Purchases v2.5.0 Waves, Host Bridge Hardening & Unified JSONL Telemetry | ⏳ IN PROGRESS (Wave 1–2 ✅) | 2026-10-13 -> 2026-11-16 | Strict Entity Resolver/Executor (Waves 1–2), Lazy Bundle (`793.4 KB`), JSONL Blackbox | [M12 Dossier](milestones/M12_erp_purchases_v250_waves.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
@@ -100,4 +101,4 @@ This master chronicle is strictly coupled with:
 
 1. **GitHub Showcase:** [`README.md`](../../README.md)
 2. **Career & Technical Interview Playbook:** [`docs/INTERVIEW_PORTFOLIO_MASTER_GUIDE.md`](../INTERVIEW_PORTFOLIO_MASTER_GUIDE.md)
-3. **Execution Plan:** [`docs/REMAINING_TASKS_BLUEPRINT.md`](../REMAINING_TASKS_BLUEPRINT.md)
+3. **Active Wave Execution Checklist (SSOT):** [`DynamicProLearn/docs/ERP_COPILOT_ROADMAP.md`](file:///e:/Mazen/DynamicProLearn/docs/ERP_COPILOT_ROADMAP.md)

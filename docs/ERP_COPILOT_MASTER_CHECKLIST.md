@@ -23,13 +23,10 @@
 
 ## 🚦 Global Status Overview
 
-* **Current Stage:** Phase 7 Live Field Pilot Observations & Quality Remediation (Pending User Approval)
-* **Active Running Infrastructure:**
-  * Python FastAPI AI Engine (Port 8000)
-  * .NET 10 LMS Backend (Port 5115)
-  * Angular 19 LMS UI (Port 4200)
-  * Microsoft DevTunnel CDP Bridge (Port 9222 -> Port 443 HTTPS/WSS via `xhfmws6g-9222.eun1.devtunnels.ms`)
-* **Overall Completion:** 15 / 22 Major Milestones Completed (Tracks A, B, C complete; Track D planned)
+> **Notice (2026-11-16 SSOT):** Tracks A–C below are historical/completed. The active Wave 1–5 live execution checklist now lives in a single canonical file: **[`DynamicProLearn/docs/ERP_COPILOT_ROADMAP.md`](file:///e:/Mazen/DynamicProLearn/docs/ERP_COPILOT_ROADMAP.md)**.
+
+* **Current Stage:** Wave 1 & Wave 2 Completed (`POID 13777`, `#241`); Wave 3 (`POPaidCurrancy`) Planned.
+* **Overall Completion:** Tracks A–C + Wave 1 & Wave 2 Complete; unified JSONL telemetry active (`src/api/v1/erp.py` -> `session_telemetry.py`).
 
 ---
 

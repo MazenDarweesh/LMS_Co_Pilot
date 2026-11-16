@@ -393,6 +393,8 @@ uv run locust -f tests/load/locustfile.py --headless -u 10 -r 2 --run-time 1m
 - [x] Webhook-driven auto re-indexing from .NET LMS + batch sync reconciliation
 - [x] Structured JSON observability traces (latency, token usage, point IDs)
 - [x] Antigravity agent system (.agents/ skills, rules, hooks, MCP)
+- [x] Purchases v2.5.0 metadata safety net & unified JSONL session telemetry (`M12` Waves 1–2)
+- [ ] Wave 3: Cash payment extraction (`POPaidCurrancy`) & verification ([Chronicle M12](docs/chronicle/milestones/M12_erp_purchases_v250_waves.md))
 - [x] LangGraph stateful conversational RAG and persistent memory
 - [x] Automated RAG quality evaluation (Ragas v0.4+ Faithfulness & Answer Relevancy)
 - [x] Production container hardening (non-root execution, Docker Compose health dependencies)
