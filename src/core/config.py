@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     METRICS_PATH: str = "/metrics"
     SEARCH_DEBUG_ENABLED: bool = False  # Set to True only for offline diagnostic traces
 
+    # ERP Session Blackbox Telemetry
+    ERP_LOGS_DIR: str = "logs/erp_sessions"
+    ERP_TEST_LOGS_DIR: str = "logs/erp_sessions_test"
+    ERP_SHARED_LOGS_DIR: str | None = None
+    ERP_TELEMETRY_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
+    ERP_TELEMETRY_BACKUP_COUNT: int = 3
+    ERP_TELEMETRY_RETENTION_DAYS: int = 7
+
     # ERP Navigation & Action Assistant Thresholds
     ERP_NAV_GO_THRESHOLD: float = 0.80
     ERP_NAV_GAP_THRESHOLD: float = 0.20

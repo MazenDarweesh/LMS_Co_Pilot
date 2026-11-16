@@ -1,6 +1,4 @@
 import json
-import re
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import structlog
@@ -20,6 +18,7 @@ from src.models.erp_models import (
 from sse_starlette.sse import EventSourceResponse
 from src.services.erp_copilot import (
     agentic_stepper_service,
+    append_session_event,
     erp_decision_memory_service,
     erp_service,
 )
@@ -129,10 +128,6 @@ async def resolve_erp_leftover_fields(
     return await erp_service.resolve_leftover(payload)
 
 
-ERP_LOGS_DIR = Path("logs/erp_sessions")
-SHARED_LOGS_DIR = Path("e:/Mazen/shared_logs/erp_sessions")
-
-
 @router.post(
     "/telemetry",
     status_code=status.HTTP_200_OK,
@@ -146,45 +141,33 @@ async def record_erp_telemetry(
     """
     📦 الصندوق الأسود الموحد لكل جلسة ERP:
     - استقبال أحداث التشغيل الميداني من الكوبيلوت في المتصفح.
-    - كتابة الأحداث في ملف الجلسة الموحد (session_<session_id>.log).
-    - مشاركة السجل بين المشاريع في مجلد logs/erp_sessions.
+    - تفويض الكتابة إلى session_telemetry.append_session_event بصيغة JSONL موحدة.
     """
     if not payload.events:
         return {"status": "empty", "written": 0}
 
-    clean_id = re.sub(r"[^a-zA-Z0-9_\-]", "_", payload.session_id)
-    filename = f"session_{clean_id}.log"
-
-    targets = [ERP_LOGS_DIR]
-    try:
-        SHARED_LOGS_DIR.mkdir(parents=True, exist_ok=True)
-        targets.append(SHARED_LOGS_DIR)
-    except Exception:
-        pass
-
-    ERP_LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
-    formatted_lines = []
     for ev in payload.events:
         details_dict = dict(ev.details) if ev.details else {}
         if ev.duration_ms is not None and "durationMs" not in details_dict:
             details_dict["durationMs"] = ev.duration_ms
-        details_str = json.dumps(details_dict, ensure_ascii=False) if details_dict else ""
-        screen_tag = f"[{payload.screen_key}] " if payload.screen_key else ""
-        eff_trace = ev.trace_id or payload.trace_id
-        trace_tag = f"[trc:{eff_trace}] " if eff_trace else ""
-        line = f"[{ev.timestamp}] [{ev.level.upper()}] [{ev.stage.upper()}] {screen_tag}{trace_tag}{ev.event} | {details_str}\n"
-        formatted_lines.append(line)
 
-    payload_text = "".join(formatted_lines)
+        raw_stage = ev.stage.strip().upper()
+        stage_name = (
+            raw_stage
+            if raw_stage.startswith(("BROWSER.", "STEPPER.", "CDP."))
+            else f"BROWSER.{raw_stage}"
+        )
 
-    for target_dir in targets:
-        try:
-            file_path = target_dir / filename
-            with open(file_path, "a", encoding="utf-8") as f:
-                f.write(payload_text)
-        except Exception as e:
-            logger.warn("Failed to write erp telemetry to path", path=str(target_dir), error=str(e))
+        append_session_event(
+            session_id=payload.session_id,
+            level=ev.level,
+            stage=stage_name,
+            message=ev.event,
+            details=details_dict,
+            trace_id=ev.trace_id or payload.trace_id,
+            screen_key=payload.screen_key,
+            timestamp=ev.timestamp,
+        )
 
     return {
         "status": "recorded",

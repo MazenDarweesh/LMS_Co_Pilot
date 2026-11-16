@@ -114,9 +114,16 @@ class AgenticStepperService:
         stage_prefix: Optional[str | TelemetryStage] = None,
         level: Optional[str] = None,
         limit: int = 300,
+        trace_id: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """قراءة وفلترة أحداث الصندوق الأسود للجلسة المحددة"""
-        return read_session_events(session_id, stage_prefix=stage_prefix, level=level, limit=limit)
+        return read_session_events(
+            session_id,
+            stage_prefix=stage_prefix,
+            level=level,
+            limit=limit,
+            trace_id=trace_id,
+        )
 
 
 # Singleton default instance

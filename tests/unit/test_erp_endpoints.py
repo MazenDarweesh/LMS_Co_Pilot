@@ -339,3 +339,51 @@ async def test_erp_nav_partial_journal_query_stays_ask_while_full_name_goes():
     assert res_full.decision == "go"
     assert res_full.candidates[0].id == "233"
 
+
+@pytest.mark.asyncio
+async def test_record_erp_telemetry_endpoint_writes_unified_jsonl():
+    """POST /v1/erp/telemetry delegates to session_telemetry and persists correlated JSONL events."""
+    import time
+    from src.services.erp_copilot.agentic_stepper.session_telemetry import (
+        ERP_TEST_LOGS_DIR,
+        normalize_session_base_id,
+        read_session_events,
+    )
+
+    session_id = f"session_test_ep_{int(time.time() * 1000)}"
+    payload = {
+        "session_id": session_id,
+        "screen_key": "PURCHASES",
+        "trace_id": "trc_ep_001",
+        "events": [
+            {
+                "timestamp": "2026-11-16T10:00:00Z",
+                "level": "INFO",
+                "stage": "USER_QUERY",
+                "event": "User asked for purchase invoice",
+                "details": {"authorization": "Bearer abc", "query": "فاتورة شراء"},
+            }
+        ],
+    }
+
+    async with AsyncClient(transport=ASGITransport(app=erp_app), base_url="http://test") as client:
+        resp = await client.post("/v1/erp/telemetry", json=payload)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "recorded"
+    assert body["written"] == 1
+
+    base_id = normalize_session_base_id(session_id)
+    jsonl_path = ERP_TEST_LOGS_DIR / f"session_{base_id}.jsonl"
+    try:
+        events = read_session_events(session_id, trace_id="trc_ep_001")
+        assert len(events) == 1
+        assert events[0]["stage"] == "BROWSER.USER_QUERY"
+        assert events[0]["screen_key"] == "PURCHASES"
+        assert events[0]["details"]["authorization"] == "[REDACTED]"
+        assert events[0]["details"]["query"] == "فاتورة شراء"
+    finally:
+        if jsonl_path.exists():
+            jsonl_path.unlink()
+
