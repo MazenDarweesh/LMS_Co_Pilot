@@ -14,6 +14,10 @@ class Settings(BaseSettings):
         "GEMINI_API_KEY",
         "JWT_SECRET",
         "SERVICE_TOKEN",
+        "MCP_BASE_URL",
+        "MCP_OAUTH_CLIENT_ID",
+        "MCP_OAUTH_REDIRECT_URI",
+        "MCP_TOKEN_ENCRYPTION_KEY",
         mode="before",
         check_fields=False
     )
@@ -102,6 +106,13 @@ class Settings(BaseSettings):
     ERP_DECISION_COLLECTION: str = "erp_decisions"
     ERP_DECISION_MIN_SCORE: float = 0.92  # cosine similarity required to reuse a verified decision
     ERP_DECISION_TTL_DAYS: int = 90
+
+    # ERP MCP Client & OAuth Configuration (ZERO hardcoded secrets)
+    MCP_BASE_URL: str = "http://localhost:8080/mcp"
+    MCP_OAUTH_CLIENT_ID: str = ""
+    MCP_OAUTH_REDIRECT_URI: str = ""
+    MCP_TOKEN_ENCRYPTION_KEY: str = ""
+    MCP_READ_PAGE_MAX_CHARS: int = 12000
 
     # CORS Allowed Origins
     # يشمل البيئات المحلية وبيئات النفق السحابي (DevTunnel / ngrok) لمنع أخطاء Mixed Content

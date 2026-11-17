@@ -1,9 +1,9 @@
 ---
-last_synced_commit: "2e969bd"
-last_updated: "2026-11-16T16:18:00+02:00"
-active_milestone: "M12"
-total_milestones: 12
-completed_milestones: 11
+last_synced_commit: "d0d865b"
+last_updated: "2026-11-17T15:31:00+02:00"
+active_milestone: "M13"
+total_milestones: 13
+completed_milestones: 12
 ---
 
 # 🗺️ LMS AI Co-Pilot: Master Roadmap & Architectural Chronicle
@@ -27,7 +27,8 @@ completed_milestones: 11
 | **M09** | AI Ingestion Lifecycle State Machine & Resilient Auth | ✅ COMPLETED | 2026-09-18 -> 2026-09-20 | Lifecycle States (None->Queued->Processing->Completed/Failed), HMAC-SHA256 Webhooks, Zero-Hop Claims RBAC, Status API, Adaptive Quizzes & Resilient JWT | [M09 Dossier](milestones/M09_ai_lifecycle_adaptive_content.md) |
 | **M10** | Process Once Reference & Multi-Lesson Search | ✅ COMPLETED | 2026-09-21 -> 2026-09-29 | Deduplication (0s Fast Path), asyncio.gather, Reference-Counting Deletion, Cross-Module Multi-Lesson Search, Comparative Prompting & ERP CORS | [M10 Dossier](milestones/M10_process_once_reference_and_multi_lesson.md) |
 | **M11** | Autonomous ERP Agent Navigation & Progressive Form-Fill | ✅ COMPLETED | 2026-10-06 -> 2026-10-12 | Intent Navigation (go/ask/clarify) + Cascading Form Fill + SSE Grid Streaming | [M11 Dossier](milestones/M11_autonomous_erp_navigation_form_filling.md) |
-| **M12** | ERP Purchases v2.5.0 Waves, Host Bridge Hardening & Unified JSONL Telemetry | ⏳ IN PROGRESS (Wave 1–2 ✅) | 2026-10-13 -> 2026-11-16 | Strict Entity Resolver/Executor (Waves 1–2), Lazy Bundle (`793.4 KB`), JSONL Blackbox | [M12 Dossier](milestones/M12_erp_purchases_v250_waves.md) |
+| **M12** | ERP Purchases v2.5.0 Waves (1–3) & Unified JSONL Telemetry | ✅ COMPLETED | 2026-10-13 -> 2026-11-16 | Strict Entity Resolver/Executor (Waves 1–3 `POPaidCurrancy`, `22 passed` backend, `108/108` Karma, `798.1 KB` bundle), JSONL Blackbox | [M12 Dossier](milestones/M12_erp_purchases_v250_waves.md) |
+| **M13** | Dynamic Pro MCP Integration (`Option B-Lite`) & Phase 0 Security | ⏳ IN PROGRESS (Phase 0 ✅ `DynamicProLearn`) | 2026-11-17 -> Present | Isolated `ErpSso` + one-time `jti` (`9/9 SecurityTests`), Clean ERP Bridge (`feat/erp-copilot-phase0-clean`), `LMS_CO_Pilot` MCP Client + 50-Q Eval Planned | [Roadmap SSOT](file:///e:/Mazen/DynamicProLearn/docs/ERP_COPILOT_ROADMAP.md) |
 
 ```text
 📊 Overall Project Milestones Progress:
