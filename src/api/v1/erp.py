@@ -15,6 +15,7 @@ from src.models.erp_models import (
     NavResolution,
     TelemetryBatchRequest,
 )
+from src.models.mcp_chat_models import ErpChatStreamRequest
 from sse_starlette.sse import EventSourceResponse
 from src.services.erp_copilot import (
     agentic_stepper_service,
@@ -22,6 +23,7 @@ from src.services.erp_copilot import (
     erp_decision_memory_service,
     erp_service,
 )
+from src.services.erp_copilot.mcp.chat_service import unified_chat_service
 from src.services.shared_infrastructure import (
     UserContext,
     get_current_user,
@@ -196,5 +198,43 @@ async def stream_agent_execution(req: AgentGoalRequest):
             }
 
     return EventSourceResponse(event_generator())
+
+
+@router.post(
+    "/chat/stream",
+    summary="Unified General Chat + LMS Search + ERP Navigation SSE Stream",
+)
+@limiter.limit("30/minute")
+async def stream_erp_general_chat(
+    request: Request,
+    payload: ErpChatStreamRequest,
+    user: UserContext | None = Depends(get_optional_user),
+) -> EventSourceResponse:
+    """
+    💬 المساعد الموحد العام (General Chat + LMS RAG + ERP Navigation):
+    - يجيب عن الأسئلة العامة باللهجة المصرية أو العربية الفصحى مثل Claude/GPT.
+    - يبحث في دروس المنصة (search_lms_lessons) ويبث حدث `sources`.
+    - يوجه لشاشات الـ ERP (navigate_erp_screen) ويبث حدث `nav_action`.
+    - يلتزم بالصدق عند تعطيل MCP (`MCP_ENABLED=False`) دون اختلاق أي أرقام حية.
+    """
+    async def event_generator():
+        async for event in unified_chat_service.stream_chat(
+            payload,
+            user=user,
+            request=request,
+        ):
+            yield {
+                "event": event["event"],
+                "data": json.dumps(event["data"], ensure_ascii=False),
+            }
+
+    return EventSourceResponse(
+        event_generator(),
+        ping=15,
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 

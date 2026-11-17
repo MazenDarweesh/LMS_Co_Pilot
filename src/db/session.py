@@ -192,6 +192,11 @@ async def lifespan(app: FastAPI):
     erp_service.initialize()
     app.state.erp_service = erp_service
 
+    # ⑥ Initialize UnifiedChatService
+    from src.services.erp_copilot.mcp.chat_service import unified_chat_service
+    unified_chat_service.initialize()
+    app.state.unified_chat_service = unified_chat_service
+
     # ③ تهيئة ذاكرة قرارات التوجيه (تعتمد على جاهزية db_pool و qdrant_service)
     try:
         await erp_decision_memory_service.initialize(app.state.db_pool)
@@ -253,4 +258,8 @@ async def lifespan(app: FastAPI):
     
     await agent_service.close()
     logger.info("Agent Service (LangGraph Pool) closed 🛑")
+
+    from src.services.erp_copilot.mcp.chat_service import unified_chat_service
+    await unified_chat_service.close()
+    logger.info("Unified Chat service closed 🛑")
 

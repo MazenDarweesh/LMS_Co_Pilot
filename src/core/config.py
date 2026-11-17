@@ -12,6 +12,9 @@ class Settings(BaseSettings):
         "LMS_BASE_URL",
         "GROQ_API_KEY",
         "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "CHAT_LLM_PROVIDER",
+        "CHAT_LLM_MODEL",
         "JWT_SECRET",
         "SERVICE_TOKEN",
         "MCP_BASE_URL",
@@ -113,6 +116,12 @@ class Settings(BaseSettings):
     MCP_OAUTH_REDIRECT_URI: str = ""
     MCP_TOKEN_ENCRYPTION_KEY: str = ""
     MCP_READ_PAGE_MAX_CHARS: int = 12000
+
+    # Unified General Chat LLM & MCP Toggle (ZERO hardcoded secrets)
+    CHAT_LLM_PROVIDER: str = "google"  # google | groq | anthropic
+    CHAT_LLM_MODEL: str = ""  # Empty falls back to GEMINI_MODEL (google) or provider defaults
+    ANTHROPIC_API_KEY: str = ""
+    MCP_ENABLED: bool = False
 
     # CORS Allowed Origins
     # يشمل البيئات المحلية وبيئات النفق السحابي (DevTunnel / ngrok) لمنع أخطاء Mixed Content
