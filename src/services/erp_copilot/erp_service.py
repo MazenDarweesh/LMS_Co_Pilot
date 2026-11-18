@@ -15,6 +15,7 @@ from src.core.config import settings
 from src.models.erp_models import (
     ControlRolesRequest,
     ControlRolesResponse,
+    ErpIntent,
     FieldSignatureIn,
     LeftoverRequest,
     LeftoverResponse,
@@ -492,12 +493,15 @@ class ErpService:
         req: NavRequest,
         tenant_id: str | None = None,
         user_id: str | None = None,
+        *,
+        known_intent: ErpIntent | None = None,
     ) -> NavResolution:
         """
-        ترتيب الشاشات المرشحة وتحديد نية المستخدم (سؤال / تنقل / إجراء) بالكامل عبر الذكاء الاصطناعي:
+        ترتيب الشاشات المرشحة وتحديد نية المستخدم (سؤال / تنقل / إجراء):
+        0.5. المسار السريع الحتمي (Catalog + Lexical Fast-Path < 5ms) بدون أي نداء خارجي عند وضوح الشاشة.
         0. ذاكرة القرارات المؤكدة (Qdrant) — تتجاوز استدعاء الـ LLM عند وجود تطابق دلالي موثّق.
-        1. موجّه الذكاء الاصطناعي (قرار واحد: intent + درجات الشاشات).
-        2. fallback معجمي فقط عند تعذر الـ LLM (بدون تخمين النية).
+        1. موجّه الذكاء الاصطناعي (قرار واحد: intent + درجات الشاشات) للحالات الغامضة فقط.
+        2. fallback معجمي فقط عند تعذر الـ LLM.
         """
         user_msg = req.user_message.strip()
         candidates_map = {c.id: c for c in req.candidates}
@@ -507,27 +511,22 @@ class ErpService:
             query_len=len(user_msg),
             candidates_count=len(req.candidates),
             current_path=req.current_path,
+            known_intent=known_intent,
         )
 
-        fingerprint = navigation_fingerprint(req.candidates)
-        memory_active = bool(tenant_id and user_id) and erp_decision_memory_service.ready
-
-        # 0. Verified-decision memory
-        if memory_active:
-            hit = await erp_decision_memory_service.lookup_navigation(user_msg, tenant_id, fingerprint)
-            if hit is not None:
-                remembered, matched_point_id = hit
-                if all(c.id in candidates_map for c in remembered.candidates):
-                    remembered.decision_id = await erp_decision_memory_service.record_navigation(
-                        tenant_id, user_id, user_msg, fingerprint, remembered, matched_point_id
-                    )
-                    return remembered
-
-        # 0.5 High-Speed Catalog Transaction Resolution
+        # 0.5 High-Speed Catalog & Lexical Resolution (Local RAM < 5ms — runs BEFORE network Qdrant/LLM calls)
         is_report_query = _is_report_or_inquiry_query(user_msg)
         is_ambiguous_inv = _is_ambiguous_invoice_query(user_msg)
         is_ambiguous_vouch = _is_ambiguous_voucher_query(user_msg)
         is_wh_movements = _is_warehouse_movements_query(user_msg)
+        has_nav_verb = any(
+            w in user_msg.lower()
+            for w in ["افتح", "إفتح", "وديني", "اذهب", "روح", "شاشة", "شاشه", "اشوف", "أشوف", "عرض"]
+        )
+        has_create_verb = any(
+            w in user_msg.lower()
+            for w in ["سجل", "اضف", "أضف", "انشئ", "أنشئ", "اعمل", "أعمل", "دخل"]
+        )
         catalog_form = (
             None
             if (is_report_query or is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements)
@@ -587,6 +586,129 @@ class ErpService:
                 full_screen_matched_id = best_cand.id
                 if not matched_catalog_candidate_id:
                     matched_catalog_candidate_id = best_cand.id
+
+        # 0.6 Deterministic Fast-Path (< 5ms, 0 LLM calls, 0 Embedding calls)
+        u_norm_fast = normalize_arabic_text_leaderboard(user_msg)
+        is_partial_journal = ("قيد" in u_norm_fast or "قيود" in u_norm_fast) and not full_screen_matched_id
+        is_nav_context = known_intent == "navigate" or (has_nav_verb and not has_create_verb)
+
+        if is_nav_context and not is_report_query:
+            # Fast-Path A: Known ambiguous group queries ("افتح الفواتير" / "افتح الاذون") -> instant ask
+            if is_ambiguous_inv:
+                primary_inv_cands = [
+                    c for c in req.candidates
+                    if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
+                    and "فواتير" in normalize_arabic_text_leaderboard(c.label or "")
+                ]
+                if len(primary_inv_cands) >= 2:
+                    ask_scored = [
+                        NavScored(
+                            id=pc.id,
+                            confidence=round(0.78 - (idx * 0.02), 2),
+                            reason="تخيير بين شاشات الفواتير الأساسية في النظام",
+                        )
+                        for idx, pc in enumerate(primary_inv_cands[:3])
+                    ]
+                    logger.info("ERP Navigation resolved via deterministic ambiguous-invoice fast-path")
+                    return NavResolution(
+                        decision="ask",
+                        candidates=ask_scored,
+                        intent="navigate",
+                        source="lexical",
+                    )
+
+            if is_ambiguous_vouch:
+                primary_vouch_cands = [
+                    c for c in req.candidates
+                    if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
+                    and "اذون" in normalize_arabic_text_leaderboard(c.label or "")
+                ]
+                if len(primary_vouch_cands) >= 2:
+                    ask_scored = [
+                        NavScored(
+                            id=vc.id,
+                            confidence=round(0.78 - (idx * 0.02), 2),
+                            reason="تخيير بين شاشات الأذون المخزنية الأساسية في النظام",
+                        )
+                        for idx, vc in enumerate(primary_vouch_cands[:3])
+                    ]
+                    logger.info("ERP Navigation resolved via deterministic ambiguous-voucher fast-path")
+                    return NavResolution(
+                        decision="ask",
+                        candidates=ask_scored,
+                        intent="navigate",
+                        source="lexical",
+                    )
+
+            # Fast-Path B: Unambiguous direct screen match -> instant go
+            if not (is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements or is_partial_journal):
+                fast_target_id = full_screen_matched_id or (
+                    matched_catalog_candidate_id if known_intent == "navigate" else None
+                )
+                if fast_target_id and fast_target_id in candidates_map:
+                    target_cand = candidates_map[fast_target_id]
+                    target_label = target_cand.label or fast_target_id
+                    logger.info(
+                        "ERP Navigation resolved via deterministic catalog/full-name fast-path (0 LLM calls)",
+                        matched_id=fast_target_id,
+                        label=target_label,
+                    )
+                    return NavResolution(
+                        decision="go",
+                        candidates=[
+                            NavScored(
+                                id=fast_target_id,
+                                confidence=0.98,
+                                reason=f"مطابقة مباشرة لشاشة {target_label}",
+                            )
+                        ],
+                        intent="navigate",
+                        source="lexical",
+                    )
+
+                if known_intent == "navigate":
+                    lexical_fast: list[NavScored] = []
+                    for c in req.candidates:
+                        score = _compute_lexical_similarity(user_msg, c.label, c.path)
+                        if score >= 0.50:
+                            c_tier, _ = _candidate_priority_tier(user_msg, c.label or c.id, c.path)
+                            if c_tier == 0 and score > 0.50:
+                                score = 0.50
+                        lexical_fast.append(
+                            NavScored(
+                                id=c.id,
+                                confidence=score,
+                                reason="مطابقة معجمية مباشرة لاسم الشاشة",
+                            )
+                        )
+                    lexical_fast.sort(key=lambda x: x.confidence, reverse=True)
+                    top_lex = lexical_fast[:3]
+                    if top_lex and top_lex[0].confidence >= 0.90 and self._decide(top_lex) == "go":
+                        logger.info(
+                            "ERP Navigation resolved via deterministic lexical fast-path (0 LLM calls)",
+                            matched_id=top_lex[0].id,
+                            confidence=top_lex[0].confidence,
+                        )
+                        return NavResolution(
+                            decision="go",
+                            candidates=top_lex,
+                            intent="navigate",
+                            source="lexical",
+                        )
+
+        fingerprint = navigation_fingerprint(req.candidates)
+        memory_active = bool(tenant_id and user_id) and erp_decision_memory_service.ready
+
+        # 0. Verified-decision memory
+        if memory_active:
+            hit = await erp_decision_memory_service.lookup_navigation(user_msg, tenant_id, fingerprint)
+            if hit is not None:
+                remembered, matched_point_id = hit
+                if all(c.id in candidates_map for c in remembered.candidates):
+                    remembered.decision_id = await erp_decision_memory_service.record_navigation(
+                        tenant_id, user_id, user_msg, fingerprint, remembered, matched_point_id
+                    )
+                    return remembered
 
         # 1. AI router
         intent = "unknown"

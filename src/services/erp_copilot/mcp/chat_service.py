@@ -421,6 +421,7 @@ class UnifiedChatService:
                 nav_req,
                 tenant_id=effective_user.tenant_id,
                 user_id=effective_user.user_id,
+                known_intent="navigate",
             )
             nav_payload = _format_nav_action(resolution, effective_candidates)
             side_events.append({"event": "nav_action", "data": nav_payload})

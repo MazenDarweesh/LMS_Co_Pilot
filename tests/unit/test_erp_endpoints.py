@@ -341,6 +341,36 @@ async def test_erp_nav_partial_journal_query_stays_ask_while_full_name_goes():
 
 
 @pytest.mark.asyncio
+async def test_erp_nav_deterministic_fast_path_skips_second_llm():
+    """Fast-Path: when known_intent='navigate' (from Unified Chat tool) or full screen name matches, 0 Gemini calls occur."""
+    cands = [
+        NavCandidateIn(id="6701", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "الفاتورة الالكترونية"]),
+        NavCandidateIn(id="244", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=["الوحدات والبرامج الرئيسية", "الموردين و المشتريات"]),
+    ]
+    erp_service._gemini_client.models.generate_content.reset_mock()
+
+    # 1. Single-word "المشتريات" via Unified Chat tool (known_intent="navigate")
+    res_purchases = await erp_service.resolve_navigation(
+        NavRequest(user_message="المشتريات", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_purchases.decision == "go"
+    assert res_purchases.candidates[0].id == "289"
+    assert res_purchases.source == "lexical"
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+    # 2. Full screen name "افتح فواتير المبيعات" even without known_intent
+    res_sales = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح فواتير المبيعات", candidates=cands),
+    )
+    assert res_sales.decision == "go"
+    assert res_sales.candidates[0].id == "244"
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+
+
+@pytest.mark.asyncio
 async def test_record_erp_telemetry_endpoint_writes_unified_jsonl():
     """POST /v1/erp/telemetry delegates to session_telemetry and persists correlated JSONL events."""
     import time
