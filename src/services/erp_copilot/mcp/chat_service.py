@@ -37,7 +37,10 @@ from langchain_core.tools import BaseTool, StructuredTool
 import structlog
 
 from src.core.config import settings
-from src.core.prompts import get_unified_chat_system_prompt
+from src.core.prompts import (
+    build_unified_chat_turn_context,
+    get_unified_chat_system_prompt,
+)
 from src.models.auth_models import UserContext
 from src.models.erp_models import NavCandidateIn, NavRequest, NavResolution
 from src.models.mcp_chat_models import ChatHistoryMessage, ErpChatStreamRequest
@@ -119,13 +122,36 @@ def _extract_text_from_content(content: Any) -> str:
     return ""
 
 
+def _build_system_message(system_prompt: str, provider: str) -> SystemMessage:
+    """
+    Wraps the static system prompt.
+    For Anthropic (`claude-*`) with prompt caching enabled, attaches the official
+    `cache_control: {"type": "ephemeral"}` breakpoint on the system block, which
+    caches both `tools` and `system` in Anthropic's `Tools -> System -> Messages` order.
+    """
+    if settings.CHAT_PROMPT_CACHE_ENABLED and provider == "anthropic":
+        return SystemMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        )
+    return SystemMessage(content=system_prompt)
+
+
 def _build_history_messages(
     history: Sequence[ChatHistoryMessage],
     query: str,
+    turn_context: str = "",
 ) -> list[BaseMessage]:
     """
     Converts client history to LangChain messages (ignoring client-injected system messages)
     and enforces `settings.AGENT_MAX_HISTORY_MESSAGES` + token budget via `trim_messages`.
+    Per-turn dynamic ERP/LMS context is prepended to the final `HumanMessage` so the
+    leading `Tools + System` prefix remains 100% static for provider prompt caching.
     """
     lc_messages: list[BaseMessage] = []
     for item in history:
@@ -137,7 +163,10 @@ def _build_history_messages(
         elif item.role == "assistant":
             lc_messages.append(AIMessage(content=text))
 
-    lc_messages.append(HumanMessage(content=query.strip()))
+    user_text = query.strip()
+    if turn_context:
+        user_text = f"{turn_context}\n\n{user_text}"
+    lc_messages.append(HumanMessage(content=user_text))
     max_msgs = max(1, int(settings.AGENT_MAX_HISTORY_MESSAGES))
     return trim_messages(
         messages=lc_messages,
@@ -582,15 +611,15 @@ class UnifiedChatService:
             if req.lesson_ids
             else (req.lesson_id or None)
         )
-        system_prompt = get_unified_chat_system_prompt(
-            mcp_enabled=mcp_active,
+        system_prompt = get_unified_chat_system_prompt(mcp_enabled=mcp_active)
+        turn_context = build_unified_chat_turn_context(
             active_screen_key=req.active_screen_key,
             erp_key=req.erp_key,
             has_candidates=bool(req.candidates),
             lesson_scope_hint=lesson_scope_hint,
         )
-        conversation = _build_history_messages(req.history, req.query)
-        messages: list[BaseMessage] = [SystemMessage(content=system_prompt), *conversation]
+        conversation = _build_history_messages(req.history, req.query, turn_context=turn_context)
+        messages: list[BaseMessage] = [_build_system_message(system_prompt, resolved_provider), *conversation]
 
         bound_model = (
             chat_model.bind_tools(all_tools)

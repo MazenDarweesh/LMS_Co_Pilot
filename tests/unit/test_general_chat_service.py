@@ -565,3 +565,62 @@ def test_post_erp_chat_stream_sse_integration_via_testclient(monkeypatch: pytest
     assert coerced.history == []
     assert coerced.lesson_ids == []
     assert coerced.candidates == []
+
+
+@pytest.mark.asyncio
+async def test_static_system_prompt_and_anthropic_ephemeral_cache_control(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(settings, "MCP_ENABLED", False)
+    monkeypatch.setattr(settings, "CHAT_PROMPT_CACHE_ENABLED", True)
+
+    # 1. Google/default: SystemMessage stays byte-identical across different screens; screen goes in HumanMessage
+    monkeypatch.setattr(settings, "CHAT_LLM_PROVIDER", "google")
+    fake_google = _ScriptedFakeChatModel(
+        rounds=[
+            [AIMessageChunk(content="رد 1")],
+            [AIMessageChunk(content="رد 2")],
+        ]
+    )
+    service = UnifiedChatService(model_factory=lambda **_: fake_google)
+
+    await anext(
+        aiter(
+            service.stream_chat(
+                ErpChatStreamRequest(query="سؤال أول", active_screen_key="screen-1", trace_id="trc_cache_1")
+            )
+        )
+    )
+    await anext(
+        aiter(
+            service.stream_chat(
+                ErpChatStreamRequest(query="سؤال ثاني", active_screen_key="Purchases", trace_id="trc_cache_2")
+            )
+        )
+    )
+
+    sys_1 = fake_google.recorded_calls[0][0]
+    sys_2 = fake_google.recorded_calls[1][0]
+    assert isinstance(sys_1, SystemMessage) and isinstance(sys_2, SystemMessage)
+    assert sys_1.content == sys_2.content
+    assert "screen-1" not in str(sys_1.content)
+    assert "Purchases" not in str(sys_2.content)
+    assert "screen-1" in str(fake_google.recorded_calls[0][-1].content)
+    assert "Purchases" in str(fake_google.recorded_calls[1][-1].content)
+
+    # 2. Anthropic: SystemMessage automatically uses official cache_control={"type": "ephemeral"}
+    monkeypatch.setattr(settings, "CHAT_LLM_PROVIDER", "anthropic")
+    fake_claude = _ScriptedFakeChatModel(rounds=[[AIMessageChunk(content="رد كلود")]])
+    service_claude = UnifiedChatService(model_factory=lambda **_: fake_claude)
+
+    await anext(
+        aiter(
+            service_claude.stream_chat(
+                ErpChatStreamRequest(query="مرحبا", active_screen_key="Purchases", trace_id="trc_cache_3")
+            )
+        )
+    )
+    claude_sys = fake_claude.recorded_calls[0][0]
+    assert isinstance(claude_sys, SystemMessage)
+    assert isinstance(claude_sys.content, list)
+    assert claude_sys.content[0]["type"] == "text"
+    assert claude_sys.content[0]["cache_control"] == {"type": "ephemeral"}
+    assert "Purchases" not in claude_sys.content[0]["text"]

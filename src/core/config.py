@@ -120,6 +120,7 @@ class Settings(BaseSettings):
     # Unified General Chat LLM & MCP Toggle (ZERO hardcoded secrets)
     CHAT_LLM_PROVIDER: str = "google"  # google | groq | anthropic
     CHAT_LLM_MODEL: str = ""  # Empty falls back to GEMINI_MODEL (google) or provider defaults
+    CHAT_PROMPT_CACHE_ENABLED: bool = True
     ANTHROPIC_API_KEY: str = ""
     MCP_ENABLED: bool = False
 

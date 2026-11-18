@@ -625,16 +625,14 @@ _UNIFIED_CHAT_MCP_ENABLED_RULE = """4. **مصدر الحقيقة الأساسي 
    - لا تخترع أي أرقام غير موجودة في مخرجات الأدوات، ولا تنفّذ أو تعد بتعديل أو حذف أو اعتماد قيود."""
 
 
-def get_unified_chat_system_prompt(
+def build_unified_chat_turn_context(
     *,
-    mcp_enabled: bool = False,
     active_screen_key: str | None = None,
     erp_key: str | None = None,
     has_candidates: bool = False,
     lesson_scope_hint: str | None = None,
 ) -> str:
-    """Constructs the system prompt for the Unified General Chat + LMS + ERP Navigation agent."""
-    live_rule = _UNIFIED_CHAT_MCP_ENABLED_RULE if mcp_enabled else _UNIFIED_CHAT_NO_MCP_RULE
+    """Builds per-turn dynamic ERP/LMS context placed in HumanMessage to preserve static prompt prefix caching."""
     context_lines: list[str] = []
     effective_screen = active_screen_key or erp_key
     if effective_screen:
@@ -643,7 +641,17 @@ def get_unified_chat_system_prompt(
         context_lines.append(f"- نطاق الدروس المحدد: `{lesson_scope_hint}`")
     if has_candidates:
         context_lines.append("- قائمة شاشات الـ ERP المتاحة للتنقل متوفرة للأداة `navigate_erp_screen`.")
-    context_block = "\n".join(context_lines) if context_lines else "- لا توجد شاشة محددة مفتوحة حالياً."
+    if not context_lines:
+        return ""
+    return "[سياق الجلسة الحالي]\n" + "\n".join(context_lines)
+
+
+def get_unified_chat_system_prompt(
+    *,
+    mcp_enabled: bool = False,
+) -> str:
+    """Constructs a 100% static system prompt for the Unified Chat agent (byte-identical for prompt caching)."""
+    live_rule = _UNIFIED_CHAT_MCP_ENABLED_RULE if mcp_enabled else _UNIFIED_CHAT_NO_MCP_RULE
 
     return f"""أنت المساعد الذكي الشامل لمنصة DynamicPro Learn ونظام DynamicPro ERP (شبيه بـ Claude وChatGPT).
 تتحدث بطلاقة وطبيعية باللغة العربية (العامية المصرية الراقية أو الفصحى المبسطة حسب أسلوب المستخدم) مع الحفاظ على المصطلحات التقنية والمحاسبية بالإنجليزية عند الحاجة.
@@ -652,14 +660,11 @@ def get_unified_chat_system_prompt(
 1. **المحادثة والأسئلة العامة (بدون أدوات غير لازمة):**
    - أجب بحرية ووضوح عن التحيات والأسئلة العامة، المفاهيم المحاسبية والإدارية، البرمجة، الحسابات، الصياغة، وأي استفسار عام دون استدعاء أدوات البحث أو التنقل إذا لم يطلب المستخدم ذلك.
 2. **شرح المنصة والدروس التدريبية (`search_lms_lessons`):**
-   - عند سؤال المستخدم عن كيفية استخدام شاشات أو خطوات نظام DynamicPro ERP أو عن محتوى الفيديوهات والملفات التدريبية في منصة LMS، استدعِ أداة `search_lms_lessons`.
+   - عند سؤال المستخدم عن كيفية استخدام شاشات أو خطوات نظام DynamicPro ERP أو عن محتوى الفيديوهات والملفات التدريبية في منصة LMS، استدعِ أداة `search_lms_lessons` (ما لم تتوفر أدوات معرفة الـ MCP الرسمية في القاعدة 4).
    - استشهد بالمصادر المرجعة بأرقامها `[1]`، `[2]` بدقة ولا تختلق أرقام مصادر غير موجودة.
 3. **الانتقال بين شاشات النظام (`navigate_erp_screen`):**
    - عند طلب المستخدم فتح شاشة أو الانتقال إلى صفحة أو موديول في نظام DynamicPro ERP (مثل: "افتح شاشة فواتير المبيعات"، "وديني المشتريات")، استدعِ أداة `navigate_erp_screen` ووضح النتيجة للمستخدم بناءً على ما تعيده الأداة.
-{live_rule}
-
-## سياق الجلسة الحالي:
-{context_block}"""
+{live_rule}"""
 
 
 
