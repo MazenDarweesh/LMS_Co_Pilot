@@ -369,6 +369,44 @@ async def test_erp_nav_deterministic_fast_path_skips_second_llm():
     erp_service._gemini_client.models.generate_content.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_erp_nav_prefers_primary_244_over_duplicate_6055_and_handles_english_ambiguity_and_unknown_fast():
+    """Pass 1a numeric ID beats duplicate label 6055; English 'Invoices' -> ask <5ms; unknown -> clarify <5ms."""
+    cands = [
+        NavCandidateIn(id="6055", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+        NavCandidateIn(id="244", label="فواتير المبيعات", path=["الوحدات والبرامج الرئيسية", "العملاء  و المبيعات"]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=["الوحدات والبرامج الرئيسية", "الموردين و المشتريات"]),
+    ]
+    erp_service._gemini_client.models.generate_content.reset_mock()
+
+    # 1. Duplicate label "فواتير المبيعات" where 6055 appears BEFORE 244 -> must select 244
+    res_sales = await erp_service.resolve_navigation(
+        NavRequest(user_message="فواتير المبيعات", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_sales.decision == "go"
+    assert res_sales.candidates[0].id == "244"
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+    # 2. English "Invoices" -> instant ask between 244 & 289 (0 LLM calls)
+    res_ambig = await erp_service.resolve_navigation(
+        NavRequest(user_message="Invoices", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_ambig.decision == "ask"
+    assert {c.id for c in res_ambig.candidates} >= {"244", "289"}
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+    # 3. Non-existent "صواريخ الفضاء" -> instant clarify (0 LLM calls)
+    res_unknown = await erp_service.resolve_navigation(
+        NavRequest(user_message="صواريخ الفضاء", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_unknown.decision == "clarify"
+    assert res_unknown.candidates == []
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+
 
 @pytest.mark.asyncio
 async def test_record_erp_telemetry_endpoint_writes_unified_jsonl():

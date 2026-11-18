@@ -624,3 +624,159 @@ async def test_static_system_prompt_and_anthropic_ephemeral_cache_control(monkey
     assert claude_sys.content[0]["type"] == "text"
     assert claude_sys.content[0]["cache_control"] == {"type": "ephemeral"}
     assert "Purchases" not in claude_sys.content[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_navigate_preserves_arabic_query_and_suppresses_sources_on_negative_rag():
+    # 1. LLM translates target_screen="Sales Invoices" -> navigate_erp_screen forwards Arabic req.query
+    fake_nav_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "navigate_erp_screen",
+                            "args": '{"target_screen": "Sales Invoices"}',
+                            "id": "call_nav_en",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ],
+            [AIMessageChunk(content="يرجى اختيار الشاشة المطلوبة.")],
+        ]
+    )
+    mock_erp_svc = AsyncMock()
+    mock_erp_svc.resolve_navigation.return_value = NavResolution(
+        decision="ask",
+        candidates=[
+            NavScored(id="244", confidence=0.78, reason="فواتير المبيعات"),
+            NavScored(id="289", confidence=0.76, reason="فواتير المشتريات"),
+        ],
+        intent="navigate",
+        source="lexical",
+    )
+    svc = UnifiedChatService(model_factory=lambda **_: fake_nav_llm, erp_svc=mock_erp_svc)
+    events = [
+        ev
+        async for ev in svc.stream_chat(
+            ErpChatStreamRequest(
+                query="عايز افتح شاشة الفواتير",
+                candidates=[
+                    NavCandidateIn(id="244", label="فواتير المبيعات", path=["العملاء"]),
+                    NavCandidateIn(id="289", label="فواتير المشتريات", path=["الموردين"]),
+                ],
+                thread_id=f"test_ar_fallback_{int(time.time() * 1000)}",
+                trace_id="trc_ar_fb",
+            )
+        )
+    ]
+    called_nav_req = mock_erp_svc.resolve_navigation.call_args.args[0]
+    assert called_nav_req.user_message == "عايز افتح شاشة الفواتير"
+    nav_ev = next(ev for ev in events if ev["event"] == "nav_action")
+    assert nav_ev["data"]["status"] == "needs_user_choice"
+    assert "لم يتم فتح أي شاشة" in nav_ev["data"]["assistant_instruction"]
+
+    # 2. Negative RAG answer ("لا توجد معلومات...") must NOT emit sources event
+    fake_rag_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "search_lms_lessons",
+                            "args": '{"query": "Blockchain"}',
+                            "id": "call_rag_neg",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ],
+            [AIMessageChunk(content="لا توجد دروس عن Blockchain.")],
+        ]
+    )
+    mock_search_svc = AsyncMock()
+    mock_search_svc.search.return_value = SearchResponse(
+        answer="عذراً، لا توجد معلومات أو دروس متاحة تتناول موضوع Blockchain.",
+        query_used="Blockchain",
+        sources=[
+            SourceItem(
+                type="video",
+                lesson_id="l1",
+                title="مقطع فيديو",
+                url="https://youtu.be/abc",
+                start=10,
+                end=20,
+            )
+        ],
+        cache_hit=False,
+        provenance="RAG",
+        latency_ms=120,
+    )
+    svc_rag = UnifiedChatService(model_factory=lambda **_: fake_rag_llm, search_svc=mock_search_svc)
+    rag_events = [
+        ev
+        async for ev in svc_rag.stream_chat(
+            ErpChatStreamRequest(
+                query="اشرحلي Blockchain من الدروس",
+                thread_id=f"test_neg_rag_{int(time.time() * 1000)}",
+                trace_id="trc_neg_rag",
+            )
+        )
+    ]
+    assert not any(ev["event"] == "sources" for ev in rag_events)
+
+
+@pytest.mark.asyncio
+async def test_stream_chat_503_fallback_and_graceful_end_after_substantive_stream():
+    class _Fail503BeforeTokensModel:
+        def bind_tools(self, _tools):
+            return self
+
+        async def astream(self, _messages):
+            raise RuntimeError("503 UNAVAILABLE. high demand")
+            yield  # pragma: no cover
+
+    class _Fail503AfterTextModel:
+        def bind_tools(self, _tools):
+            return self
+
+        async def astream(self, _messages):
+            yield AIMessageChunk(content="إجابة طويلة ومكتملة تماماً للمستخدم تتجاوز مئة وعشرين حرفاً وتوضح الحساب المحاسبي بدقة عالية جداً بدون أي نقص في التفاصيل أو الخطوات المطلوبة.")
+            raise RuntimeError("503 UNAVAILABLE. stream interrupted at end")
+
+    # 1. 503 before tokens -> falls back to secondary model seamlessly
+    fallback_ok = _ScriptedFakeChatModel(rounds=[[AIMessageChunk(content="تم الرد من الموديل الاحتياطي.")]])
+
+    def _factory(provider: str, model: str, **_kwargs):
+        if model == "gemini-2.5-flash":
+            return fallback_ok
+        return _Fail503BeforeTokensModel()
+
+    svc = UnifiedChatService(model_factory=_factory)
+    events = [
+        ev
+        async for ev in svc.stream_chat(
+            ErpChatStreamRequest(query="أهلاً", thread_id=f"test_503_fb_{int(time.time() * 1000)}"),
+            provider="google",
+            model="gemini-3.5-flash-lite",
+        )
+    ]
+    assert any(ev["event"] == "token" and "الاحتياطي" in ev["data"]["text"] for ev in events)
+    assert events[-1]["event"] == "done"
+    assert events[-1]["data"]["model"] == "gemini-2.5-flash"
+
+    # 2. 503 after >=120 chars streamed -> closes cleanly with done, NO error event
+    svc2 = UnifiedChatService(model_factory=lambda **_: _Fail503AfterTextModel())
+    events2 = [
+        ev
+        async for ev in svc2.stream_chat(
+            ErpChatStreamRequest(query="اشرح", thread_id=f"test_503_end_{int(time.time() * 1000)}"),
+            provider="google",
+            model="gemini-3.5-flash-lite",
+        )
+    ]
+    assert not any(ev["event"] == "error" for ev in events2)
+    assert events2[-1]["event"] == "done"

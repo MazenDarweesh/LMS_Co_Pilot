@@ -249,28 +249,82 @@ def _resolve_nav_metadata(
     return screen_label, page_id, screen_key
 
 
+def _has_arabic(text: str) -> bool:
+    return any("\u0600" <= ch <= "\u06FF" for ch in (text or ""))
+
+
+def _is_no_info_answer(answer: str) -> bool:
+    """True when the RAG answer states no matching course content exists and cites no sources."""
+    clean = (answer or "").strip()
+    if not clean:
+        return True
+    if "[1]" in clean:
+        return False
+    neg_markers = (
+        "لا تتوفر",
+        "لا توجد معلومات",
+        "لا يوجد في الدروس",
+        "غير مذكور",
+        "لم يتم ذكر",
+        "لم يرد في الدروس",
+        "لا تحتوي الدروس",
+        "لا تتناول الدروس",
+    )
+    return any(m in clean for m in neg_markers)
+
+
+def _is_transient_provider_error(exc: Exception) -> bool:
+    msg = str(exc).upper()
+    return any(tok in msg for tok in ("503", "UNAVAILABLE", "429", "RESOURCE_EXHAUSTED", "OVERLOADED"))
+
+
+def _resolve_fallback_provider_model(provider: str, model: str) -> tuple[str, str] | None:
+    if provider == "google":
+        if model != "gemini-2.5-flash":
+            return ("google", "gemini-2.5-flash")
+        if (settings.GROQ_API_KEY or "").strip():
+            return ("groq", "llama-3.3-70b-versatile")
+    elif provider == "groq" and (settings.GEMINI_API_KEY or "").strip():
+        return ("google", "gemini-2.5-flash")
+    return None
+
+
 def _format_nav_action(
     resolution: NavResolution,
     candidates: Sequence[NavCandidateIn],
 ) -> dict[str, Any]:
-    """Maps `NavResolution` to the frontend `nav_action` SSE contract."""
+    """Maps `NavResolution` to the frontend `nav_action` SSE contract with strict assistant instructions."""
     top = resolution.candidates[0] if resolution.candidates else None
     if top is None:
         return {
             "decision": resolution.decision,
+            "status": "not_found",
             "screen": None,
             "pageId": None,
             "screenKey": None,
             "reason": "يرجى توضيح اسم الشاشة المطلوبة في النظام.",
+            "assistant_instruction": "لم يتم العثور على شاشة مطابقة ولم يتم فتح أي شاشة. أخبر المستخدم بوضوح أن الشاشة غير موجودة أو اطلب توضيح اسمها.",
         }
 
     screen_label, page_id, screen_key = _resolve_nav_metadata(top.id, candidates)
+    if resolution.decision == "go":
+        status = "navigated"
+        instruction = f"تم فتح شاشة «{screen_label}» فعلياً. أكد للمستخدم بالاسم العربي فقط دون ذكر أي كود إنجليزي."
+    elif resolution.decision == "ask":
+        status = "needs_user_choice"
+        instruction = "لم يتم فتح أي شاشة بعد لأن الطلب يحتمل أكثر من شاشة. اطلب من المستخدم اختيار الشاشة المطلوبة من الأزرار الظاهرة ولا تقل أنه تم فتحها."
+    else:
+        status = "not_found"
+        instruction = "لم يتم فتح أي شاشة لأن الطلب غير واضح. اطلب من المستخدم تحديد اسم الشاشة بدقة."
+
     payload: dict[str, Any] = {
         "decision": resolution.decision,
+        "status": status,
         "screen": screen_label,
         "pageId": page_id,
         "screenKey": screen_key,
         "reason": top.reason,
+        "assistant_instruction": instruction,
     }
     if resolution.decision == "ask" and len(resolution.candidates) > 1:
         options: list[dict[str, Any]] = []
@@ -360,6 +414,9 @@ class UnifiedChatService:
                 logger.warning("search_lms_lessons failed", error=safe_err)
                 return f"تعذر البحث في محتوى الدروس حالياً ({safe_err})."
 
+            if _is_no_info_answer(resp.answer):
+                return resp.answer
+
             new_sources_added = False
             for src in resp.sources:
                 src_dict = src.model_dump()
@@ -403,16 +460,22 @@ class UnifiedChatService:
             effective_candidates = list(req.candidates) if req.candidates else _build_catalog_nav_candidates()
             active_screen = (req.active_screen_key or req.erp_key or "").strip()
             current_path = [active_screen] if active_screen else []
+            # If the LLM translated target_screen to English while the user wrote Arabic, preserve the Arabic query for catalog/ambiguity matching
+            effective_query = (
+                req.query.strip()
+                if (not _has_arabic(target_screen) and _has_arabic(req.query))
+                else target_screen
+            )[:500]
 
             if effective_candidates:
                 nav_req = NavRequest(
-                    user_message=target_screen[:500],
+                    user_message=effective_query,
                     candidates=effective_candidates[:1200],
                     current_path=current_path,
                 )
             else:
                 nav_req = NavRequest.model_construct(
-                    user_message=target_screen[:500],
+                    user_message=effective_query,
                     candidates=[],
                     current_path=current_path,
                 )
@@ -424,7 +487,8 @@ class UnifiedChatService:
                 known_intent="navigate",
             )
             nav_payload = _format_nav_action(resolution, effective_candidates)
-            side_events.append({"event": "nav_action", "data": nav_payload})
+            if resolution.decision in ("go", "ask"):
+                side_events.append({"event": "nav_action", "data": nav_payload})
             return json.dumps(nav_payload, ensure_ascii=False)
 
         return [
@@ -432,16 +496,16 @@ class UnifiedChatService:
                 coroutine=search_lms_lessons,
                 name="search_lms_lessons",
                 description=(
-                    "Search DynamicPro LMS training videos and PDFs for how-to guides and educational content. "
-                    "Use ONLY for platform/ERP usage tutorials or course lesson questions."
+                    "MANDATORY for any how-to, step-by-step, or screen usage question about DynamicPro ERP "
+                    "(e.g., إزاي أعمل..., كيف أضيف..., خطوات...). Searches training videos and PDFs."
                 ),
             ),
             StructuredTool.from_function(
                 coroutine=navigate_erp_screen,
                 name="navigate_erp_screen",
                 description=(
-                    "Resolve and open an ERP screen for the user when they explicitly ask to open, go to, "
-                    "or switch to a screen inside DynamicPro ERP."
+                    "Resolve and open an ERP screen when the user asks to open, go to, or switch to a screen. "
+                    "Always pass target_screen in the user's original Arabic wording without translating."
                 ),
             ),
         ]
@@ -630,18 +694,58 @@ class UnifiedChatService:
 
         disconnected = False
         has_nav_action = False
+        round_streamed_chars = 0
 
         try:
             for _round in range(_MAX_TOOL_ROUNDS):
                 ai_message: BaseMessage | None = None
-                async for kind, val in self._stream_model_turn(bound_model, messages, request):
-                    if kind == "disconnected":
-                        disconnected = True
+                round_streamed_chars = 0
+
+                for attempt in range(2):
+                    try:
+                        async for kind, val in self._stream_model_turn(bound_model, messages, request):
+                            if kind == "disconnected":
+                                disconnected = True
+                                break
+                            if kind == "token":
+                                round_streamed_chars += len(val)
+                                yield {"event": "token", "data": {"text": val}}
+                            elif kind == "message":
+                                ai_message = val
                         break
-                    if kind == "token":
-                        yield {"event": "token", "data": {"text": val}}
-                    elif kind == "message":
-                        ai_message = val
+                    except Exception as round_exc:
+                        if not _is_transient_provider_error(round_exc):
+                            raise
+                        if round_streamed_chars >= 120:
+                            logger.warning(
+                                "Transient provider error after substantive stream; closing gracefully",
+                                trace_id=trace_id,
+                                streamed_chars=round_streamed_chars,
+                                error=_scrub_secrets(str(round_exc), secret_values),
+                            )
+                            ai_message = AIMessage(content="")
+                            break
+                        if attempt == 0 and round_streamed_chars == 0 and llm is None:
+                            fallback = _resolve_fallback_provider_model(resolved_provider, resolved_model)
+                            if fallback is not None:
+                                fb_provider, fb_model = fallback
+                                logger.warning(
+                                    "Transient provider error before tokens; falling back to secondary model",
+                                    trace_id=trace_id,
+                                    from_model=resolved_model,
+                                    to_provider=fb_provider,
+                                    to_model=fb_model,
+                                )
+                                resolved_provider, resolved_model = fb_provider, fb_model
+                                chat_model = self._model_factory(provider=resolved_provider, model=resolved_model)
+                                messages[0] = _build_system_message(system_prompt, resolved_provider)
+                                bound_model = (
+                                    chat_model.bind_tools(all_tools)
+                                    if all_tools and hasattr(chat_model, "bind_tools")
+                                    else chat_model
+                                )
+                                continue
+                        raise
 
                 if disconnected:
                     return

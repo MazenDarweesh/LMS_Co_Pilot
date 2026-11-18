@@ -205,25 +205,39 @@ def _is_warehouse_movements_query(user_text: str) -> bool:
 
 
 def _is_ambiguous_voucher_query(user_text: str) -> bool:
-    """True for generic plural voucher requests like 'افتح شاشة الاذون' without a specific type qualifier."""
+    """True for generic plural voucher requests like 'افتح شاشة الاذون' or 'Vouchers' without a specific type qualifier."""
     u_norm = normalize_arabic_text_leaderboard(user_text)
+    u_lower = (user_text or "").lower()
     tokens = [_strip_definite_article(w) for w in u_norm.split() if len(w) > 1]
-    if "اذون" not in tokens and "لاذون" not in u_norm:
+    has_voucher_word = (
+        "اذون" in tokens
+        or "لاذون" in u_norm
+        or "voucher" in u_lower
+        or "vouchers" in u_lower
+    )
+    if not has_voucher_word:
         return False
     qualifiers = tuple(
         normalize_arabic_text_leaderboard(q)
         for q in (
             "صرف", "اضافة", "اضافه", "استلام", "مرتبات", "اجازة", "اجازه",
             "مدير", "موارد", "مصادر", "تسوية", "مخزني",
+            "issue", "addition", "receiving", "payroll", "settlement",
         )
     )
-    return not any(q in u_norm for q in qualifiers)
+    return not any(q in u_norm or q in u_lower for q in qualifiers)
 
 
 def _is_ambiguous_invoice_query(user_text: str) -> bool:
-    """True for generic plural invoice requests like 'عايز افتح شاشة الفواتير' without a domain qualifier."""
+    """True for generic plural invoice requests like 'عايز افتح شاشة الفواتير' or 'Invoices' without a domain qualifier."""
     u_norm = normalize_arabic_text_leaderboard(user_text)
-    if not any(inv in u_norm for inv in ("فواتير", "فاتوره", "فاتورة")):
+    u_lower = (user_text or "").lower()
+    has_invoice_word = (
+        any(inv in u_norm for inv in ("فواتير", "فاتوره", "فاتورة"))
+        or "invoice" in u_lower
+        or "invoices" in u_lower
+    )
+    if not has_invoice_word:
         return False
     qualifiers = tuple(
         normalize_arabic_text_leaderboard(q)
@@ -231,9 +245,10 @@ def _is_ambiguous_invoice_query(user_text: str) -> bool:
             "مبيعات", "مبيع", "مشتريات", "مشتري", "شراء", "بيع",
             "مرحلة", "مرحل", "فلاحين", "البان", "الكترونية", "مرتجع", "عرض سعر",
             "نقد", "اجل", "امر شراء",
+            "sales", "sale", "purchase", "purchases", "return", "electronic", "e-invoice",
         )
     )
-    return not any(q in u_norm for q in qualifiers)
+    return not any(q in u_norm or q in u_lower for q in qualifiers)
 
 
 def _candidate_priority_tier(user_text: str, label: str, path: list[str]) -> tuple[int, bool]:
@@ -533,21 +548,27 @@ class ErpService:
             else forms_catalog_service.resolve_form_by_text(user_msg)
         )
         matched_catalog_candidate_id = None
+        cat_pid = ""
         if catalog_form:
             cat_pid = str(catalog_form.get("page_id", "")).strip().lower()
             cat_key = str(catalog_form.get("screen_key", "")).strip().lower()
             cat_name = str(catalog_form.get("name_ar", "")).strip()
             cat_name_norm = normalize_arabic_text_leaderboard(cat_name) if cat_name else ""
 
-            # Pass 1: Strict match by numeric page_id or exact Arabic screen name (avoids shared screen_key collision like "Sales Types" 225 vs 244)
-            for c in req.candidates:
-                c_id_str = str(c.id).strip().lower()
-                c_label_clean = (c.label or "").strip()
-                if (cat_pid and c_id_str == cat_pid) or (
-                    cat_name and (cat_name == c_label_clean or cat_name_norm == normalize_arabic_text_leaderboard(c_label_clean))
-                ):
-                    matched_catalog_candidate_id = c.id
-                    break
+            # Pass 1a: Strict numeric page_id match FIRST (prevents duplicate Arabic titles like 6055 from shadowing primary 244)
+            if cat_pid:
+                for c in req.candidates:
+                    if str(c.id).strip().lower() == cat_pid:
+                        matched_catalog_candidate_id = c.id
+                        break
+
+            # Pass 1b: Exact Arabic screen name match only when numeric page_id was not present in candidates
+            if not matched_catalog_candidate_id and cat_name:
+                for c in req.candidates:
+                    c_label_clean = (c.label or "").strip()
+                    if cat_name == c_label_clean or cat_name_norm == normalize_arabic_text_leaderboard(c_label_clean):
+                        matched_catalog_candidate_id = c.id
+                        break
 
             # Pass 2: Fallback to screen_key only if no page_id/name_ar match was found
             if not matched_catalog_candidate_id and cat_key:
@@ -586,6 +607,11 @@ class ErpService:
                 full_screen_matched_id = best_cand.id
                 if not matched_catalog_candidate_id:
                     matched_catalog_candidate_id = best_cand.id
+            elif cat_pid:
+                for _l, _t, cand in top_tied:
+                    if str(cand.id).strip().lower() == cat_pid:
+                        full_screen_matched_id = cand.id
+                        break
 
         # 0.6 Deterministic Fast-Path (< 5ms, 0 LLM calls, 0 Embedding calls)
         u_norm_fast = normalize_arabic_text_leaderboard(user_msg)
@@ -692,6 +718,18 @@ class ErpService:
                         return NavResolution(
                             decision="go",
                             candidates=top_lex,
+                            intent="navigate",
+                            source="lexical",
+                        )
+                    if not top_lex or top_lex[0].confidence < 0.25:
+                        logger.info(
+                            "ERP Navigation rejected unknown screen via deterministic fast-path (0 LLM calls)",
+                            query=user_msg,
+                            top_conf=top_lex[0].confidence if top_lex else 0.0,
+                        )
+                        return NavResolution(
+                            decision="clarify",
+                            candidates=[],
                             intent="navigate",
                             source="lexical",
                         )
