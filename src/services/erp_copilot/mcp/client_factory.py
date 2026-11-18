@@ -38,20 +38,26 @@ BLOCKED_MUTATION_TOOLS: frozenset[str] = frozenset(
     {
         "commit_entry",
         "commit_report_designer",
+        "commit_word_template",
+        "restore_word_template",
     }
 )
 
-# Initial read-only tool allowlist for ERP MCP discovery & reporting.
+# Verified read-only / knowledge tool allowlist matching Dynamic Pro MCP Server (21-tool spec).
 DEFAULT_READONLY_TOOL_ALLOWLIST: frozenset[str] = frozenset(
     {
-        "list_pages",
+        "search_knowledge",
+        "read_knowledge",
+        "find_pages",
+        "describe_page",
         "read_page",
-        "search_pages",
-        "get_page_schema",
+        "summarize_page",
+        "describe_entry",
+        "print_record",
+        "describe_word_template",
+        "describe_report_designer",
         "run_report",
-        "get_report_schema",
-        "query_entries",
-        "get_entry",
+        "my_columns",
     }
 )
 

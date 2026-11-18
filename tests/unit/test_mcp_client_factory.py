@@ -58,19 +58,25 @@ def test_build_connection_config_and_validation():
 
 def test_filter_llm_tools_hard_blocks_commit_tools_and_enforces_allowlist():
     tools = [
-        _make_dummy_tool("list_pages"),
+        _make_dummy_tool("search_knowledge"),
+        _make_dummy_tool("read_knowledge"),
+        _make_dummy_tool("find_pages"),
         _make_dummy_tool("read_page"),
         _make_dummy_tool("run_report"),
         _make_dummy_tool("commit_entry"),
         _make_dummy_tool("commit_report_designer"),
+        _make_dummy_tool("commit_word_template"),
+        _make_dummy_tool("restore_word_template"),
         _make_dummy_tool("delete_tenant"),
     ]
 
     filtered = filter_llm_tools(tools)
     names = [t.name for t in filtered]
-    assert names == ["list_pages", "read_page", "run_report"]
+    assert names == ["search_knowledge", "read_knowledge", "find_pages", "read_page", "run_report"]
     assert "commit_entry" not in names
     assert "commit_report_designer" not in names
+    assert "commit_word_template" not in names
+    assert "restore_word_template" not in names
     assert "delete_tenant" not in names
 
     # Even if a caller explicitly passes commit_entry in allowed_tools, it MUST be excluded
@@ -182,7 +188,7 @@ async def test_interceptor_blocks_commit_entry_truncates_read_page_and_logs_with
         raise RuntimeError(f"Upstream 401 for Bearer {secret_token}")
 
     err_req = MCPToolCallRequest(
-        name="list_pages",
+        name="find_pages",
         args={},
         server_name="erp",
         headers={"Authorization": f"Bearer {secret_token}"},

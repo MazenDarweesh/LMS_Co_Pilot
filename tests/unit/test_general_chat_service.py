@@ -419,6 +419,8 @@ async def test_no_mcp_honesty_guard_and_mcp_tool_filtering(monkeypatch: pytest.M
             service_enabled.stream_chat(
                 req,
                 mcp_tools=[
+                    _make_dummy_tool("search_knowledge"),
+                    _make_dummy_tool("read_knowledge"),
                     _make_dummy_tool("read_page"),
                     _make_dummy_tool("commit_entry"),
                     _make_dummy_tool("commit_report_designer"),
@@ -426,9 +428,16 @@ async def test_no_mcp_honesty_guard_and_mcp_tool_filtering(monkeypatch: pytest.M
             )
         )
     )
+    assert "search_knowledge" in fake_llm_enabled.bound_tool_names
+    assert "read_knowledge" in fake_llm_enabled.bound_tool_names
     assert "read_page" in fake_llm_enabled.bound_tool_names
     assert "commit_entry" not in fake_llm_enabled.bound_tool_names
     assert "commit_report_designer" not in fake_llm_enabled.bound_tool_names
+
+    enabled_system_msg = fake_llm_enabled.recorded_calls[0][0]
+    assert isinstance(enabled_system_msg, SystemMessage)
+    assert "search_knowledge" in enabled_system_msg.content
+    assert "read_knowledge" in enabled_system_msg.content
 
 
 @pytest.mark.asyncio
