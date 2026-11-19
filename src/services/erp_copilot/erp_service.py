@@ -29,7 +29,13 @@ from src.services.erp_copilot.erp_decision_memory_service import (
     erp_decision_memory_service,
     navigation_fingerprint,
 )
-from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.services.erp_copilot.forms_catalog_service import (
+    PRIMARY_OPERATIONAL_MODULES_NORM,
+    SECONDARY_MODULES_NORM,
+    SECONDARY_SCREEN_KEYWORDS_NORM,
+    _screen_catalog_priority,
+    forms_catalog_service,
+)
 from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 
 logger = structlog.get_logger()
@@ -58,6 +64,14 @@ BILINGUAL_SCREEN_MAP: dict[str, list[str]] = {
     "stock_transfer": ["تحويلات المخازن", "تحويل مخزن", "تحويلات"],
     "issue_voucher": ["اذون صرف", "اذن صرف", "اذون الصرف", "اذن الصرف"],
     "addition_voucher": ["اذون اضافة", "اذن اضافة", "اذون الاضافة", "اذن الاضافة"],
+    "payment_voucher": [
+        "سند صرف", "سندات الصرف", "سندات صرف", "صرف نقدية", "صرف نقديه",
+        "اذن صرف نقدية", "اذن صرف نقديه", "out payment",
+    ],
+    "receipt_voucher": [
+        "سند قبض", "سندات القبض", "سندات قبض", "قبض نقدية", "قبض نقديه",
+        "استلام نقدية", "استلام نقديه", "اذن استلام نقدية", "اذن استلام نقديه", "in payment",
+    ],
     "suppliers": ["موردين", "مورد"],
     "customers": ["عملاء", "عميل"],
     "items": ["اصناف", "صنف", "منتجات", "منتج"],
@@ -85,37 +99,6 @@ DISQUALIFIED_ACTION_KEYWORDS: list[str] = [
     "إعدادات", "اعدادات", "تهيئة", "تهيئه", "انواع", "أنواع"
 ]
 
-PRIMARY_OPERATIONAL_MODULES_NORM: frozenset[str] = frozenset(
-    normalize_arabic_text_leaderboard(m)
-    for m in (
-        "الموردين و المشتريات",
-        "العملاء  و المبيعات",
-        "العملاء و المبيعات",
-        "الحسابات العامه",
-        "المخازن",
-        "المرتبات",
-        "التصنيع",
-    )
-)
-
-SECONDARY_MODULES_NORM: frozenset[str] = frozenset(
-    normalize_arabic_text_leaderboard(m)
-    for m in (
-        "الفاتورة الالكترونية",
-        "الادارة العليا",
-        "تقارير تكملية",
-        "الاعدادات",
-        "اعدادات",
-        "اعدادات المرتبات",
-        "الانظمة المتخصصة",
-        "المراجعة والترحيل",
-        "التسويق وادارة العملاء",
-        "حركات المعدات",
-        "الصيانة",
-        "AdminPanel",
-    )
-)
-
 # Explicit allowlist of primary operational screen labels (name_ar in src/data/screens_metadata.json).
 # Every entry here MUST match an existing screen's `name_ar` in `screens_metadata.json`
 # (enforced by contract test `test_core_primary_screen_allowlist_matches_screens_metadata`).
@@ -133,15 +116,8 @@ CORE_PRIMARY_SCREEN_ALLOWLIST_NORM: frozenset[str] = frozenset(
         "اذون اضافة",
         "تحويلات المخازن",
         "طلب سلفة",
-    )
-)
-
-SECONDARY_SCREEN_KEYWORDS_NORM: tuple[str, ...] = tuple(
-    normalize_arabic_text_leaderboard(k)
-    for k in (
-        "المرحلة", "مرحل", "فلاحين", "البان", "مصمم", "تفاصيل", "تفصيلي",
-        "تقرير", "استعلام", "اعدادات", "الكترونية", "انواع", "ارصدة", "ميزان",
-        "الاجمالي", "اجمالي", "بدون تكلفة", "بدون مشتريات",
+        "اذن صرف نقدية / شيك",
+        "اذن استلام نقدية /  شيك",
     )
 )
 
@@ -307,13 +283,32 @@ def _enrich_candidate_paths(candidates: list[NavCandidateIn]) -> list[NavCandida
     forms_catalog_service._ensure_loaded()
     by_id = forms_catalog_service._screens_catalog_by_id
     by_key = forms_catalog_service._screens_catalog_by_key
+    by_key_all = forms_catalog_service._screens_catalog_by_key_all
     if not by_id and not by_key:
         return candidates
 
     enriched: list[NavCandidateIn] = []
     for c in candidates:
         raw_id = str(c.id).strip()
-        meta = by_id.get(int(raw_id)) if raw_id.isdigit() else by_key.get(raw_id.lower())
+        if raw_id.isdigit():
+            meta = by_id.get(int(raw_id))
+        else:
+            key_lower = raw_id.lower()
+            key_matches = by_key_all.get(key_lower) or []
+            if len(key_matches) > 1 and c.label:
+                c_lbl_norm = normalize_arabic_text_leaderboard(c.label)
+                label_matched = [
+                    m
+                    for m in key_matches
+                    if normalize_arabic_text_leaderboard(str(m.get("name_ar") or "")) == c_lbl_norm
+                ]
+                meta = (
+                    max(label_matched, key=lambda m: _screen_catalog_priority(m))
+                    if label_matched
+                    else by_key.get(key_lower)
+                )
+            else:
+                meta = by_key.get(key_lower)
         mod = str(meta.get("module") or "").strip() if meta else ""
         if mod:
             mod_norm = normalize_arabic_text_leaderboard(mod)
@@ -428,10 +423,17 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
                 for term, term_norm in term_pairs:
                     if term in user_lower or (term_norm and term_norm in user_norm):
                         if has_invoice_intent and en_key in ("purchases", "sales", "entry", "stock_transfer", "issue_voucher", "addition_voucher"):
-                            bilingual_bonus = max(bilingual_bonus, 0.96 if tier >= 2 else 0.48)
+                            bilingual_bonus = max(
+                                bilingual_bonus,
+                                0.96 if (tier >= 3 or is_allowlist) else (0.60 if tier >= 2 else 0.48),
+                            )
                         elif has_invoice_intent and en_key in ("suppliers", "customers"):
                             bilingual_bonus = max(bilingual_bonus, 0.55 if tier >= 2 else 0.30)
-                        elif en_key in ("purchases", "sales", "suppliers", "customers", "items", "stock_transfer", "issue_voucher", "addition_voucher"):
+                        elif en_key in (
+                            "purchases", "sales", "suppliers", "customers", "items",
+                            "stock_transfer", "issue_voucher", "addition_voucher",
+                            "payment_voucher", "receipt_voucher",
+                        ):
                             if tier == 0:
                                 bilingual_bonus = max(bilingual_bonus, 0.45)
                             elif is_allowlist:

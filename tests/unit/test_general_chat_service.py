@@ -935,3 +935,99 @@ async def test_pure_nav_skips_second_llm_round_and_negative_rag_with_citations_s
         )
     ]
     assert not any(ev["event"] == "sources" for ev in outer_events)
+
+
+@pytest.mark.asyncio
+async def test_navigate_erp_screen_guards_history_bleed_and_preserves_anaphora():
+    """
+    1. History bleed guard: if user asks 'عايز افتح شاشة الفواتير' and LLM mistakenly emits
+       target_screen='فاتورة المبيعات' from a prior turn, forward 'عايز افتح شاشة الفواتير'.
+    2. Anaphora preservation: if user says 'افتحها' and LLM resolves target_screen='فواتير المبيعات',
+       forward 'فواتير المبيعات'.
+    """
+    fake_bleed_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "navigate_erp_screen",
+                            "args": '{"target_screen": "فاتورة المبيعات"}',
+                            "id": "call_nav_bleed",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ]
+        ]
+    )
+    mock_erp_bleed = AsyncMock()
+    mock_erp_bleed.resolve_navigation.return_value = NavResolution(
+        decision="ask",
+        candidates=[
+            NavScored(id="244", confidence=0.78, reason="فواتير المبيعات"),
+            NavScored(id="289", confidence=0.76, reason="فواتير المشتريات"),
+        ],
+        intent="navigate",
+        source="lexical",
+    )
+    svc_bleed = UnifiedChatService(model_factory=lambda **_: fake_bleed_llm, erp_svc=mock_erp_bleed)
+    _ = [
+        ev
+        async for ev in svc_bleed.stream_chat(
+            ErpChatStreamRequest(
+                query="عايز افتح شاشة الفواتير",
+                candidates=[
+                    NavCandidateIn(id="244", label="فواتير المبيعات", path=["العملاء  و المبيعات"]),
+                    NavCandidateIn(id="289", label="فواتير المشتريات", path=["الموردين و المشتريات"]),
+                ],
+                thread_id=f"test_nav_bleed_{int(time.time() * 1000)}",
+                trace_id="trc_nav_bleed",
+            )
+        )
+    ]
+    bleed_req = mock_erp_bleed.resolve_navigation.call_args.args[0]
+    assert bleed_req.user_message == "عايز افتح شاشة الفواتير"
+
+    fake_anaphora_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "navigate_erp_screen",
+                            "args": '{"target_screen": "فواتير المبيعات"}',
+                            "id": "call_nav_anaphora",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ]
+        ]
+    )
+    mock_erp_anaphora = AsyncMock()
+    mock_erp_anaphora.resolve_navigation.return_value = NavResolution(
+        decision="go",
+        candidates=[NavScored(id="244", confidence=0.98, reason="فواتير المبيعات")],
+        intent="navigate",
+        source="lexical",
+    )
+    svc_anaphora = UnifiedChatService(model_factory=lambda **_: fake_anaphora_llm, erp_svc=mock_erp_anaphora)
+    _ = [
+        ev
+        async for ev in svc_anaphora.stream_chat(
+            ErpChatStreamRequest(
+                query="افتحها",
+                candidates=[
+                    NavCandidateIn(id="244", label="فواتير المبيعات", path=["العملاء  و المبيعات"]),
+                ],
+                thread_id=f"test_nav_anaphora_{int(time.time() * 1000)}",
+                trace_id="trc_nav_anaphora",
+            )
+        )
+    ]
+    anaphora_req = mock_erp_anaphora.resolve_navigation.call_args.args[0]
+    assert anaphora_req.user_message == "فواتير المبيعات"
+

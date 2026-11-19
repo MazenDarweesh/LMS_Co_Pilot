@@ -3,7 +3,69 @@ from pathlib import Path
 from typing import Any, Optional
 import structlog
 
+from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
+
 logger = structlog.get_logger()
+
+PRIMARY_OPERATIONAL_MODULES_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(m)
+    for m in (
+        "الموردين و المشتريات",
+        "العملاء  و المبيعات",
+        "العملاء و المبيعات",
+        "الحسابات العامه",
+        "المخازن",
+        "المرتبات",
+        "التصنيع",
+    )
+)
+
+SECONDARY_MODULES_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(m)
+    for m in (
+        "الفاتورة الالكترونية",
+        "الادارة العليا",
+        "تقارير تكملية",
+        "الاعدادات",
+        "اعدادات",
+        "اعدادات المرتبات",
+        "الانظمة المتخصصة",
+        "المراجعة والترحيل",
+        "التسويق وادارة العملاء",
+        "حركات المعدات",
+        "الصيانة",
+        "AdminPanel",
+    )
+)
+
+SECONDARY_SCREEN_KEYWORDS_NORM: tuple[str, ...] = tuple(
+    normalize_arabic_text_leaderboard(k)
+    for k in (
+        "المرحلة", "مرحل", "فلاحين", "البان", "مصمم", "تفاصيل", "تفصيلي",
+        "تقرير", "استعلام", "اعدادات", "الكترونية", "انواع", "ارصدة", "ميزان",
+        "الاجمالي", "اجمالي", "بدون تكلفة", "بدون مشتريات",
+    )
+)
+
+
+def _screen_catalog_priority(screen_meta: dict[str, Any], is_core_form: bool = False) -> tuple[int, int, int]:
+    """Ranks catalog entries so primary operational screens always beat secondary duplicates."""
+    mod_norm = normalize_arabic_text_leaderboard(str(screen_meta.get("module") or ""))
+    name_norm = normalize_arabic_text_leaderboard(str(screen_meta.get("name_ar") or ""))
+    has_sec_kw = (
+        any(kw and kw in name_norm for kw in SECONDARY_SCREEN_KEYWORDS_NORM)
+        or "الغاء" in name_norm
+        or "ترحيل" in name_norm
+    )
+    if mod_norm in SECONDARY_MODULES_NORM or has_sec_kw:
+        mod_rank = 0
+    elif mod_norm in PRIMARY_OPERATIONAL_MODULES_NORM:
+        mod_rank = 2
+    else:
+        mod_rank = 1
+    raw_pid = screen_meta.get("default_page_id") or screen_meta.get("page_id")
+    pid_tie = -int(raw_pid) if (raw_pid is not None and str(raw_pid).isdigit()) else 0
+    return (mod_rank, 1 if is_core_form else 0, pid_tie)
 
 
 class FormsCatalogService:
@@ -27,6 +89,7 @@ class FormsCatalogService:
         self._intents_index: dict[str, int] = {}
         self._screens_catalog_by_id: dict[int, dict[str, Any]] = {}
         self._screens_catalog_by_key: dict[str, dict[str, Any]] = {}
+        self._screens_catalog_by_key_all: dict[str, list[dict[str, Any]]] = {}
         self._initialized = False
 
     def _ensure_loaded(self) -> None:
@@ -69,7 +132,24 @@ class FormsCatalogService:
                             self._screens_catalog_by_id[int(pid)] = s
                         k = (s.get("screen_key") or "").strip().lower()
                         if k:
-                            self._screens_catalog_by_key[k] = s
+                            self._screens_catalog_by_key_all.setdefault(k, []).append(s)
+                            is_core = bool(
+                                pid is not None
+                                and str(pid) in self._by_page_id
+                                and not self._by_page_id[str(pid)].get("is_auto_scaled", False)
+                            )
+                            prev = self._screens_catalog_by_key.get(k)
+                            if prev is None:
+                                self._screens_catalog_by_key[k] = s
+                            else:
+                                prev_pid = prev.get("default_page_id")
+                                prev_is_core = bool(
+                                    prev_pid is not None
+                                    and str(prev_pid) in self._by_page_id
+                                    and not self._by_page_id[str(prev_pid)].get("is_auto_scaled", False)
+                                )
+                                if _screen_catalog_priority(s, is_core) > _screen_catalog_priority(prev, prev_is_core):
+                                    self._screens_catalog_by_key[k] = s
                     logger.info("Universal screens reference loaded for auto-scaling", total_screens=len(screens))
             except Exception as se:
                 logger.warning("Failed to load screens_metadata.json in catalog service", error=str(se))

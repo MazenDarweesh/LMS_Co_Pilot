@@ -49,8 +49,13 @@ from src.models.search_models import SearchRequest
 from src.services.cognitive_search.search.memory_budget_manager import trim_messages
 from src.services.cognitive_search.search_service import search_service
 from src.services.erp_copilot.agentic_stepper.session_telemetry import append_session_event
-from src.services.erp_copilot.erp_service import erp_service
+from src.services.erp_copilot.erp_service import (
+    NAV_QUERY_STOPWORDS_NORM,
+    _stem_arabic_token,
+    erp_service,
+)
 from src.services.erp_copilot.forms_catalog_service import forms_catalog_service
+from src.utils.arabic_speech_utils import normalize_arabic_text_leaderboard
 from src.services.erp_copilot.mcp.client_factory import (
     BLOCKED_MUTATION_TOOLS,
     _scrub_secrets,
@@ -252,6 +257,52 @@ def _resolve_nav_metadata(
 
 def _has_arabic(text: str) -> bool:
     return any("\u0600" <= ch <= "\u06FF" for ch in (text or ""))
+
+
+_NAV_ANAPHORA_STOPWORDS_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(w)
+    for w in (
+        "افتحها", "افتحه", "افتحهم", "افتحلي", "وديني", "ليها", "لها", "اليها", "اليه",
+        "دي", "ده", "ديه", "هذه", "هذا", "تلك", "ذلك", "نفسها", "نفسه", "تاني", "مجددا",
+        "اللي", "التي", "الذي", "هنا", "هناك", "عليه", "عليها",
+        "الشاشه", "الشاشة", "الصفحه", "الصفحة", "النظام", "البرنامج",
+    )
+)
+
+
+def _content_stems(text: str) -> set[str]:
+    norm = normalize_arabic_text_leaderboard(text)
+    if not norm:
+        return set()
+    ignored = NAV_QUERY_STOPWORDS_NORM | _NAV_ANAPHORA_STOPWORDS_NORM
+    stems: set[str] = set()
+    for w in norm.split():
+        if len(w) <= 1 or w in ignored:
+            continue
+        stem = _stem_arabic_token(w)
+        if len(stem) > 1:
+            stems.add(stem)
+    return stems
+
+
+def _resolve_effective_nav_query(req_query: str, target_screen: str) -> str:
+    """
+    Guards `navigate_erp_screen` against LLM translation or conversation-history bleed
+    (e.g., forwarding 'فاتورة المبيعات' when the user actually asked 'عايز افتح شاشة الفواتير'),
+    while allowing genuine anaphoric references (e.g., 'افتحها' -> LLM-resolved target).
+    """
+    raw_q = (req_query or "").strip().lstrip(">").strip()
+    raw_t = (target_screen or "").strip()
+    if not raw_q:
+        return raw_t[:500]
+    if not _has_arabic(raw_t) and _has_arabic(raw_q):
+        return raw_q[:500]
+    if _has_arabic(raw_q):
+        q_stems = _content_stems(raw_q)
+        t_stems = _content_stems(raw_t)
+        if q_stems and (not t_stems or not t_stems.issubset(q_stems)):
+            return raw_q[:500]
+    return (raw_t or raw_q)[:500]
 
 
 _NO_INFO_STRONG_MARKERS: tuple[str, ...] = (
@@ -485,12 +536,7 @@ class UnifiedChatService:
             effective_candidates = list(req.candidates) if req.candidates else _build_catalog_nav_candidates()
             active_screen = (req.active_screen_key or req.erp_key or "").strip()
             current_path = [active_screen] if active_screen else []
-            # If the LLM translated target_screen to English while the user wrote Arabic, preserve the Arabic query for catalog/ambiguity matching
-            effective_query = (
-                req.query.strip()
-                if (not _has_arabic(target_screen) and _has_arabic(req.query))
-                else target_screen
-            )[:500]
+            effective_query = _resolve_effective_nav_query(req.query, target_screen)
 
             if effective_candidates:
                 nav_req = NavRequest(

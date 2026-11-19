@@ -70,3 +70,14 @@ def test_purchases_form_289_includes_currency_and_safe_account_in_header_fields(
     assert header_fields["SafeAccounId"]["label_ar"] == "الخزينة"
 
 
+def test_screens_catalog_by_key_prioritizes_primary_module_on_screen_key_collisions():
+    """121 colliding screen_keys (like 'Sales Types') must map to the primary module screen (244), never 6055."""
+    forms_catalog_service._ensure_loaded()
+    entry = forms_catalog_service._screens_catalog_by_key.get("sales types")
+    assert entry is not None
+    assert entry["default_page_id"] == 244
+    assert entry["module"] == "العملاء  و المبيعات"
+    assert entry["name_ar"] == "فواتير المبيعات"
+
+
+

@@ -477,6 +477,64 @@ async def test_erp_nav_universal_821_screen_enrichment_and_ask_fast_path_with_em
     erp_service._gemini_client.models.generate_content.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_erp_nav_handles_colliding_screen_key_tab_and_payment_receipt_vouchers_fast():
+    """
+    1. Open-tab/colliding key NavCandidateIn(id='Sales Types', label='فواتير المبيعات', path=['التبويبات المفتوحة'])
+       must stay in العملاء و المبيعات (never الانظمة المتخصصة / 6055):
+       - 'عايز افتح شاشة الفواتير' -> ask between {'Sales Types', '289'}, never 7087.
+       - 'فاتورة المبيعات' -> go to 'Sales Types', never ask across 336/350/2517.
+    2. 'افتح شاشة سندات الصرف' -> instant go to 302 (اذن صرف نقدية / شيك) with 0 LLM calls.
+    3. 'افتح شاشة سندات القبض' -> instant go to 303 (اذن استلام نقدية /  شيك) with 0 LLM calls.
+    """
+    cands = [
+        NavCandidateIn(id="Sales Types", label="فواتير المبيعات", path=["التبويبات المفتوحة"]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=[]),
+        NavCandidateIn(id="7087", label="حسابات العملاء باخر تاريخ تحصيل و فاتورة", path=[]),
+        NavCandidateIn(id="336", label="مبيعات شهرية", path=[]),
+        NavCandidateIn(id="350", label="مرتجعات البيع", path=[]),
+        NavCandidateIn(id="2517", label="أوامر البيع", path=[]),
+        NavCandidateIn(id="302", label="اذن صرف نقدية / شيك", path=[]),
+        NavCandidateIn(id="303", label="اذن استلام نقدية /  شيك", path=[]),
+        NavCandidateIn(id="306", label="اذون صرف", path=[]),
+        NavCandidateIn(id="355", label="صرف مجمع", path=[]),
+        NavCandidateIn(id="7160", label="صرف السلف", path=[]),
+        NavCandidateIn(id="6631", label="طلب صرف نقدية", path=[]),
+        NavCandidateIn(id="6664", label="ترحيل اذن صرف نقدية", path=[]),
+    ]
+    erp_service._gemini_client.models.generate_content.reset_mock()
+
+    res_ambig = await erp_service.resolve_navigation(
+        NavRequest(user_message="عايز افتح شاشة الفواتير", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_ambig.decision == "ask"
+    assert {c.id for c in res_ambig.candidates} == {"Sales Types", "289"}
+
+    res_sales = await erp_service.resolve_navigation(
+        NavRequest(user_message="فاتورة المبيعات", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_sales.decision == "go"
+    assert res_sales.candidates[0].id == "Sales Types"
+
+    res_pay = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح شاشة سندات الصرف", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_pay.decision == "go"
+    assert res_pay.candidates[0].id == "302"
+
+    res_rec = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح شاشة سندات القبض", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_rec.decision == "go"
+    assert res_rec.candidates[0].id == "303"
+
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+
 
 @pytest.mark.asyncio
 async def test_record_erp_telemetry_endpoint_writes_unified_jsonl():
