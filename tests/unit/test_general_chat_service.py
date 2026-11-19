@@ -45,10 +45,12 @@ class _ScriptedFakeChatModel:
     def __init__(self, rounds: list[list[AIMessageChunk]]) -> None:
         self._rounds = list(rounds)
         self.bound_tool_names: list[str] = []
+        self.bound_tools_by_name: dict[str, Any] = {}
         self.recorded_calls: list[list[Any]] = []
 
     def bind_tools(self, tools: list[Any]) -> _ScriptedFakeChatModel:
         self.bound_tool_names = [t.name for t in tools]
+        self.bound_tools_by_name = {t.name: t for t in tools}
         return self
 
     async def astream(self, messages: list[Any]):
@@ -400,6 +402,7 @@ async def test_no_mcp_honesty_guard_and_mcp_tool_filtering(monkeypatch: pytest.M
 
     # Live ERP tools MUST stay disabled when MCP_ENABLED=False
     assert fake_llm_disabled.bound_tool_names == ["search_lms_lessons", "navigate_erp_screen"]
+    assert "MANDATORY" in fake_llm_disabled.bound_tools_by_name["search_lms_lessons"].description
 
     system_msg = fake_llm_disabled.recorded_calls[0][0]
     assert isinstance(system_msg, SystemMessage)
@@ -433,6 +436,9 @@ async def test_no_mcp_honesty_guard_and_mcp_tool_filtering(monkeypatch: pytest.M
     assert "read_page" in fake_llm_enabled.bound_tool_names
     assert "commit_entry" not in fake_llm_enabled.bound_tool_names
     assert "commit_report_designer" not in fake_llm_enabled.bound_tool_names
+    search_desc_mcp = fake_llm_enabled.bound_tools_by_name["search_lms_lessons"].description
+    assert "Optional fallback ONLY" in search_desc_mcp
+    assert "MANDATORY" not in search_desc_mcp
 
     enabled_system_msg = fake_llm_enabled.recorded_calls[0][0]
     assert isinstance(enabled_system_msg, SystemMessage)

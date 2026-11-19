@@ -421,6 +421,8 @@ class UnifiedChatService:
         thread_id: str,
         side_events: list[dict[str, Any]],
         collected_sources: list[dict[str, Any]],
+        *,
+        mcp_active: bool = False,
     ) -> list[BaseTool]:
         seen_source_keys: set[tuple[Any, ...]] = set()
         search_svc = self._search_service
@@ -514,14 +516,22 @@ class UnifiedChatService:
                 side_events.append({"event": "nav_action", "data": nav_payload})
             return json.dumps(nav_payload, ensure_ascii=False)
 
+        search_tool_description = (
+            "Optional fallback ONLY when the user explicitly asks for LMS training videos/courses or when MCP "
+            "search_knowledge/read_knowledge has no answer. Do NOT call this for normal ERP how-to or live data "
+            "questions when MCP tools are available."
+            if mcp_active
+            else (
+                "MANDATORY for any how-to, step-by-step, or screen usage question about DynamicPro ERP "
+                "(e.g., إزاي أعمل..., كيف أضيف..., خطوات...). Searches training videos and PDFs."
+            )
+        )
+
         return [
             StructuredTool.from_function(
                 coroutine=search_lms_lessons,
                 name="search_lms_lessons",
-                description=(
-                    "MANDATORY for any how-to, step-by-step, or screen usage question about DynamicPro ERP "
-                    "(e.g., إزاي أعمل..., كيف أضيف..., خطوات...). Searches training videos and PDFs."
-                ),
+                description=search_tool_description,
             ),
             StructuredTool.from_function(
                 coroutine=navigate_erp_screen,
@@ -690,6 +700,7 @@ class UnifiedChatService:
             thread_id=thread_id,
             side_events=side_events,
             collected_sources=collected_sources,
+            mcp_active=mcp_active,
         )
         all_tools: list[BaseTool] = [*builtin_tools, *safe_mcp_tools]
         tools_by_name: dict[str, BaseTool] = {t.name: t for t in all_tools}
