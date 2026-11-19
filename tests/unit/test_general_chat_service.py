@@ -880,3 +880,52 @@ async def test_pure_nav_skips_second_llm_round_and_negative_rag_with_citations_s
     tool_msg = fake_rag_llm.recorded_calls[1][-1]
     assert "[1]" not in str(tool_msg.content)
     assert "[2]" not in str(tool_msg.content)
+
+    # 3. Even when inner RAG returned chunks+sources, if the OUTER LLM concludes "لا توجد دروس...", suppress sources!
+    fake_outer_neg_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "search_lms_lessons",
+                            "args": '{"query": "Blockchain"}',
+                            "id": "call_rag_outer_neg",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ],
+            [AIMessageChunk(content="بالبحث في محتوى الدروس، لا توجد دروس تشرح تقنية Blockchain في المنصة.")],
+        ]
+    )
+    mock_search_svc.search.return_value = SearchResponse(
+        answer="تحتوي الدروس على شرح المحاسبة العامة والفواتير [1].",
+        query_used="Blockchain",
+        sources=[
+            SourceItem(
+                type="video",
+                lesson_id="l2",
+                title="المصدر [1] — مقطع فيديو",
+                url="https://youtu.be/xyz",
+                start=5,
+                end=15,
+            )
+        ],
+        cache_hit=False,
+        provenance="RAG",
+        latency_ms=100,
+    )
+    svc_outer = UnifiedChatService(model_factory=lambda **_: fake_outer_neg_llm, search_svc=mock_search_svc)
+    outer_events = [
+        ev
+        async for ev in svc_outer.stream_chat(
+            ErpChatStreamRequest(
+                query="اشرحلي Blockchain من الدروس",
+                thread_id=f"test_outer_neg_{int(time.time() * 1000)}",
+                trace_id="trc_outer_neg",
+            )
+        )
+    ]
+    assert not any(ev["event"] == "sources" for ev in outer_events)

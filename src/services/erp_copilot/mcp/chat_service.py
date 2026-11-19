@@ -450,7 +450,6 @@ class UnifiedChatService:
             if _is_no_info_answer(resp.answer):
                 return _strip_citation_markers(resp.answer)
 
-            new_sources_added = False
             for src in resp.sources:
                 src_dict = src.model_dump()
                 src_key = (
@@ -464,15 +463,6 @@ class UnifiedChatService:
                 if src_key not in seen_source_keys:
                     seen_source_keys.add(src_key)
                     collected_sources.append(src_dict)
-                    new_sources_added = True
-
-            if new_sources_added or resp.sources:
-                side_events.append(
-                    {
-                        "event": "sources",
-                        "data": {"sources": list(collected_sources)},
-                    }
-                )
 
             if not resp.sources:
                 return resp.answer
@@ -728,6 +718,7 @@ class UnifiedChatService:
         disconnected = False
         has_nav_action = False
         round_streamed_chars = 0
+        streamed_tokens: list[str] = []
 
         try:
             for _round in range(_MAX_TOOL_ROUNDS):
@@ -742,6 +733,7 @@ class UnifiedChatService:
                                 break
                             if kind == "token":
                                 round_streamed_chars += len(val)
+                                streamed_tokens.append(val)
                                 yield {"event": "token", "data": {"text": val}}
                             elif kind == "message":
                                 ai_message = val
@@ -889,9 +881,11 @@ class UnifiedChatService:
                     )
 
                 if pure_nav_payload is not None:
+                    nav_reply = _synthesize_pure_nav_reply(pure_nav_payload)
+                    streamed_tokens.append(nav_reply)
                     yield {
                         "event": "token",
-                        "data": {"text": _synthesize_pure_nav_reply(pure_nav_payload)},
+                        "data": {"text": nav_reply},
                     }
                     break
             else:
@@ -900,7 +894,17 @@ class UnifiedChatService:
                     if kind == "disconnected":
                         return
                     if kind == "token":
+                        streamed_tokens.append(val)
                         yield {"event": "token", "data": {"text": val}}
+
+            final_assistant_text = "".join(streamed_tokens).strip()
+            emitted_sources_count = 0
+            if collected_sources and not _is_no_info_answer(final_assistant_text):
+                emitted_sources_count = len(collected_sources)
+                yield {
+                    "event": "sources",
+                    "data": {"sources": list(collected_sources)},
+                }
 
             latency_ms = round((time.perf_counter() - t0) * 1000, 2)
             append_session_event(
@@ -912,7 +916,7 @@ class UnifiedChatService:
                     "provider": resolved_provider,
                     "model": resolved_model,
                     "mcp_enabled": bool(settings.MCP_ENABLED),
-                    "sources_count": len(collected_sources),
+                    "sources_count": emitted_sources_count,
                     "has_nav_action": has_nav_action,
                     "latency_ms": latency_ms,
                 },
