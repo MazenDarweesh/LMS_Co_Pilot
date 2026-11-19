@@ -407,6 +407,76 @@ async def test_erp_nav_prefers_primary_244_over_duplicate_6055_and_handles_engli
     erp_service._gemini_client.models.generate_content.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_erp_nav_universal_821_screen_enrichment_and_ask_fast_path_with_empty_paths():
+    """
+    Universal 821-screen guarantee (0 LLM calls even when live ERP sends path=[]):
+    1. 'روح شاشه المبيعات' -> 244 (فواتير المبيعات), NEVER 290 (تحويلات المخازن).
+    2. 'عايز افتح شاشة الفواتير' with path=[] -> instant ask [244, 289] (excludes secondary 6701/7072).
+    3. 'افتح القيد' with path=[] -> instant ask [233, 311].
+    4. Arbitrary non-hardcoded screen group 'افتح المرتجعات' with path=[] -> instant ask.
+    """
+    cands = [
+        NavCandidateIn(id="290", label="تحويلات المخازن", path=[]),
+        NavCandidateIn(id="6701", label="فواتير المبيعات", path=[]),
+        NavCandidateIn(id="7072", label="الفواتير المرحلة", path=[]),
+        NavCandidateIn(id="244", label="فواتير المبيعات", path=[]),
+        NavCandidateIn(id="289", label="فواتير المشتريات", path=[]),
+        NavCandidateIn(id="233", label="قيود اليومية", path=[]),
+        NavCandidateIn(id="311", label="القيد العام", path=[]),
+        NavCandidateIn(id="301", label="مرتجع المبيعات", path=[]),
+        NavCandidateIn(id="302", label="مرتجع المشتريات", path=[]),
+        NavCandidateIn(id="7050", label="شاشة العمليات", path=[]),
+        NavCandidateIn(id="210", label="بيانات العملاء", path=[]),
+    ]
+    erp_service._gemini_client.models.generate_content.reset_mock()
+
+    # 1. "روح شاشه المبيعات" -> 244 (never 290)
+    res_sales = await erp_service.resolve_navigation(
+        NavRequest(user_message="روح شاشه المبيعات", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_sales.decision == "go"
+    assert res_sales.candidates[0].id == "244"
+    assert res_sales.source == "lexical"
+
+    # 2. "عايز افتح شاشة الفواتير" with empty paths -> instant ask [244, 289]
+    res_inv = await erp_service.resolve_navigation(
+        NavRequest(user_message="عايز افتح شاشة الفواتير", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_inv.decision == "ask"
+    inv_ids = {c.id for c in res_inv.candidates}
+    assert inv_ids == {"244", "289"}
+
+    # 3. "افتح القيد" with empty paths -> instant ask [233, 311]
+    res_journal = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح القيد", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_journal.decision == "ask"
+    assert {"233", "311"}.issubset({c.id for c in res_journal.candidates})
+
+    # 4. Generic non-hardcoded screen group "افتح المرتجعات" -> instant ask [301, 302]
+    res_returns = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح المرتجعات", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_returns.decision == "ask"
+    assert {c.id for c in res_returns.candidates} == {"301", "302"}
+
+    # 5. Unknown screen with stopword "شاشة" -> instant clarify (never hijacked by 7050 'شاشة العمليات')
+    res_unknown = await erp_service.resolve_navigation(
+        NavRequest(user_message="افتح شاشة صواريخ الفضاء", candidates=cands),
+        known_intent="navigate",
+    )
+    assert res_unknown.decision == "clarify"
+    assert res_unknown.candidates == []
+
+    # Zero LLM calls across ALL 5 queries!
+    erp_service._gemini_client.models.generate_content.assert_not_called()
+
+
 
 @pytest.mark.asyncio
 async def test_record_erp_telemetry_endpoint_writes_unified_jsonl():

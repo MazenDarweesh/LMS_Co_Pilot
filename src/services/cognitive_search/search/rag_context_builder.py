@@ -118,7 +118,15 @@ def build_source_items(chunks: list[dict]) -> list[SourceItem]:
         if c_type in ["video_chunk", "standalone_video_chunk", "playlist_video_chunk"]:
             start_s = chunk.get("start_time")
             end_s = chunk.get("end_time")
-            if start_s is not None and end_s is not None:
+            explicit_title = (
+                chunk.get("lesson_title")
+                or chunk.get("video_title")
+                or chunk.get("title")
+                or chunk.get("section_title")
+            )
+            if explicit_title and str(explicit_title).strip():
+                title = f"المصدر [{i}] — {str(explicit_title).strip()}"
+            elif start_s is not None and end_s is not None:
                 s_min, s_sec = divmod(int(start_s), 60)
                 e_min, e_sec = divmod(int(end_s), 60)
                 title = f"المصدر [{i}] — مقطع فيديو ({s_min:02d}:{s_sec:02d} - {e_min:02d}:{e_sec:02d})"

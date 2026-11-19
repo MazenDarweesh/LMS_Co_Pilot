@@ -51,6 +51,19 @@ def test_build_source_items_video_formatting():
     assert items[0].end == 150
     assert items[1].title == "المصدر [2] — مقطع فيديو"
 
+    # When explicit lesson_title/video_title exists on chunk, prefer it without duplicating timestamp
+    titled = _build_source_items([
+        {
+            "content_type": "video_chunk",
+            "source_url": "https://youtu.be/test?t=75s",
+            "start_time": 75,
+            "end_time": 150,
+            "lesson_id": "lesson-3",
+            "lesson_title": "شرح فاتورة المشتريات",
+        }
+    ])
+    assert titled[0].title == "المصدر [1] — شرح فاتورة المشتريات"
+
 
 def test_build_source_items_pdf_formatting():
     """Verify PDF chunks produce friendly titles with section or page numbers."""

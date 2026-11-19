@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Sequence
 import json
+import re
 import time
 from typing import Any
 import uuid
@@ -253,24 +254,56 @@ def _has_arabic(text: str) -> bool:
     return any("\u0600" <= ch <= "\u06FF" for ch in (text or ""))
 
 
+_NO_INFO_STRONG_MARKERS: tuple[str, ...] = (
+    "لا تتوفر",
+    "لا توجد معلومات",
+    "لا توجد أي دروس",
+    "لا توجد اي دروس",
+    "لا توجد دروس",
+    "لا يوجد دروس",
+    "لا يوجد أي دروس",
+    "لا يوجد اي دروس",
+    "لا يوجد في الدروس",
+    "غير مذكور",
+    "لم يتم ذكر",
+    "لم يرد في الدروس",
+    "لا تحتوي الدروس",
+    "لا تتناول الدروس",
+    "خارج نطاق الدروس",
+    "غير موجود في الدروس",
+    "لا يتضمن المحتوى",
+    "لم أجد معلومات",
+    "لم اجد معلومات",
+)
+_CITATION_TAG_RE = re.compile(r"\s*\[\d+(?:\s*,\s*\d+)*\]")
+
+
+def _strip_citation_markers(text: str) -> str:
+    return _CITATION_TAG_RE.sub("", text or "").strip()
+
+
 def _is_no_info_answer(answer: str) -> bool:
-    """True when the RAG answer states no matching course content exists and cites no sources."""
+    """True when the RAG answer states no matching course content exists (even if stray [1] markers appear)."""
     clean = (answer or "").strip()
     if not clean:
         return True
+    head = clean[:350]
+    if any(m in head for m in _NO_INFO_STRONG_MARKERS):
+        return True
     if "[1]" in clean:
         return False
-    neg_markers = (
-        "لا تتوفر",
-        "لا توجد معلومات",
-        "لا يوجد في الدروس",
-        "غير مذكور",
-        "لم يتم ذكر",
-        "لم يرد في الدروس",
-        "لا تحتوي الدروس",
-        "لا تتناول الدروس",
-    )
-    return any(m in clean for m in neg_markers)
+    return any(m in clean for m in _NO_INFO_STRONG_MARKERS)
+
+
+def _synthesize_pure_nav_reply(nav_payload: dict[str, Any]) -> str:
+    """Deterministic 0ms Arabic reply for pure `navigate_erp_screen` turns (skips redundant Round-2 LLM call)."""
+    decision = str(nav_payload.get("decision") or "").strip().lower()
+    screen = str(nav_payload.get("screen") or "").strip()
+    if decision == "go" and screen:
+        return f"تم فتح شاشة «{screen}» بنجاح."
+    if decision == "ask":
+        return "طلبك يحتمل أكثر من شاشة في النظام، يرجى اختيار الشاشة المطلوبة من الأزرار أدناه:"
+    return "عذراً، لم أجد شاشة مطابقة بهذا الاسم في النظام. يرجى توضيح اسم الشاشة المطلوبة."
 
 
 def _is_transient_provider_error(exc: Exception) -> bool:
@@ -415,7 +448,7 @@ class UnifiedChatService:
                 return f"تعذر البحث في محتوى الدروس حالياً ({safe_err})."
 
             if _is_no_info_answer(resp.answer):
-                return resp.answer
+                return _strip_citation_markers(resp.answer)
 
             new_sources_added = False
             for src in resp.sources:
@@ -758,6 +791,12 @@ class UnifiedChatService:
                     break
 
                 messages.append(ai_message)
+                pure_nav_payload: dict[str, Any] | None = None
+                is_pure_nav_round = (
+                    len(tool_calls) == 1
+                    and str(tool_calls[0].get("name") or "").strip() == "navigate_erp_screen"
+                    and round_streamed_chars == 0
+                )
 
                 for tc in tool_calls:
                     if request is not None and await request.is_disconnected():
@@ -833,6 +872,14 @@ class UnifiedChatService:
                             "trace_id": trace_id,
                         },
                     }
+                    if is_pure_nav_round and tool_status == "ok":
+                        try:
+                            parsed_nav = json.loads(tool_output)
+                            if isinstance(parsed_nav, dict):
+                                pure_nav_payload = parsed_nav
+                        except Exception:
+                            pure_nav_payload = None
+
                     messages.append(
                         ToolMessage(
                             content=tool_output,
@@ -840,6 +887,13 @@ class UnifiedChatService:
                             name=tc_name,
                         )
                     )
+
+                if pure_nav_payload is not None:
+                    yield {
+                        "event": "token",
+                        "data": {"text": _synthesize_pure_nav_reply(pure_nav_payload)},
+                    }
+                    break
             else:
                 # Tool round budget reached; request one final synthesis turn without tools.
                 async for kind, val in self._stream_model_turn(chat_model, messages, request):

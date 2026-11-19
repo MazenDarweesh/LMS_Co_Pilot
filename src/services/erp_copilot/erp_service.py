@@ -150,6 +150,16 @@ REPORT_INQUIRY_KEYWORDS_NORM: tuple[str, ...] = tuple(
     for k in ("تقرير", "تقارير", "كشف", "استعلام", "ميزان", "ارصدة", "تفاصيل")
 )
 
+NAV_QUERY_STOPWORDS_NORM: frozenset[str] = frozenset(
+    normalize_arabic_text_leaderboard(w)
+    for w in (
+        "افتح", "إفتح", "فتح", "وديني", "ودينى", "اذهب", "روح", "عايز", "ممكن",
+        "لو", "سمحت", "اريد", "أريد", "شاشة", "شاشه", "صفحة", "صفحه", "قسم",
+        "لي", "لى", "الى", "إلى", "على", "فى", "في", "من", "عن", "عرض", "اشوف", "أشوف",
+        "open", "go", "to", "screen", "page", "show", "me", "the",
+    )
+)
+
 
 def _strip_definite_article(token: str) -> str:
     """Strips only leading Arabic definite articles (الـ / للـ) without stemming suffixes."""
@@ -285,6 +295,69 @@ def _candidate_priority_tier(user_text: str, label: str, path: list[str]) -> tup
     return (1, False)
 
 
+def _enrich_candidate_paths(candidates: list[NavCandidateIn]) -> list[NavCandidateIn]:
+    """
+    Universal 821-screen module enrichment (< 1ms in RAM):
+    When the live ERP bridge (`DynamicERP.listScreens()`) omits or truncates `path`,
+    populate the authoritative ERP module from `screens_metadata.json` so primary vs.
+    secondary module ranking works reliably across ALL 821 screens.
+    """
+    if not candidates:
+        return []
+    forms_catalog_service._ensure_loaded()
+    by_id = forms_catalog_service._screens_catalog_by_id
+    by_key = forms_catalog_service._screens_catalog_by_key
+    if not by_id and not by_key:
+        return candidates
+
+    enriched: list[NavCandidateIn] = []
+    for c in candidates:
+        raw_id = str(c.id).strip()
+        meta = by_id.get(int(raw_id)) if raw_id.isdigit() else by_key.get(raw_id.lower())
+        mod = str(meta.get("module") or "").strip() if meta else ""
+        if mod:
+            mod_norm = normalize_arabic_text_leaderboard(mod)
+            existing_norms = {normalize_arabic_text_leaderboard(p) for p in (c.path or []) if p}
+            if mod_norm and mod_norm not in existing_norms:
+                enriched.append(c.model_copy(update={"path": [*(c.path or []), mod]}))
+                continue
+        enriched.append(c)
+    return enriched
+
+
+def _dedupe_scored_by_label(
+    scored: list[NavScored],
+    candidates_map: dict[str, NavCandidateIn],
+    user_text: str,
+) -> list[NavScored]:
+    """
+    Collapses duplicate Arabic screen titles (e.g., 244 / 6055 / 6701 all titled 'فواتير المبيعات')
+    to the single authoritative highest-priority screen per normalized label across all 821 screens.
+    """
+    def _rank_key(s: NavScored) -> tuple[float, int, int, int]:
+        cand = candidates_map.get(s.id)
+        tier, is_allowlist = (
+            _candidate_priority_tier(user_text, cand.label or cand.id, cand.path)
+            if cand is not None
+            else (1, False)
+        )
+        raw_id = str(s.id).strip()
+        id_tie = -int(raw_id) if raw_id.isdigit() else 0
+        return (s.confidence, tier, 1 if is_allowlist else 0, id_tie)
+
+    best_by_label: dict[str, tuple[tuple[float, int, int, int], NavScored]] = {}
+    for s in scored:
+        cand = candidates_map.get(s.id)
+        norm_label = normalize_arabic_text_leaderboard((cand.label if cand else s.id) or s.id)
+        key_name = norm_label or s.id
+        rk = _rank_key(s)
+        prev = best_by_label.get(key_name)
+        if prev is None or rk > prev[0]:
+            best_by_label[key_name] = (rk, s)
+
+    return [item[1] for item in sorted(best_by_label.values(), key=lambda x: x[0], reverse=True)]
+
+
 def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> float:
     """
     حساب درجة التطابق المعجمي واللفظي بين رسالة المستخدم وعنوان ومسار الشاشة.
@@ -380,17 +453,24 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
     if label_norm and (label_norm in user_norm or user_norm in label_norm):
         return 0.90 if tier >= 1 else 0.55
 
-    user_tokens = [w for w in user_norm.split() if len(w) > 1]
-    cand_tokens = [w for w in cand_norm.split() if len(w) > 1]
+    raw_user_tokens = [w for w in user_norm.split() if len(w) > 1]
+    filtered_user_tokens = [w for w in raw_user_tokens if w not in NAV_QUERY_STOPWORDS_NORM]
+    user_tokens = filtered_user_tokens or raw_user_tokens
+    label_tokens = [w for w in label_norm.split() if len(w) > 1]
+    path_norm = normalize_arabic_text_leaderboard(" ".join(path or []))
+    path_tokens = [w for w in path_norm.split() if len(w) > 1]
 
-    if not user_tokens or not cand_tokens:
+    if not user_tokens or (not label_tokens and not path_tokens):
         return 0.0
 
     user_stems = {_stem_arabic_token(w) for w in user_tokens if len(_stem_arabic_token(w)) > 1}
-    cand_stems = {_stem_arabic_token(w) for w in cand_tokens if len(_stem_arabic_token(w)) > 1}
+    label_stems = {_stem_arabic_token(w) for w in label_tokens if len(_stem_arabic_token(w)) > 1}
+    path_stems = {_stem_arabic_token(w) for w in path_tokens if len(_stem_arabic_token(w)) > 1}
+    cand_stems = label_stems | path_stems
 
-    common_stems = user_stems.intersection(cand_stems)
-    if not common_stems:
+    label_common = user_stems.intersection(label_stems)
+    path_common = user_stems.intersection(path_stems)
+    if not label_common and not path_common:
         # فحص احتواء مقطعي للكلمات
         has_partial = False
         for u in user_stems:
@@ -402,8 +482,14 @@ def _compute_lexical_similarity(user_text: str, label: str, path: list[str]) -> 
                 break
         return 0.35 if has_partial else 0.05
 
-    overlap_score = len(common_stems) / max(1, len(cand_stems))
-    confidence = min(0.85, 0.40 + (overlap_score * 0.45))
+    if label_common:
+        # Measure title overlap against screen title tokens (never diluted by long ERP menu paths)
+        overlap_score = len(label_common) / max(1, len(label_stems))
+        confidence = min(0.85, 0.40 + (overlap_score * 0.45))
+    else:
+        overlap_score = len(path_common) / max(1, len(path_stems))
+        confidence = min(0.65, 0.35 + (overlap_score * 0.30))
+
     if is_report_query and any(kw in label_norm for kw in REPORT_INQUIRY_KEYWORDS_NORM):
         confidence = min(0.92, confidence + 0.12)
     elif tier == 0:
@@ -519,12 +605,14 @@ class ErpService:
         2. fallback معجمي فقط عند تعذر الـ LLM.
         """
         user_msg = req.user_message.strip()
-        candidates_map = {c.id: c for c in req.candidates}
+        # Universal 821-screen module enrichment: populate missing ERP module paths from screens_metadata.json
+        candidates = _enrich_candidate_paths(req.candidates)
+        candidates_map = {c.id: c for c in candidates}
 
         logger.info(
             "ERP Navigation resolve requested",
             query_len=len(user_msg),
-            candidates_count=len(req.candidates),
+            candidates_count=len(candidates),
             current_path=req.current_path,
             known_intent=known_intent,
         )
@@ -557,14 +645,14 @@ class ErpService:
 
             # Pass 1a: Strict numeric page_id match FIRST (prevents duplicate Arabic titles like 6055 from shadowing primary 244)
             if cat_pid:
-                for c in req.candidates:
+                for c in candidates:
                     if str(c.id).strip().lower() == cat_pid:
                         matched_catalog_candidate_id = c.id
                         break
 
             # Pass 1b: Exact Arabic screen name match only when numeric page_id was not present in candidates
             if not matched_catalog_candidate_id and cat_name:
-                for c in req.candidates:
+                for c in candidates:
                     c_label_clean = (c.label or "").strip()
                     if cat_name == c_label_clean or cat_name_norm == normalize_arabic_text_leaderboard(c_label_clean):
                         matched_catalog_candidate_id = c.id
@@ -572,7 +660,7 @@ class ErpService:
 
             # Pass 2: Fallback to screen_key only if no page_id/name_ar match was found
             if not matched_catalog_candidate_id and cat_key:
-                for c in req.candidates:
+                for c in candidates:
                     c_id_str = str(c.id).strip().lower()
                     c_label_clean = (c.label or "").strip()
                     if c_id_str == cat_key and not ("انواع" in c_label_clean or "أنواع" in c_label_clean):
@@ -591,7 +679,7 @@ class ErpService:
         # while strictly rejecting partial screen names like 'افتح القيد' for 'القيد العام').
         full_name_matches: list[tuple[int, int, NavCandidateIn]] = []
         if not (is_report_query or is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements):
-            for c in req.candidates:
+            for c in candidates:
                 matched_full, tok_len = _is_full_screen_name_in_query(user_msg, c.label or "")
                 if not matched_full:
                     continue
@@ -613,7 +701,19 @@ class ErpService:
                         full_screen_matched_id = cand.id
                         break
 
-        # 0.6 Deterministic Fast-Path (< 5ms, 0 LLM calls, 0 Embedding calls)
+        def _select_primary_group(keyword_norm: str, reason: str) -> list[NavScored]:
+            raw_scored: list[NavScored] = []
+            for c in candidates:
+                c_tier, c_allow = _candidate_priority_tier(user_msg, c.label or c.id, c.path)
+                if (c_tier >= 3 or (c_tier >= 2 and c_allow)) and keyword_norm in normalize_arabic_text_leaderboard(c.label or ""):
+                    raw_scored.append(NavScored(id=c.id, confidence=0.78, reason=reason))
+            deduped = _dedupe_scored_by_label(raw_scored, candidates_map, user_msg)
+            return [
+                NavScored(id=s.id, confidence=round(0.78 - (idx * 0.02), 2), reason=reason)
+                for idx, s in enumerate(deduped[:3])
+            ]
+
+        # 0.6 Deterministic Fast-Path (< 5ms, 0 LLM calls, 0 Embedding calls — universal across all 821 screens)
         u_norm_fast = normalize_arabic_text_leaderboard(user_msg)
         is_partial_journal = ("قيد" in u_norm_fast or "قيود" in u_norm_fast) and not full_screen_matched_id
         is_nav_context = known_intent == "navigate" or (has_nav_verb and not has_create_verb)
@@ -621,20 +721,8 @@ class ErpService:
         if is_nav_context and not is_report_query:
             # Fast-Path A: Known ambiguous group queries ("افتح الفواتير" / "افتح الاذون") -> instant ask
             if is_ambiguous_inv:
-                primary_inv_cands = [
-                    c for c in req.candidates
-                    if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
-                    and "فواتير" in normalize_arabic_text_leaderboard(c.label or "")
-                ]
-                if len(primary_inv_cands) >= 2:
-                    ask_scored = [
-                        NavScored(
-                            id=pc.id,
-                            confidence=round(0.78 - (idx * 0.02), 2),
-                            reason="تخيير بين شاشات الفواتير الأساسية في النظام",
-                        )
-                        for idx, pc in enumerate(primary_inv_cands[:3])
-                    ]
+                ask_scored = _select_primary_group("فواتير", "تخيير بين شاشات الفواتير الأساسية في النظام")
+                if len(ask_scored) >= 2:
                     logger.info("ERP Navigation resolved via deterministic ambiguous-invoice fast-path")
                     return NavResolution(
                         decision="ask",
@@ -644,20 +732,8 @@ class ErpService:
                     )
 
             if is_ambiguous_vouch:
-                primary_vouch_cands = [
-                    c for c in req.candidates
-                    if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
-                    and "اذون" in normalize_arabic_text_leaderboard(c.label or "")
-                ]
-                if len(primary_vouch_cands) >= 2:
-                    ask_scored = [
-                        NavScored(
-                            id=vc.id,
-                            confidence=round(0.78 - (idx * 0.02), 2),
-                            reason="تخيير بين شاشات الأذون المخزنية الأساسية في النظام",
-                        )
-                        for idx, vc in enumerate(primary_vouch_cands[:3])
-                    ]
+                ask_scored = _select_primary_group("اذون", "تخيير بين شاشات الأذون المخزنية الأساسية في النظام")
+                if len(ask_scored) >= 2:
                     logger.info("ERP Navigation resolved via deterministic ambiguous-voucher fast-path")
                     return NavResolution(
                         decision="ask",
@@ -692,49 +768,84 @@ class ErpService:
                         source="lexical",
                     )
 
-                if known_intent == "navigate":
-                    lexical_fast: list[NavScored] = []
-                    for c in req.candidates:
-                        score = _compute_lexical_similarity(user_msg, c.label, c.path)
-                        if score >= 0.50:
-                            c_tier, _ = _candidate_priority_tier(user_msg, c.label or c.id, c.path)
-                            if c_tier == 0 and score > 0.50:
-                                score = 0.50
-                        lexical_fast.append(
-                            NavScored(
-                                id=c.id,
-                                confidence=score,
-                                reason="مطابقة معجمية مباشرة لاسم الشاشة",
-                            )
-                        )
-                    lexical_fast.sort(key=lambda x: x.confidence, reverse=True)
-                    top_lex = lexical_fast[:3]
-                    if top_lex and top_lex[0].confidence >= 0.90 and self._decide(top_lex) == "go":
-                        logger.info(
-                            "ERP Navigation resolved via deterministic lexical fast-path (0 LLM calls)",
-                            matched_id=top_lex[0].id,
-                            confidence=top_lex[0].confidence,
-                        )
-                        return NavResolution(
-                            decision="go",
-                            candidates=top_lex,
-                            intent="navigate",
-                            source="lexical",
-                        )
-                    if not top_lex or top_lex[0].confidence < 0.25:
-                        logger.info(
-                            "ERP Navigation rejected unknown screen via deterministic fast-path (0 LLM calls)",
-                            query=user_msg,
-                            top_conf=top_lex[0].confidence if top_lex else 0.0,
-                        )
-                        return NavResolution(
-                            decision="clarify",
-                            candidates=[],
-                            intent="navigate",
-                            source="lexical",
-                        )
+            # Fast-Path C: Universal 821-screen lexical engine (handles go / ask / clarify in < 5ms, 0 LLM calls)
+            lexical_fast: list[NavScored] = []
+            for c in candidates:
+                score = _compute_lexical_similarity(user_msg, c.label, c.path)
+                if score >= 0.50:
+                    c_tier, _ = _candidate_priority_tier(user_msg, c.label or c.id, c.path)
+                    if c_tier == 0 and score > 0.50:
+                        score = 0.50
+                lexical_fast.append(
+                    NavScored(
+                        id=c.id,
+                        confidence=score,
+                        reason="مطابقة معجمية مباشرة لاسم الشاشة",
+                    )
+                )
+            deduped_lex = _dedupe_scored_by_label(lexical_fast, candidates_map, user_msg)
+            top_lex = deduped_lex[:3]
 
-        fingerprint = navigation_fingerprint(req.candidates)
+            # C1: Clear single winner -> instant go
+            if (
+                not (is_ambiguous_inv or is_ambiguous_vouch or is_wh_movements or is_partial_journal)
+                and top_lex
+                and top_lex[0].confidence >= 0.85
+                and self._decide(top_lex) == "go"
+            ):
+                logger.info(
+                    "ERP Navigation resolved via deterministic lexical fast-path (0 LLM calls)",
+                    matched_id=top_lex[0].id,
+                    confidence=top_lex[0].confidence,
+                )
+                return NavResolution(
+                    decision="go",
+                    candidates=top_lex,
+                    intent="navigate",
+                    source="lexical",
+                )
+
+            # C2: Universal ambiguous multi-screen match -> instant ask (works for ALL 821 screens: الفواتير، القيد، المرتجعات، الشيكات، إلخ)
+            if (
+                len(top_lex) >= 2
+                and top_lex[0].confidence >= 0.55
+                and top_lex[1].confidence >= 0.45
+                and (
+                    self._decide(top_lex) == "ask"
+                    or is_partial_journal
+                    or is_wh_movements
+                )
+            ):
+                min_ask_conf = max(0.45, round(top_lex[0].confidence - 0.25, 2))
+                ask_cands = [c for c in top_lex if c.confidence >= min_ask_conf]
+                if len(ask_cands) >= 2:
+                    logger.info(
+                        "ERP Navigation resolved via universal lexical ask fast-path (0 LLM calls)",
+                        query=user_msg,
+                        candidate_ids=[c.id for c in ask_cands],
+                    )
+                    return NavResolution(
+                        decision="ask",
+                        candidates=ask_cands,
+                        intent="navigate",
+                        source="lexical",
+                    )
+
+            # C3: Unknown/non-existent screen -> instant clarify
+            if known_intent == "navigate" and (not top_lex or top_lex[0].confidence < 0.25):
+                logger.info(
+                    "ERP Navigation rejected unknown screen via deterministic fast-path (0 LLM calls)",
+                    query=user_msg,
+                    top_conf=top_lex[0].confidence if top_lex else 0.0,
+                )
+                return NavResolution(
+                    decision="clarify",
+                    candidates=[],
+                    intent="navigate",
+                    source="lexical",
+                )
+
+        fingerprint = navigation_fingerprint(candidates)
         memory_active = bool(tenant_id and user_id) and erp_decision_memory_service.ready
 
         # 0. Verified-decision memory
@@ -756,7 +867,7 @@ class ErpService:
             try:
                 # Provide a wide window (up to 60 candidates) prioritized by lexical relevance +
                 # main operational module hierarchy + explicit core allowlist (no numeric ID cutoffs).
-                candidates_to_score = req.candidates
+                candidates_to_score = candidates
                 if len(candidates_to_score) > 60:
                     scored_pre = sorted(
                         candidates_to_score,
@@ -803,7 +914,7 @@ class ErpService:
             )
             intent = "action" if is_action_msg else ("navigate" if has_nav_verb else "unknown")
 
-            for c in req.candidates:
+            for c in candidates:
                 score = _compute_lexical_similarity(user_msg, c.label, c.path)
                 reason = "مطابقة معجمية للألفاظ والمسار" if score > 0.2 else "مطابقة معجمية منخفضة"
                 scored_candidates.append(NavScored(id=c.id, confidence=score, reason=reason))
@@ -881,44 +992,22 @@ class ErpService:
         # Generic ambiguous invoice requests ("عايز افتح شاشة الفواتير") must ask between
         # primary operational invoice screens rather than collapsing into clarify or picking 1 blind.
         if is_ambiguous_inv and intent != "question":
-            primary_inv_cands = [
-                c for c in req.candidates
-                if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
-                and "فواتير" in normalize_arabic_text_leaderboard(c.label or "")
-            ]
-            if len(primary_inv_cands) >= 2:
+            inv_group = _select_primary_group("فواتير", "تخيير بين شاشات الفواتير الأساسية في النظام")
+            if len(inv_group) >= 2:
                 prelim = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
                 if self._decide(prelim) != "ask":
                     intent = "navigate"
-                    unique_scored = {}
-                    for idx, pc in enumerate(primary_inv_cands[:3]):
-                        conf = round(0.78 - (idx * 0.02), 2)
-                        unique_scored[pc.id] = NavScored(
-                            id=pc.id,
-                            confidence=conf,
-                            reason="تخيير بين شاشات الفواتير الأساسية في النظام",
-                        )
+                    unique_scored = {s.id: s for s in inv_group}
 
         # Generic ambiguous voucher requests ("افتح شاشة الاذون") must ask between
         # primary warehouse voucher screens (306 اذون صرف, 292 اذون اضافة).
         if is_ambiguous_vouch and intent != "question":
-            primary_vouch_cands = [
-                c for c in req.candidates
-                if _candidate_priority_tier(user_msg, c.label or c.id, c.path)[0] >= 3
-                and "اذون" in normalize_arabic_text_leaderboard(c.label or "")
-            ]
-            if len(primary_vouch_cands) >= 2:
+            vouch_group = _select_primary_group("اذون", "تخيير بين شاشات الأذون المخزنية الأساسية في النظام")
+            if len(vouch_group) >= 2:
                 intent = "navigate"
-                unique_scored = {}
-                for idx, vc in enumerate(primary_vouch_cands[:3]):
-                    conf = round(0.78 - (idx * 0.02), 2)
-                    unique_scored[vc.id] = NavScored(
-                        id=vc.id,
-                        confidence=conf,
-                        reason="تخيير بين شاشات الأذون المخزنية الأساسية في النظام",
-                    )
+                unique_scored = {s.id: s for s in vouch_group}
 
-        top_candidates = sorted(unique_scored.values(), key=lambda x: x.confidence, reverse=True)[:3]
+        top_candidates = _dedupe_scored_by_label(list(unique_scored.values()), candidates_map, user_msg)[:3]
 
         # 4. Decision
         if source == "ai" and intent == "question":

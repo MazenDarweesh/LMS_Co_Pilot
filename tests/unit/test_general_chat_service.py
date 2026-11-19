@@ -780,3 +780,103 @@ async def test_stream_chat_503_fallback_and_graceful_end_after_substantive_strea
     ]
     assert not any(ev["event"] == "error" for ev in events2)
     assert events2[-1]["event"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_pure_nav_skips_second_llm_round_and_negative_rag_with_citations_suppresses_sources():
+    # 1. Pure navigate_erp_screen turn MUST complete in 1 LLM round (skips 15s Round-2 LLM call)
+    fake_nav_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "navigate_erp_screen",
+                            "args": '{"target_screen": "فواتير المبيعات"}',
+                            "id": "call_nav_fast",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ],
+            [AIMessageChunk(content="SHOULD_NOT_BE_CALLED")],
+        ]
+    )
+    mock_erp_svc = AsyncMock()
+    mock_erp_svc.resolve_navigation.return_value = NavResolution(
+        decision="go",
+        candidates=[NavScored(id="244", confidence=0.98, reason="فواتير المبيعات")],
+        intent="navigate",
+        source="lexical",
+    )
+    svc = UnifiedChatService(model_factory=lambda **_: fake_nav_llm, erp_svc=mock_erp_svc)
+    nav_events = [
+        ev
+        async for ev in svc.stream_chat(
+            ErpChatStreamRequest(
+                query="وديني فواتير المبيعات",
+                candidates=[NavCandidateIn(id="244", label="فواتير المبيعات", path=[])],
+                thread_id=f"test_pure_nav_{int(time.time() * 1000)}",
+                trace_id="trc_pure_nav",
+            )
+        )
+    ]
+    assert len(fake_nav_llm.recorded_calls) == 1
+    token_text = "".join(ev["data"]["text"] for ev in nav_events if ev["event"] == "token")
+    assert "فواتير المبيعات" in token_text
+    assert "SHOULD_NOT_BE_CALLED" not in token_text
+    assert nav_events[-1]["event"] == "done"
+
+    # 2. Negative RAG answer with stray [1] [2] [3] citations MUST suppress sources & strip citations
+    fake_rag_llm = _ScriptedFakeChatModel(
+        rounds=[
+            [
+                AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "search_lms_lessons",
+                            "args": '{"query": "Blockchain"}',
+                            "id": "call_rag_bc",
+                            "index": 0,
+                        }
+                    ],
+                )
+            ],
+            [AIMessageChunk(content="لا توجد دروس عن Blockchain في المنصة.")],
+        ]
+    )
+    mock_search_svc = AsyncMock()
+    mock_search_svc.search.return_value = SearchResponse(
+        answer="عذراً، لا توجد أي دروس أو معلومات عن البلوك تشين في المقاطع المتاحة [1] [2] [3].",
+        query_used="Blockchain",
+        sources=[
+            SourceItem(
+                type="video",
+                lesson_id="l1",
+                title="مقطع فيديو",
+                url="https://youtu.be/abc",
+                start=10,
+                end=20,
+            )
+        ],
+        cache_hit=False,
+        provenance="RAG",
+        latency_ms=100,
+    )
+    svc_rag = UnifiedChatService(model_factory=lambda **_: fake_rag_llm, search_svc=mock_search_svc)
+    rag_events = [
+        ev
+        async for ev in svc_rag.stream_chat(
+            ErpChatStreamRequest(
+                query="اشرحلي Blockchain من الدروس",
+                thread_id=f"test_neg_cit_{int(time.time() * 1000)}",
+                trace_id="trc_neg_cit",
+            )
+        )
+    ]
+    assert not any(ev["event"] == "sources" for ev in rag_events)
+    tool_msg = fake_rag_llm.recorded_calls[1][-1]
+    assert "[1]" not in str(tool_msg.content)
+    assert "[2]" not in str(tool_msg.content)

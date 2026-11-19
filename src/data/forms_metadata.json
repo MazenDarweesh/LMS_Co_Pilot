@@ -173,12 +173,12 @@
     "290": {
       "page_id": 290,
       "screen_key": "Store Convert Orders",
-      "name_ar": "المبيعات",
-      "name_en": "Sales",
+      "name_ar": "تحويلات المخازن",
+      "name_en": "Store Convert Orders",
       "module": "المخازن",
       "is_excel": true,
       "primary_entity_field": "CustomerID",
-      "summary_template_ar": "فاتورة مبيعات للعميل '{entity_name}' بعدد {lines_count} أصناف",
+      "summary_template_ar": "تحويل مخزني بعدد {lines_count} أصناف",
       "header_fields": {
         "CustomerID": {
           "column_name": "CustomerID",
@@ -376,8 +376,8 @@
     "311": {
       "page_id": 311,
       "screen_key": "General registration",
-      "name_ar": "قيود اليومية",
-      "name_en": "General Journal Entry",
+      "name_ar": "القيد العام",
+      "name_en": "General Registration",
       "module": "الحسابات العامه",
       "is_excel": true,
       "primary_entity_field": "Description",
@@ -171699,7 +171699,13 @@
     "تقرير تسوية فرق سعر صرف العملة": 7907,
     "سجل تسوية فرق سعر صرف العملة": 7907,
     "إضافة تسوية فرق سعر صرف العملة": 7907,
-    "تسوية فرق سعر صرف العملة": 7907
+    "تسوية فرق سعر صرف العملة": 7907,
+    "شاشة المبيعات": 244,
+    "شاشه المبيعات": 244,
+    "فتح المبيعات": 244,
+    "افتح المبيعات": 244,
+    "روح المبيعات": 244,
+    "اذهب الى المبيعات": 244
   },
   "_metadata": {
     "total_screens": 822,
